@@ -1,0 +1,71 @@
+- slug: threshold_by_kind
+  title: Umbral ramificado por tipo de sujeto
+  status: vigente
+  strength: condicional
+  certainty: baja
+  unit: unidades
+  branches:
+    - when: {kind: alpha}
+      value: 10.0
+      evidence: [EV-001]
+    - when: {kind: beta}
+      value: 20.0
+      evidence: [EV-002]
+    - when: {kind: unknown}
+      value: 20.0
+      evidence: [EV-003]
+      note: "el más conservador"
+  semantics: umbral
+  expires: "2099-01-01"
+
+- slug: coefficient_by_range
+  title: Coeficiente por rango numérico y modo
+  status: vigente
+  strength: condicional
+  certainty: moderada
+  unit: coeficiente
+  requires: [size]
+  branches:
+    - when: {size: ">=100", mode: fast}
+      value: 1.5
+      evidence: [EV-001]
+    - when: {size: "[10,100)", mode: any}
+      value: 1.0
+      evidence: [EV-002]
+    - when: {size: unknown, mode: any}
+      value: null
+      evidence: [EV-003]
+      note: "sin el dato, no se inventa un valor"
+  semantics: coeficiente
+
+- slug: legacy_cap
+  title: Tope retirado por no sostenerse en la evidencia
+  status: retirada
+  strength: condicional
+  certainty: muy_baja
+  unit: fracción
+  branches:
+    - when: {kind: any}
+      value: 0.3
+      evidence: [EV-001]
+  semantics: cap
+  expires: "2020-01-01"
+  retirement:
+    date: "2020-01-01"
+    reason: "la evidencia que la respaldaba era convergencia de heurísticas, no un dato"
+    replaced_by: [threshold_by_kind]
+
+- slug: unsupported_number
+  title: Número heredado sin respaldo conocido
+  status: vigente
+  strength: condicional
+  certainty: sin_respaldo
+  unit: unidades
+  provenance_note: >
+    Nadie sabe de dónde salió. Estaba en el código sin cita ni comentario. Se declara
+    como tal para que su ausencia de respaldo sea VISIBLE y caduque.
+  branches:
+    - when: {kind: any}
+      value: 3.3
+  semantics: equivalencia
+  expires: "2099-01-01"

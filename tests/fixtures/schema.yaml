@@ -1,0 +1,4 @@
+certainty_scale: [alta, moderada, baja, muy_baja, sin_respaldo]
+weak_from: baja
+unsupported_level: sin_respaldo
+wildcards: [unknown, any]
