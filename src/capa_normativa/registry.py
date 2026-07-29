@@ -223,6 +223,23 @@ def _parse_norm(raw: dict, known_evidence: set[str], today: date, schema: Schema
     if not branches:
         raise bad("sin ramas: una norma sin valor no es una norma")
 
+    # ── R10 · dos ramas no pueden matchear al mismo sujeto ─────────────────
+    # Si dos ramas solapan, gana la primera del fichero: el ORDEN decide el valor,
+    # que es justo lo que el límite de expresividad prohíbe. La rama del sujeto
+    # desconocido queda fuera de la comprobación — solapa por definición, y el
+    # motor la prueba SIEMPRE la última (orden fijo del motor, no del fichero).
+    #
+    # LIMITACIÓN: detecta igualdad y subsunción exacta de condiciones. NO detecta
+    # solapamiento entre RANGOS (">=50" y ">=100" solapan y aquí pasan).
+    concretas = [b for b in branches
+                 if not all(str(v).lower() in schema.wildcards for v in b.when.values())]
+    for i, a in enumerate(concretas):
+        for c in concretas[i + 1:]:
+            sa, sc = set(a.when.items()), set(c.when.items())
+            if sa <= sc or sc <= sa:
+                raise bad(f"dos ramas matchean al mismo sujeto ({dict(sa)} y {dict(sc)}): "
+                          f"el orden del fichero decidiría el valor. Hazlas disjuntas")
+
     # ── R5 · ANTI-HARDCODEO: hay que declarar qué pasa con quien NO conoces ─
     dims = {d for b in branches for d in b.when}
     for dim in dims:

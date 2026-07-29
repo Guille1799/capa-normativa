@@ -188,3 +188,36 @@ def test_el_registro_no_conoce_ningun_dominio():
     prohibidos = ["kcal", "ffm", "salud", "paciente", "atleta", "nutri", "entren",
                   "dosis", "sexo", "edad"]
     assert not [t for t in prohibidos if t in src.lower()]
+
+
+# ── R10: el orden del fichero no puede decidir el valor ─────────────────
+
+def test_ilegal_dos_ramas_que_matchean_al_mismo_sujeto(tmp_path):
+    """Encontrado revisando antes de publicar: dos ramas solapadas se aceptaban y
+    ganaba la primera del fichero — o sea, el ORDEN decidía el valor, que es
+    exactamente lo que el límite de expresividad prohíbe."""
+    def duplicar(n):
+        x = by_slug(n, "threshold_by_kind")
+        x["branches"].insert(1, {"when": {"kind": "alpha"}, "value": 999,
+                                 "evidence": ["EV-002"]})
+    with pytest.raises(NormError, match="mismo sujeto"):
+        mutando(tmp_path, duplicar)
+
+
+def test_ilegal_una_rama_subsume_a_otra(tmp_path):
+    """`{kind: alpha}` y `{kind: alpha, mode: fast}`: un sujeto alpha+fast matchea
+    las dos. Subsunción = solapamiento garantizado."""
+    def subsumir(n):
+        x = by_slug(n, "threshold_by_kind")
+        x["branches"].insert(1, {"when": {"kind": "alpha", "mode": "fast"}, "value": 999,
+                                 "evidence": ["EV-002"]})
+    with pytest.raises(NormError, match="mismo sujeto"):
+        mutando(tmp_path, subsumir)
+
+
+def test_ramas_disjuntas_siguen_siendo_validas():
+    """No debe haber falsos positivos: alpha y beta no solapan, y la rama del
+    sujeto desconocido solapa por definición pero el motor la prueba la última."""
+    r = reg()
+    assert r.resolve("threshold_by_kind", kind="alpha").value == 10.0
+    assert r.resolve("threshold_by_kind", kind="beta").value == 20.0

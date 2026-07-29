@@ -38,6 +38,7 @@ Cada uno corresponde a un modo de fallo real y observado:
 | hay contradicción declarada sin resolución | recoger conflictos y no adjudicarlos nunca |
 | una norma retirada se intenta leer | el comentario fósil que sobrevive a su supersesión |
 | se cuela lógica en una condición | convertir esto en un motor de reglas |
+| **dos ramas matchean al mismo sujeto** | que el orden del fichero decida el valor |
 
 ## Lo que NO hace, a propósito
 
