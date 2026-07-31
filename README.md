@@ -39,6 +39,7 @@ Cada uno corresponde a un modo de fallo real y observado:
 | una norma retirada se intenta leer | el comentario fósil que sobrevive a su supersesión |
 | se cuela lógica en una condición | convertir esto en un motor de reglas |
 | **dos ramas matchean al mismo sujeto** | que el orden del fichero decida el valor |
+| **una norma ramifica por otra norma** | **encadenar reglas por la puerta de atrás** |
 
 ## Lo que NO hace, a propósito
 
@@ -50,11 +51,37 @@ esos sistemas fracasan justo ahí: cuando las reglas dependen unas de otras apar
 prioridades, bucles y una depuración imposible, y los equipos acaban volviendo a código plano.
 Aquí la lógica se queda en tu lenguaje; solo salen **los valores y su respaldo**.
 
+Desde la **v0.2.0** eso no es una promesa sino una comprobación — ver `subject_dimensions`.
+
 ## Expresividad, deliberadamente pobre
 
 Una condición solo puede ser **comodín**, **igualdad simple** o **rango numérico**
-(`">=100"`, `"[10,100)"`). Nada más — ni disyunciones, ni composición, ni orden de evaluación.
-El límite **está en el código**, no en la documentación: intentar colar un operador falla.
+(`">=100"`, `"[10,100)"`), **sobre una dimensión declarada del sujeto**. Nada más — ni
+disyunciones, ni composición, ni orden de evaluación. El límite **está en el código**, no en
+la documentación: intentar colar un operador falla.
+
+### `subject_dimensions` — por qué existe (v0.2.0)
+
+`schema.yaml` declara la lista **cerrada** de atributos del sujeto por los que se puede
+ramificar:
+
+```yaml
+subject_dimensions: [kind, mode, size]
+```
+
+Sin ella, *"una norma no puede referenciar a otra"* se cumplía por disciplina y no por
+construcción: el registro comprobaba la **forma** de la condición, pero no podía ver su
+**semántica**. Para el parser, `{otra_norma: ">=0.30"}` era un rango perfectamente válido —
+y pasaba. Se encontró usando el registro en producción, buscándolo a propósito; se coló al
+primer intento.
+
+De regalo, caza las **erratas de dimensión**, que eran el peor modo de fallo posible: una
+clave mal escrita no matchea nunca, así que caía al fallback **en silencio** y devolvía el
+valor por defecto sin que nada fallara.
+
+> **Breaking respecto a v0.1.0**, y deliberadamente: hacerlo opcional habría dejado el
+> agujero abierto por defecto, que es la forma exacta de tener un límite que no impide nada.
+> Migrar es una línea — la unión de las claves `when` que ya usas.
 
 ## Ausencia de respaldo, declarada
 
@@ -78,15 +105,27 @@ el umbral de certeza débil, hereda gratis: no puede ser vinculante y **caduca s
 
 Tres ficheros en el directorio que le pases:
 
-- `schema.yaml` — la escala de certeza, **declarada, no cableada**: cada dominio usa la suya.
+- `schema.yaml` — la escala de certeza y las dimensiones del sujeto, **declaradas, no
+  cableadas**: cada dominio usa las suyas.
 - `evidence.yaml` — lo que dicen las fuentes. **Append-only.** No gobierna nada directamente.
 - `norms.yaml` — lo que *tu* sistema hace. Es lo único que el código puede citar.
 
 ## Instalación
 
 ```bash
-pip install git+https://github.com/Guille1799/capa-normativa.git
+pip install git+https://github.com/Guille1799/capa-normativa.git@v0.2.0
 ```
+
+## Migrar de v0.1.0 a v0.2.0
+
+Una línea en `schema.yaml`. Si el registro no arranca, el mensaje dice qué falta:
+
+```yaml
+subject_dimensions: [las, claves, de, tus, when]
+```
+
+Si al declararlas descubres que una es el nombre de otra norma, eso **era** el bug: resuelve
+las dos por separado y compón el resultado en tu código.
 
 ## Origen
 

@@ -9,6 +9,12 @@ LO QUE ESTE REGISTRO NO HACE, A PROPÓSITO:
   - NO ejecuta lógica. Devuelve un valor y su procedencia.
   - NO encadena normas. El encadenamiento lo hace el código llamante, donde se depura.
   Es lo que separa esto de un motor de reglas (Drools), que fracasa justo ahí.
+
+Lo segundo dejó de ser una promesa y pasó a ser una comprobación en v0.2.0 (R11):
+`schema.yaml` declara `subject_dimensions`, la lista CERRADA de atributos del sujeto,
+y una condición que ramifique por cualquier otra cosa NO se construye. Antes de eso el
+límite se cumplía por disciplina: `when: {otra_norma: ">=0.30"}` era un rango bien
+formado y el parser lo aceptaba tan campante.
 """
 from __future__ import annotations
 
@@ -23,10 +29,18 @@ import yaml
 @dataclass(frozen=True)
 class Schema:
     """El esquema se DECLARA (schema.yaml), no se cablea: la escala de certeza es
-    específica de cada dominio y no puede vivir dentro de la infraestructura."""
+    específica de cada dominio y no puede vivir dentro de la infraestructura.
+
+    `subject_dimensions` es la lista CERRADA de atributos del sujeto por los que una
+    norma puede ramificar. Es lo que convierte el límite "una norma no referencia a
+    otra" en algo que el parser puede comprobar: sin ella, el registro no distingue
+    un atributo del sujeto del valor de otra norma — para él ambos son un string que
+    llega a `resolve()`.
+    """
     certainty_scale: tuple[str, ...]
     weak_from: str
     wildcards: frozenset[str]
+    subject_dimensions: frozenset[str]
     unsupported_level: str | None = None
 
     @classmethod
@@ -36,8 +50,19 @@ class Schema:
         for key in ("weak_from", "unsupported_level"):
             if raw.get(key) and raw[key] not in scale:
                 raise NormError(f"{key}={raw[key]!r} no está en certainty_scale")
+        dims = raw.get("subject_dimensions")
+        if not dims:
+            raise NormError(
+                "falta `subject_dimensions` en schema.yaml: la lista CERRADA de atributos "
+                "del sujeto por los que se puede ramificar. Sin ella no hay forma de "
+                "distinguir un atributo del sujeto del valor de otra norma, y encadenar "
+                "normas queda permitido por accidente. Declara las que ya usas: es la "
+                "unión de las claves `when` de tus normas"
+            )
+        if isinstance(dims, str) or not all(isinstance(d, str) for d in dims):
+            raise NormError("`subject_dimensions` debe ser una lista de nombres")
         return cls(scale, raw["weak_from"], frozenset(raw["wildcards"]),
-                   raw.get("unsupported_level"))
+                   frozenset(dims), raw.get("unsupported_level"))
 
     def is_weak(self, certainty: str) -> bool:
         if certainty not in self.certainty_scale:
@@ -130,8 +155,21 @@ _OPERATOR_CHARS = set("*?|!~&^$+")
 
 
 def _check_condition(key: str, value: Any, schema: Schema, bad, i: int) -> None:
-    """Una condición SOLO puede ser: comodín · igualdad simple · rango numérico.
-    Nada más. Es el límite de expresividad, convertido en código."""
+    """Una condición SOLO puede ser: comodín · igualdad simple · rango numérico, y
+    SOBRE UNA DIMENSIÓN DECLARADA. Es el límite de expresividad, convertido en código."""
+    # ── R11 · solo se ramifica por dimensiones DECLARADAS del sujeto ────────
+    # Sin esto, R9 comprueba la FORMA de la condición pero no su SEMÁNTICA: un
+    # `when: {otra_norma: ">=0.30"}` es un rango bien formado y pasaba. O sea que una
+    # norma podía referenciar a otra —lo que el límite prohíbe— y el encadenamiento
+    # quedaba en manos de la disciplina, no de la construcción. De regalo, esto caza
+    # las erratas: una dimensión mal escrita no matchea nunca y falla EN SILENCIO
+    # cayendo al fallback, que es el peor modo de fallo posible.
+    if key not in schema.subject_dimensions:
+        raise bad(f"rama #{i}: '{key}' no es una dimensión declarada del sujeto "
+                  f"({'|'.join(sorted(schema.subject_dimensions))}). Si es el nombre de otra "
+                  f"norma, resuélvelas por separado y compón el resultado en tu código: el "
+                  f"registro devuelve valores, no encadena reglas. Si es un atributo legítimo "
+                  f"del sujeto, decláralo en `subject_dimensions`")
     if isinstance(value, (list, tuple, set)):
         raise bad(f"rama #{i}, '{key}': una LISTA es una disyunción — prohibida. "
                   f"Parte la rama en varias, o la lógica se queda en el código")
@@ -296,6 +334,19 @@ class NormRegistry:
             if n.slug in norms:                       # R6 · IDs únicos (mata el caso `S4.2`)
                 raise NormError(f"slug duplicado: {n.slug}")
             norms[n.slug] = n
+
+        # ── R11 (2ª mitad) · se cierra la puerta trasera de R11 ─────────────
+        # R11 obliga a que toda condición ramifique por una dimensión declarada. Sin
+        # esto quedaría la salida fácil: DECLARAR el nombre de una norma como si fuera
+        # un atributo del sujeto, y encadenar igual. Un nombre no puede ser las dos
+        # cosas — esa ambigüedad es justo lo que hay que impedir.
+        colision = sorted(schema.subject_dimensions & set(norms))
+        if colision:
+            raise NormError(
+                f"estos nombres están declarados como dimensión del sujeto Y son slugs de "
+                f"normas: {colision}. Un nombre es una cosa o la otra: si ramificas por él, "
+                f"estarías encadenando normas por la puerta de atrás. Renombra uno de los dos"
+            )
         return cls(norms, schema)
 
     def resolve(self, slug: str, **subject: str) -> Resolution:

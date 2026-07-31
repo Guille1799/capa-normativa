@@ -2,3 +2,9 @@ certainty_scale: [alta, moderada, baja, muy_baja, sin_respaldo]
 weak_from: baja
 unsupported_level: sin_respaldo
 wildcards: [unknown, any]
+
+# R11 — lista CERRADA de atributos del sujeto por los que se puede ramificar.
+# Es lo que impide que una norma referencie a otra: un `when` con cualquier otra
+# clave no se construye. De regalo, caza las erratas (una dimensión mal escrita
+# no matchea nunca y falla en silencio, que es el peor modo de fallo).
+subject_dimensions: [kind, mode, size, n, prefix]

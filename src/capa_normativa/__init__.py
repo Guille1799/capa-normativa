@@ -9,7 +9,7 @@ Uso mínimo:
     from capa_normativa import NormRegistry
 
     NORMS = NormRegistry.load(Path("norms/"))          # falla si algo está mal
-    r = NORMS.resolve("mi_umbral", sex="male")
+    r = NORMS.resolve("mi_umbral", kind="alpha")
     r.value, r.evidence, r.certainty, r.is_fallback
 
 Lo que este registro NO hace, a propósito: no ejecuta lógica y no encadena normas.
@@ -25,6 +25,6 @@ from .registry import (
     Schema,
 )
 
-__version__ = "0.1.0"
+__version__ = "0.2.0"
 __all__ = ["NormRegistry", "Norm", "Branch", "Resolution", "Schema",
            "NormError", "RetiredNormError"]

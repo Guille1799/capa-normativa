@@ -221,3 +221,64 @@ def test_ramas_disjuntas_siguen_siendo_validas():
     r = reg()
     assert r.resolve("threshold_by_kind", kind="alpha").value == 10.0
     assert r.resolve("threshold_by_kind", kind="beta").value == 20.0
+
+
+# ── R11: una norma no puede ramificar por otra norma ────────────────────
+# El agujero que motivó la v0.2.0. R9 mecaniza la FORMA de la condición (comodín,
+# igualdad, rango) pero no su SEMÁNTICA: para el registro, "atributo del sujeto" y
+# "valor de otra norma" eran el mismo string. Encontrado usando el registro en
+# producción, buscándolo a propósito: se colaba al primer intento.
+
+
+def esquema(tmp_path, **cambios):
+    """Fixtures con un schema.yaml mutado."""
+    raw = yaml.safe_load((FIX / "schema.yaml").read_text("utf-8"))
+    raw.update(cambios)
+    for k, v in list(cambios.items()):
+        if v is None:
+            raw.pop(k, None)
+    p = tmp_path / "schema.yaml"
+    p.write_text(yaml.safe_dump(raw, allow_unicode=True), "utf-8")
+    return NormRegistry.load(norms_path=FIX / "norms.yaml", evidence_path=FIX / "evidence.yaml",
+                             schema_path=p, today=HOY)
+
+
+def test_ilegal_ramificar_por_el_nombre_de_otra_norma(tmp_path):
+    """LA razón de ser de R11. `{threshold_by_kind: ">=10"}` es un rango bien formado,
+    así que R9 lo daba por bueno: una norma referenciaba a otra y el encadenamiento
+    quedaba en manos de la disciplina en vez de la construcción."""
+    with pytest.raises(NormError, match="no es una dimensión declarada"):
+        colar(tmp_path, {"threshold_by_kind": ">=10"})
+
+
+def test_ilegal_ramificar_por_una_dimension_inventada(tmp_path):
+    with pytest.raises(NormError, match="no es una dimensión declarada"):
+        colar(tmp_path, {"dimension_que_nadie_declaro": "x"})
+
+
+def test_r11_caza_las_erratas_de_dimension(tmp_path):
+    """Regalo de R11, y no menor: una dimensión mal escrita no matchea NUNCA y cae al
+    fallback en silencio. Antes eso era un bug indetectable; ahora no arranca."""
+    with pytest.raises(NormError, match="no es una dimensión declarada"):
+        colar(tmp_path, {"kimd": "alpha"})
+
+
+def test_ilegal_declarar_una_norma_como_dimension_del_sujeto(tmp_path):
+    """La puerta de atrás de R11: declarar el slug de una norma como si fuera un
+    atributo del sujeto y encadenar igual. Un nombre es una cosa o la otra."""
+    dims = yaml.safe_load((FIX / "schema.yaml").read_text("utf-8"))["subject_dimensions"]
+    with pytest.raises(NormError, match="dimensión del sujeto Y son slugs"):
+        esquema(tmp_path, subject_dimensions=dims + ["threshold_by_kind"])
+
+
+def test_un_schema_sin_subject_dimensions_no_arranca(tmp_path):
+    """BREAKING v0.2.0, y a propósito: opcional habría dejado el agujero abierto por
+    defecto, que es la forma de tener un límite que no impide nada."""
+    with pytest.raises(NormError, match="falta `subject_dimensions`"):
+        esquema(tmp_path, subject_dimensions=None)
+
+
+def test_las_dimensiones_declaradas_siguen_funcionando(tmp_path):
+    """Sin falsos positivos: lo declarado se resuelve igual que antes."""
+    assert colar(tmp_path, {"kind": "alpha"}).resolve("intento", kind="alpha").value == 1
+    assert reg().resolve("coefficient_by_range", size="150", mode="fast").value == 1.5
