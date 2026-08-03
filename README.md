@@ -42,6 +42,7 @@ Cada uno corresponde a un modo de fallo real y observado:
 | **una norma ramifica por otra norma** | **encadenar reglas por la puerta de atrás** |
 | **dos rangos solapan** (`">=40"` y `">=60"`) | que un sujeto de 70 se lleve el valor de la banda equivocada |
 | **un rango está vacío** (`"[5,3]"`) | una rama muerta que cae al comodín sin avisar |
+| **una clave no se reconoce** (`valeu:`, `certainy:`) | que lo escrito y lo que hace el registro no coincidan |
 
 ## Lo que NO hace, a propósito
 
@@ -108,6 +109,29 @@ nunca cae al comodín y devuelve un valor plausible que no es el suyo.
 
 No es breaking: si tus rangos ya eran disjuntos, no cambia nada. Si no lo eran, tenías un bug.
 
+### Claves desconocidas (v0.4.0)
+
+El parser aceptaba cualquier clave que no entendiera y la **descartaba en silencio**. Se
+encontró intentando poner `certainty` en una **rama**: se aceptaba, se tiraba, y `resolve()`
+seguía devolviendo la certeza de la norma — quien la escribió creía haber ramificado la
+confianza y no había hecho nada.
+
+El caso peor era una errata en `value`:
+
+```yaml
+- when: {kind: alpha}
+  valeu: 55.0          # la norma CARGABA y emitía None
+```
+
+…indistinguible de un `value: null` deliberado. Ahora ninguna de las dos construye, y el
+mensaje sugiere la clave correcta.
+
+**Limitación declarada:** dentro de `adjudication` y `retirement` las claves siguen siendo
+libres. Son metadatos de prosa —quién adjudicó, con qué conflicto, por qué— y no gobiernan lo
+que el registro emite, así que una errata ahí es cosmética.
+
+No es breaking: solo rechaza claves que ya se estaban ignorando.
+
 ## Ausencia de respaldo, declarada
 
 La mayoría de las constantes de un sistema real no tienen fuente. Si el registro las
@@ -138,10 +162,12 @@ Tres ficheros en el directorio que le pases:
 ## Instalación
 
 ```bash
-pip install git+https://github.com/Guille1799/capa-normativa.git@v0.3.0
+pip install git+https://github.com/Guille1799/capa-normativa.git@v0.4.0
 ```
 
 ## Migrar
+
+**De v0.3.0 a v0.4.0** — nada que hacer. R13 solo rechaza claves que ya se ignoraban.
 
 **De v0.2.0 a v0.3.0** — nada que hacer. R12 solo rechaza rangos que ya estaban mal.
 

@@ -20,9 +20,15 @@ v0.3.0 (R12) cierra el otro agujero de la misma familia: dos RANGOS que solapan.
 comparaba conjuntos de pares, así que ">=40" y ">=60" eran literales distintos y convivían
 — y con un eje partido en bandas eso no es un aviso que falta, es la respuesta equivocada
 en silencio. Ahora se calcula si existe algún sujeto que cumpla las dos ramas.
+
+v0.4.0 (R13) aplica el mismo principio a la FORMA: las claves que el parser no conoce se
+aceptaban y se descartaban en silencio, así que lo escrito y lo que el registro hace podían
+no coincidir sin que nada fallara. Una errata en `value` llegaba a producir una norma que
+emitía None como si fuera una respuesta deliberada.
 """
 from __future__ import annotations
 
+import difflib
 import re
 from dataclasses import dataclass
 from datetime import date
@@ -252,6 +258,32 @@ def _check_condition(key: str, value: Any, schema: Schema, bad, i: int) -> None:
                   f"Solo se permite: comodín, igualdad simple o rango numérico")
 
 
+# ── R13 · claves conocidas (parse, don't validate aplicado a la FORMA) ─────
+# Un parser permisivo con las claves que no entiende las DESCARTA en silencio, y entonces
+# lo que alguien escribió y lo que el registro hace dejan de coincidir sin que nada falle.
+# Encontrado intentando poner `certainty` en una rama: se aceptaba, se tiraba, y `resolve`
+# devolvía la certeza de la norma. Y una errata en `value` (`valeu: 55.0`) hacía que la
+# norma cargara y emitiera None como si fuera una respuesta deliberada.
+_NORM_KEYS = frozenset({
+    "slug", "title", "status", "strength", "certainty", "unit", "semantics",
+    "branches", "adjudication", "expires", "requires", "retirement", "provenance_note",
+})
+_BRANCH_KEYS = frozenset({"when", "value", "evidence", "note"})
+
+
+def _check_keys(raw: dict, permitidas: frozenset[str], donde: str, bad) -> None:
+    sobran = sorted(set(raw) - permitidas)
+    if not sobran:
+        return
+    pistas = []
+    for k in sobran:
+        cerca = difflib.get_close_matches(k, sorted(permitidas), n=1, cutoff=0.7)
+        pistas.append(f"'{k}'" + (f" (¿querías decir '{cerca[0]}'?)" if cerca else ""))
+    raise bad(f"{donde}: claves desconocidas {', '.join(pistas)}. Se aceptaban y se "
+              f"DESCARTABAN en silencio, así que lo escrito y lo que hace el registro "
+              f"podían no coincidir. Conocidas: {'|'.join(sorted(permitidas))}")
+
+
 def _parse_norm(raw: dict, known_evidence: set[str], today: date, schema: Schema) -> Norm:
     slug = raw.get("slug")
     if not slug:
@@ -259,6 +291,8 @@ def _parse_norm(raw: dict, known_evidence: set[str], today: date, schema: Schema
 
     def bad(msg: str) -> NormError:
         return NormError(f"[{slug}] {msg}")
+
+    _check_keys(raw, _NORM_KEYS, "en la norma", bad)
 
     # ── R1 · certeza débil ⇒ jamás vinculante (en medicina, GRADE) ─────────
     strength, certainty = raw.get("strength"), raw.get("certainty")
@@ -303,6 +337,7 @@ def _parse_norm(raw: dict, known_evidence: set[str], today: date, schema: Schema
 
     branches: list[Branch] = []
     for i, b in enumerate(raw.get("branches") or []):
+        _check_keys(b, _BRANCH_KEYS, f"rama #{i}", bad)
         ev = tuple(b.get("evidence") or ())
         if not ev and not unsupported:
             raise bad(f"rama #{i} sin evidencia (si de verdad no la hay, declara "

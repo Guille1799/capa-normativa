@@ -348,3 +348,75 @@ def test_ilegal_un_rango_vacio_es_una_rama_muerta(tmp_path):
 def test_un_rango_de_un_solo_punto_sigue_siendo_valido(tmp_path):
     """`[4,4]` es raro pero legítimo: matchea exactamente el 4."""
     assert colar(tmp_path, {"size": "[4,4]"}).resolve("intento", size="4").value == 1
+
+
+# ── R13: las claves desconocidas dejan de tragarse (v0.4.0) ─────────────
+# El parser aceptaba cualquier clave que no entendiera y la DESCARTABA en silencio, así
+# que lo escrito y lo que hacía el registro podían no coincidir sin que nada fallara.
+# Encontrado intentando poner `certainty` en una RAMA: se aceptaba, se tiraba, y resolve()
+# seguía devolviendo la certeza de la norma. El que la escribió creía haber ramificado la
+# confianza y no había hecho nada.
+
+
+def test_ilegal_certainty_dentro_de_una_rama(tmp_path):
+    """LA sonda que destapó R13. La certeza por rama es una limitación ABIERTA del molde:
+    lo que no puede pasar es que se acepte y se ignore, porque entonces la limitación deja
+    de ser visible justo para quien intenta saltársela."""
+    def meter(n):
+        by_slug(n, "threshold_by_kind")["branches"][0]["certainty"] = "alta"
+    with pytest.raises(NormError, match="claves desconocidas"):
+        mutando(tmp_path, meter)
+
+
+def test_ilegal_errata_en_value(tmp_path):
+    """El peor de todos: `valeu: 55.0` hacía que la norma CARGARA y emitiera None con
+    `is_fallback=False` — indistinguible de un "aquí no gobierno" deliberado."""
+    def meter(n):
+        b = by_slug(n, "threshold_by_kind")["branches"][0]
+        b["valeu"] = b.pop("value")
+    with pytest.raises(NormError, match="valeu"):
+        mutando(tmp_path, meter)
+
+
+def test_la_errata_sugiere_la_clave_correcta(tmp_path):
+    """Un mensaje que solo dice "clave desconocida" obliga a ir a leer el código."""
+    def meter(n):
+        by_slug(n, "threshold_by_kind")["certainy"] = "alta"
+    with pytest.raises(NormError, match=r"¿querías decir 'certainty'\?"):
+        mutando(tmp_path, meter)
+
+
+@pytest.mark.parametrize("clave", ["applies_only_if", "expires", "unit"])
+def test_ilegal_clave_inventada_en_una_rama(tmp_path, clave):
+    """`expires` y `unit` son válidas en la NORMA y no en la rama: escribirlas ahí es creer
+    que caducas o etiquetas una rama sola, y no hacer nada."""
+    def meter(n):
+        by_slug(n, "threshold_by_kind")["branches"][0][clave] = "x"
+    with pytest.raises(NormError, match="claves desconocidas"):
+        mutando(tmp_path, meter)
+
+
+def test_las_claves_conocidas_siguen_pasando():
+    """Sin falsos positivos. Los fixtures ejercen entre todos las 13 claves de norma y las 4
+    de rama; si R13 se pasara de estricto, el registro entero dejaría de cargar."""
+    from capa_normativa.registry import _BRANCH_KEYS, _NORM_KEYS
+
+    usadas_norma, usadas_rama = set(), set()
+    for raw in yaml.safe_load((FIX / "norms.yaml").read_text("utf-8")):
+        usadas_norma |= set(raw)
+        for b in raw.get("branches") or []:
+            usadas_rama |= set(b)
+
+    assert usadas_norma <= _NORM_KEYS and usadas_rama <= _BRANCH_KEYS
+    assert usadas_norma >= {"slug", "status", "branches", "certainty", "strength"}
+    assert reg().resolve("threshold_by_kind", kind="alpha").value == 10.0
+
+
+def test_adjudicacion_y_retirada_siguen_siendo_libres(tmp_path):
+    """LIMITACIÓN DECLARADA: dentro de `adjudication`/`retirement` no se comprueban claves.
+    Son metadatos de prosa —quién adjudicó, con qué conflicto, por qué— y no gobiernan lo
+    que el registro emite, así que una errata ahí es cosmética. Endurecerlo también haría el
+    gate insufrible para el sitio donde más se escribe a mano."""
+    def meter(n):
+        by_slug(n, "legacy_cap")["retirement"]["nota_libre"] = "lo que sea"
+    assert mutando(tmp_path, meter) is not None
