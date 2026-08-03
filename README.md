@@ -46,6 +46,9 @@ Cada uno corresponde a un modo de fallo real y observado:
 | **un `status` no se reconoce** (`vigent:`) | que una errata desactive la caducidad en silencio |
 | **un puntero apunta a una norma inexistente** | mandar al lector a algo que no está |
 | una norma **bloqueada** se intenta leer | resolver un conflicto a escondidas, por orden de fichero |
+| **una norma declara más certeza de la que sostiene su evidencia** | **que la escala de certeza sea decorativa** |
+| dos entradas de evidencia comparten `id` | colisiones en la capa que nunca se borra |
+| una cita antigua se marca como reciente | citar un clásico sin decir que lo es |
 
 ## Lo que NO hace, a propósito
 
@@ -173,6 +176,29 @@ emite, caducar no significa nada.
 
 No es breaking: `bloqueada` es nueva, y los otros dos solo rechazan lo que ya estaba roto.
 
+### La capa ① evidencia, por fin verificada (v0.6.0)
+
+Durante cinco versiones el parser comprobó **solo los IDs** de la evidencia. Todo lo demás
+—qué dice la fuente, de qué año es, cuánto de fiable— entraba sin que nadie lo mirara.
+
+Lo grave era esto: **la certeza de una norma era autodeclarada**. R1 impide que algo
+`vinculante` tenga certeza débil… y bastaba escribir `alta` a mano para saltárselo, aunque
+toda la evidencia citada fuese la más floja de la escala. La escala entera era decorativa.
+
+```yaml
+# schema.yaml — todo opcional. El registro no sabe cómo se llaman TUS campos.
+evidence_certainty_field: certeza
+evidence_year_field: anio
+evidence_recent_field: reciente
+recency_horizon: 2018
+```
+
+Con eso declarado: una norma no puede afirmar más de lo que sostiene su mejor fuente, dos
+entradas no pueden compartir `id`, y una cita antigua no puede marcarse como reciente
+—citar un clásico está bien, disfrazarlo no—.
+
+**Opt-in de verdad**: sin declarar los campos, el comportamiento es el de la v0.5.0.
+
 ## Ausencia de respaldo, declarada
 
 La mayoría de las constantes de un sistema real no tienen fuente. Si el registro las
@@ -203,10 +229,13 @@ Tres ficheros en el directorio que le pases:
 ## Instalación
 
 ```bash
-pip install git+https://github.com/Guille1799/capa-normativa.git@v0.5.0
+pip install git+https://github.com/Guille1799/capa-normativa.git@v0.6.0
 ```
 
 ## Migrar
+
+**De v0.5.0 a v0.6.0** — nada que hacer. R15 es opt-in: sin declarar los campos de tu
+evidencia en `schema.yaml`, no comprueba nada.
 
 **De v0.4.0 a v0.5.0** — nada que hacer. R14 solo rechaza estados y punteros que ya estaban rotos.
 

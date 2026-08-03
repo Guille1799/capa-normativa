@@ -522,6 +522,107 @@ def test_a_una_norma_que_no_emite_no_se_le_exige_caducidad(tmp_path):
     assert mutando(tmp_path, meter) is not None
 
 
+# ── R15: la capa ① EVIDENCIA deja de entrar sin mirar (v0.6.0) ─────────
+# Ocho rondas de uso y nadie la había sondeado: el parser solo comprobaba los IDs. Todo
+# lo demás —qué dice la fuente, de qué año es, cuánto de fiable— entraba sin verse.
+
+
+def con_evidencia(tmp_path, mutate):
+    """Carga los fixtures con `evidence.yaml` mutado."""
+    ev = yaml.safe_load((FIX / "evidence.yaml").read_text("utf-8"))
+    mutate(ev)
+    p = tmp_path / "evidence.yaml"
+    p.write_text(yaml.safe_dump(ev, allow_unicode=True), "utf-8")
+    return NormRegistry.load(norms_path=FIX / "norms.yaml", evidence_path=p,
+                             schema_path=FIX / "schema.yaml", today=HOY)
+
+
+def test_ilegal_declarar_mas_certeza_de_la_que_sostiene_la_evidencia(tmp_path):
+    """R15b — EL agujero de la ronda 8, y el que hacía decorativa toda la escala.
+
+    R1 impide que algo `vinculante` tenga certeza débil, pero la certeza era
+    AUTODECLARADA y no estaba anclada a nada: bastaba escribir `alta` a mano. O sea que
+    la regla que impide tratar como dogma lo que la evidencia no sostiene se saltaba
+    con una palabra.
+    """
+    def inflar(n):
+        x = by_slug(n, "threshold_by_kind")
+        x["certainty"] = "alta"                     # su evidencia es moderada/alta…
+        for b in x["branches"]:
+            b["evidence"] = ["EV-001"]              # …y aquí solo queda la moderada
+    with pytest.raises(NormError, match="MEJOR evidencia que cita es"):
+        mutando(tmp_path, inflar)
+
+
+def test_declarar_MENOS_certeza_de_la_que_hay_es_legitimo(tmp_path):
+    """Nadie obliga a apurar. Rebajar la certeza es una postura conservadora válida —
+    lo que no se puede es inflarla."""
+    def rebajar(n):
+        x = by_slug(n, "threshold_by_kind")
+        x["certainty"] = "muy_baja"
+        x["expires"] = "2099-01-01"
+    assert mutando(tmp_path, rebajar) is not None
+
+
+def test_una_norma_SIN_RESPALDO_no_se_compara_con_nada(tmp_path):
+    """No cita evidencia por definición, así que R15b no le aplica. Sus guardas son
+    otras: `provenance_note` obligatoria, jamás vinculante y caducidad forzosa."""
+    assert reg().resolve("unsupported_number", kind="alpha").value == 3.3
+
+
+def test_ilegal_ids_de_evidencia_repetidos(tmp_path):
+    """R15a. Dos entradas DISTINTAS con el mismo id colapsaban en silencio y nadie podía
+    saber cuál estaba citando una norma. Es la colisión de identificadores que este
+    registro persigue, en la capa append-only — donde además nunca se borra, así que el
+    choque es para siempre."""
+    def duplicar(ev):
+        impostora = dict(ev[0])
+        impostora["claim"] = "lo contrario de lo que dice la de verdad"
+        ev.append(impostora)
+    with pytest.raises(NormError, match="ids de evidencia repetidos"):
+        con_evidencia(tmp_path, duplicar)
+
+
+def test_ilegal_marcar_como_reciente_un_clasico(tmp_path):
+    """R15c. Citar un clásico está permitido; citarlo SIN marcarlo, no. Es el fallo real
+    de un cluster entero de la referencia: cinco citas pre-2018 y ninguna señalada."""
+    def mentir(ev):
+        ev[0]["anio"] = 1994          # clásico…
+        ev[0]["reciente"] = True      # …marcado como reciente
+    with pytest.raises(NormError, match="recencia incoherente"):
+        con_evidencia(tmp_path, mentir)
+
+
+def test_un_clasico_BIEN_marcado_pasa(tmp_path):
+    """No se prohíbe lo viejo: se prohíbe disfrazarlo."""
+    def marcar(ev):
+        ev[0]["anio"], ev[0]["reciente"] = 1994, False
+    assert con_evidencia(tmp_path, marcar) is not None
+
+
+def test_sin_declarar_los_campos_R15_no_comprueba_nada(tmp_path):
+    """Opt-in de verdad: el registro no sabe cómo se llaman los campos de TU evidencia.
+    Sin declararlos, el comportamiento es exactamente el de la v0.5.0 — que es lo que
+    hace que esta versión no sea breaking."""
+    raw = yaml.safe_load((FIX / "schema.yaml").read_text("utf-8"))
+    for k in ("evidence_certainty_field", "evidence_year_field",
+              "evidence_recent_field", "recency_horizon"):
+        raw.pop(k)
+    s = tmp_path / "schema.yaml"
+    s.write_text(yaml.safe_dump(raw, allow_unicode=True), "utf-8")
+
+    norms = yaml.safe_load((FIX / "norms.yaml").read_text("utf-8"))
+    x = by_slug(norms, "threshold_by_kind")
+    x["certainty"] = "alta"                          # inflada a propósito
+    for b in x["branches"]:
+        b["evidence"] = ["EV-001"]
+    n = tmp_path / "norms.yaml"
+    n.write_text(yaml.safe_dump(norms, allow_unicode=True), "utf-8")
+
+    assert NormRegistry.load(norms_path=n, evidence_path=FIX / "evidence.yaml",
+                             schema_path=s, today=HOY) is not None
+
+
 def test_adjudicacion_y_retirada_siguen_siendo_libres(tmp_path):
     """LIMITACIÓN DECLARADA: dentro de `adjudication`/`retirement` no se comprueban claves.
     Son metadatos de prosa —quién adjudicó, con qué conflicto, por qué— y no gobiernan lo

@@ -8,3 +8,10 @@ wildcards: [unknown, any]
 # clave no se construye. De regalo, caza las erratas (una dimensión mal escrita
 # no matchea nunca y falla en silencio, que es el peor modo de fallo).
 subject_dimensions: [kind, mode, size, n, prefix]
+
+# R15 (v0.6.0) — dónde vive lo que el registro necesita saber de TU evidencia.
+# Todo opcional: sin esto no se comprueba nada y el comportamiento es el de antes.
+evidence_certainty_field: certeza   # ⇒ una norma no puede declarar más certeza que su fuente
+evidence_year_field: anio           # ⇒ …
+evidence_recent_field: reciente     # ⇒ …y la marca de recencia no puede mentir
+recency_horizon: 2018

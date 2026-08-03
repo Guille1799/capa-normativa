@@ -31,6 +31,13 @@ desconocido ya no se acepta (una errata desactivaba la caducidad), los punteros 
 retirada tienen que apuntar a normas que existen, y `bloqueada` pasa a existir — una
 norma con evidencia en conflicto sin adjudicar se NIEGA a emitir en vez de elegir por
 orden de fichero.
+
+v0.6.0 (R15) baja por fin a la capa ① EVIDENCIA, que en cinco versiones nadie había
+mirado: el parser solo comprobaba los IDs. Ahora los ids no pueden repetirse, las marcas
+de recencia no pueden mentir y —lo importante— una norma NO puede declarar más certeza de
+la que sostiene su evidencia. Hasta aquí la certeza era autodeclarada, así que R1 ("nada
+vinculante con certeza débil") se saltaba escribiendo `alta` a mano y toda la escala era
+decorativa. Los tres chequeos son OPT-IN: el nombre de los campos es del consumidor.
 """
 from __future__ import annotations
 
@@ -59,6 +66,15 @@ class Schema:
     wildcards: frozenset[str]
     subject_dimensions: frozenset[str]
     unsupported_level: str | None = None
+    # ── Capa ① EVIDENCIA (R15, v0.6.0) — todo OPCIONAL ────────────────────
+    # El registro no sabe cómo se llaman los campos de tu evidencia: son tuyos. Si los
+    # declaras, comprueba dos cosas que hasta ahora no miraba NADIE — que una norma no
+    # declare más certeza de la que su evidencia sostiene, y que las marcas de recencia
+    # no mientan. Si no los declaras, no comprueba nada y todo sigue igual.
+    evidence_certainty_field: str | None = None
+    evidence_year_field: str | None = None
+    evidence_recent_field: str | None = None
+    recency_horizon: int | None = None
 
     @classmethod
     def load(cls, path: Path) -> "Schema":
@@ -79,7 +95,15 @@ class Schema:
         if isinstance(dims, str) or not all(isinstance(d, str) for d in dims):
             raise NormError("`subject_dimensions` debe ser una lista de nombres")
         return cls(scale, raw["weak_from"], frozenset(raw["wildcards"]),
-                   frozenset(dims), raw.get("unsupported_level"))
+                   frozenset(dims), raw.get("unsupported_level"),
+                   raw.get("evidence_certainty_field"), raw.get("evidence_year_field"),
+                   raw.get("evidence_recent_field"), raw.get("recency_horizon"))
+
+    def rank(self, certainty: str) -> int:
+        """Posición en la escala: 0 es la más fuerte. Sirve para comparar dos certezas."""
+        if certainty not in self.certainty_scale:
+            raise NormError(f"certeza desconocida: {certainty!r} (escala: {self.certainty_scale})")
+        return self.certainty_scale.index(certainty)
 
     def is_weak(self, certainty: str) -> bool:
         if certainty not in self.certainty_scale:
@@ -308,7 +332,8 @@ def _check_keys(raw: dict, permitidas: frozenset[str], donde: str, bad) -> None:
               f"podían no coincidir. Conocidas: {'|'.join(sorted(permitidas))}")
 
 
-def _parse_norm(raw: dict, known_evidence: set[str], today: date, schema: Schema) -> Norm:
+def _parse_norm(raw: dict, known_evidence: dict[str, dict], today: date,
+                schema: Schema) -> Norm:
     slug = raw.get("slug")
     if not slug:
         raise NormError("norma sin slug")
@@ -410,6 +435,26 @@ def _parse_norm(raw: dict, known_evidence: set[str], today: date, schema: Schema
     if not branches:
         raise bad("sin ramas: una norma sin valor no es una norma")
 
+    # ── R15b · la certeza NO puede superar a la de su evidencia ────────────
+    # Hasta la v0.6.0 la certeza era AUTODECLARADA y no estaba anclada a nada, así que R1
+    # —"nada vinculante con certeza débil"— se saltaba escribiendo `alta` a mano. Toda la
+    # escala era decorativa. Ahora una norma no puede afirmar más de lo que sostiene su
+    # mejor fuente. Solo se comprueba si el consumidor declara dónde vive la certeza de su
+    # evidencia: el nombre del campo es suyo, no del registro.
+    campo = schema.evidence_certainty_field
+    if campo and not unsupported:
+        citadas = {i for b in branches for i in b.evidence}
+        certezas = [known_evidence[i][campo] for i in citadas
+                    if i in known_evidence and campo in known_evidence[i]]
+        if certezas:
+            mejor = min(certezas, key=schema.rank)
+            if schema.rank(certainty) < schema.rank(mejor):
+                raise bad(
+                    f"declara certainty={certainty!r} pero la MEJOR evidencia que cita es "
+                    f"{mejor!r}. La certeza no es una etiqueta libre: es lo que decide si "
+                    f"algo puede ser vinculante, así que no puede afirmar más de lo que la "
+                    f"fuente sostiene")
+
     # ── R10 + R12 · dos ramas no pueden matchear al mismo sujeto ───────────
     # Si dos ramas solapan, gana la primera del fichero: el ORDEN decide el valor,
     # que es justo lo que el límite de expresividad prohíbe. La rama del sujeto
@@ -485,12 +530,41 @@ class NormRegistry:
             return explicit if explicit is not None else base / name   # type: ignore[operator]
 
         schema = Schema.load(_p(schema_path, "schema.yaml"))
-        ev_raw = yaml.safe_load(_p(evidence_path, "evidence.yaml").read_text("utf-8"))
-        known = {e["id"] for e in (ev_raw or [])}
+        ev_raw = yaml.safe_load(_p(evidence_path, "evidence.yaml").read_text("utf-8")) or []
+
+        # ── R15a · los ids de la evidencia son ÚNICOS ──────────────────────
+        # Antes esto era un `set` a secas, así que dos entradas DISTINTAS con el mismo id
+        # colapsaban en silencio y nadie sabía cuál estaba citando una norma. Es la
+        # colisión de identificadores que este registro persigue, en la capa que se
+        # suponía append-only — donde además nunca se borra, así que el choque es para
+        # siempre.
+        vistos: set[str] = set()
+        repetidos = sorted({e["id"] for e in ev_raw if e["id"] in vistos or vistos.add(e["id"])})
+        if repetidos:
+            raise NormError(
+                f"ids de evidencia repetidos: {repetidos}. Dos entradas con el mismo id "
+                f"colapsan y nadie puede saber cuál cita una norma")
+
+        evidencia = {e["id"]: e for e in ev_raw}
+
+        # ── R15c · las marcas de recencia no mienten ───────────────────────
+        # Un clásico se puede citar; lo que no se puede es citarlo sin marcarlo. Solo se
+        # comprueba si el consumidor declara los campos y el horizonte: qué cuenta como
+        # reciente es su criterio, no del registro.
+        if schema.evidence_year_field and schema.evidence_recent_field and schema.recency_horizon:
+            mal = [i for i, e in evidencia.items()
+                   if schema.evidence_year_field in e and schema.evidence_recent_field in e
+                   and bool(e[schema.evidence_recent_field])
+                   != (e[schema.evidence_year_field] >= schema.recency_horizon)]
+            if mal:
+                raise NormError(
+                    f"evidencia con la marca de recencia incoherente con su año "
+                    f"(horizonte {schema.recency_horizon}): {sorted(mal)}")
+
 
         norms: dict[str, Norm] = {}
         for raw in yaml.safe_load(_p(norms_path, "norms.yaml").read_text("utf-8")) or []:
-            n = _parse_norm(raw, known, today, schema)
+            n = _parse_norm(raw, evidencia, today, schema)
             if n.slug in norms:                       # R6 · IDs únicos (mata el caso `S4.2`)
                 raise NormError(f"slug duplicado: {n.slug}")
             norms[n.slug] = n

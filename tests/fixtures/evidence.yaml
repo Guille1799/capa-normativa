@@ -4,15 +4,21 @@
   claim: "El parámetro vale 10 en sujetos de tipo alfa"
   poblacion: {kind: alpha}
   certeza: moderada
+  anio: 2021
+  reciente: true
 
 - id: EV-002
   cita: "Autor B et al. 2019, Revista Y"
   claim: "El parámetro vale 20 en sujetos de tipo beta"
   poblacion: {kind: beta}
   certeza: moderada
+  anio: 2019
+  reciente: true
 
 - id: EV-003
   cita: "Consenso C 2023"
   claim: "Sin datos del sujeto, usar el valor más conservador"
   poblacion: {kind: any}
   certeza: alta
+  anio: 2023
+  reciente: true
