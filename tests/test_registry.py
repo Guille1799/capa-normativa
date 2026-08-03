@@ -623,6 +623,83 @@ def test_sin_declarar_los_campos_R15_no_comprueba_nada(tmp_path):
                              schema_path=s, today=HOY) is not None
 
 
+# ── R16: el contrato de `resolve()`, no solo el de carga (v0.7.0) ──────
+# Nueve rondas protegiendo lo que se ESCRIBE en el YAML. La otra mitad —qué pasa cuando
+# el motor PREGUNTA— estaba entera sin cubrir.
+
+
+def test_ilegal_preguntar_por_una_dimension_inventada():
+    """R16a, el simétrico de R11. Una errata en la LLAMADA se ignoraba en silencio y la
+    respuesta caía al comodín — un valor plausible que no es el que pediste.
+
+    Y es peor que en el fichero: allí lo escribes una vez, mientras que una llamada mal
+    escrita puede estar en cualquiera de los treinta sitios que consultan el registro. En
+    una norma de bandas el comodín significa "no hay dato", así que la errata convierte una
+    señal real en silencio.
+    """
+    with pytest.raises(NormError, match=r"no declaradas.*¿querías decir 'kind'\?"):
+        reg().resolve("threshold_by_kind", kynd="alpha")
+
+
+def test_preguntar_bien_sigue_funcionando():
+    """Sin falsos positivos: pasar de menos está permitido (cae al comodín, que para eso
+    está), y pasar dimensiones declaradas que esa norma no usa también."""
+    assert reg().resolve("threshold_by_kind", kind="alpha").value == 10.0
+    assert reg().resolve("threshold_by_kind").is_fallback is True
+    assert reg().resolve("threshold_by_kind", kind="alpha", mode="fast").value == 10.0
+
+
+def test_un_CERO_no_es_un_dato_ausente(tmp_path):
+    """R16b. `missing` se calculaba con `not subject.get(r)`, así que 0, False y "" contaban
+    como "no me lo has dado". Un cero es un valor: cero sesiones, cero dolor."""
+    r = reg().resolve("coefficient_by_range", size=0, mode="fast")
+    assert r.missing == (), "un 0 explícito no puede contar como dato ausente"
+    assert reg().resolve("coefficient_by_range", mode="fast").missing == ("size",)
+    assert reg().resolve("coefficient_by_range", size=None, mode="fast").missing == ("size",)
+
+
+def test_el_registro_entrega_COPIAS_no_sus_tripas(tmp_path):
+    """R16c. `value` y `matched` eran referencias a lo que vive dentro del registro, así que
+    quien preguntaba podía cambiar la norma para todos. Era la negación literal de "solo hay
+    una copia", que es la tesis entera de esta capa."""
+    def con_lista(n):
+        by_slug(n, "threshold_by_kind")["branches"][0]["value"] = [1, 2, 3]
+    r = mutando(tmp_path, con_lista)
+
+    primera = r.resolve("threshold_by_kind", kind="alpha")
+    primera.value.append(999)
+    primera.matched["kind"] = "MANIPULADO"
+
+    segunda = r.resolve("threshold_by_kind", kind="alpha")
+    assert segunda.value == [1, 2, 3], "el registro se dejó modificar desde fuera"
+    assert segunda.matched == {"kind": "alpha"}
+
+
+def test_ilegal_dos_ramas_del_sujeto_desconocido(tmp_path):
+    """R16d — el punto ciego que creó la propia R10: excluye las ramas todo-comodín "porque
+    solapan por definición", lo cual es correcto para UNA y deja pasar DOS. Con dos, el
+    motor sobrescribe el fallback y gana la ÚLTIMA del fichero: el orden decide el valor,
+    justo donde la regla que lo impide decidió no mirar."""
+    def duplicar_comodin(n):
+        x = by_slug(n, "threshold_by_kind")
+        x["branches"].append({"when": {"kind": "any"}, "value": 999, "evidence": ["EV-002"]})
+    with pytest.raises(NormError, match="ramas del sujeto desconocido"):
+        mutando(tmp_path, duplicar_comodin)
+
+
+def test_una_norma_BLOQUEADA_si_puede_tener_dos_comodines(tmp_path):
+    """La excepción es la misma que en R10, y por el mismo motivo: sus ramas son las
+    candidatas en conflicto y no emite ninguna."""
+    def bloquear(n):
+        x = by_slug(n, "threshold_by_kind")
+        x["status"], x["blocking"] = "bloqueada", {"reason": "conflicto abierto"}
+        x["branches"] = [{"when": {"kind": "any"}, "value": 10, "evidence": ["EV-001"]},
+                         {"when": {"kind": "any"}, "value": 20, "evidence": ["EV-002"]}]
+    r = mutando(tmp_path, bloquear)
+    with pytest.raises(BlockedNormError):
+        r.resolve("threshold_by_kind", kind="alpha")
+
+
 def test_adjudicacion_y_retirada_siguen_siendo_libres(tmp_path):
     """LIMITACIÓN DECLARADA: dentro de `adjudication`/`retirement` no se comprueban claves.
     Son metadatos de prosa —quién adjudicó, con qué conflicto, por qué— y no gobiernan lo

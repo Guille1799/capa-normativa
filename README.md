@@ -49,6 +49,8 @@ Cada uno corresponde a un modo de fallo real y observado:
 | **una norma declara más certeza de la que sostiene su evidencia** | **que la escala de certeza sea decorativa** |
 | dos entradas de evidencia comparten `id` | colisiones en la capa que nunca se borra |
 | una cita antigua se marca como reciente | citar un clásico sin decir que lo es |
+| **se PREGUNTA por una dimensión no declarada** | **que una errata del llamante caiga al comodín en silencio** |
+| hay **dos** ramas del sujeto desconocido | que el orden del fichero decida el valor por defecto |
 
 ## Lo que NO hace, a propósito
 
@@ -199,6 +201,35 @@ entradas no pueden compartir `id`, y una cita antigua no puede marcarse como rec
 
 **Opt-in de verdad**: sin declarar los campos, el comportamiento es el de la v0.5.0.
 
+### La otra mitad del contrato: `resolve()` (v0.7.0)
+
+Seis versiones protegiendo lo que se **escribe** en el YAML. Nadie miraba qué pasa cuando el
+código **pregunta** — y ahí estaba la mitad del contrato sin cubrir:
+
+```python
+NORMS.resolve("pain_threshold", tisue="tendon")   # errata del llamante
+```
+
+…se ignoraba en silencio y caía al comodín. Es la misma errata que `subject_dimensions`
+cerró del otro lado, y **peor**: en el fichero la escribes una vez, pero una llamada mal
+escrita puede estar en cualquiera de los treinta sitios que consultan el registro. En una
+norma de bandas el comodín significa *"no hay dato"*, así que la errata convierte una señal
+real en silencio.
+
+Con ella, tres más de la misma familia:
+
+- **`0` ya no es "dato ausente".** `missing` se calculaba por veracidad, así que un cero, un
+  `False` o una cadena vacía contaban como *"no me lo has dado"*. Un cero es un valor.
+- **El registro entrega copias, no sus tripas.** `value` y `matched` eran referencias: un
+  `.append()` de quien preguntaba cambiaba la norma para todos. Era la negación literal de
+  *"solo hay una copia"*.
+- **Como mucho UNA rama del sujeto desconocido.** Con dos, gana la última del fichero — el
+  orden decidiendo el valor, justo en el punto ciego que la regla anti-solapamiento se dejó
+  al excluir las ramas comodín *"porque solapan por definición"*. Las normas `bloqueada`
+  quedan fuera: sus ramas **son** las candidatas en conflicto.
+
+Lo único que puede requerir un cambio es lo primero — y si falla, ahí tenías un bug.
+
 ## Ausencia de respaldo, declarada
 
 La mayoría de las constantes de un sistema real no tienen fuente. Si el registro las
@@ -229,10 +260,13 @@ Tres ficheros en el directorio que le pases:
 ## Instalación
 
 ```bash
-pip install git+https://github.com/Guille1799/capa-normativa.git@v0.6.0
+pip install git+https://github.com/Guille1799/capa-normativa.git@v0.7.0
 ```
 
 ## Migrar
+
+**De v0.6.0 a v0.7.0** — comprueba tus LLAMADAS: `resolve()` ya no acepta kwargs que no
+sean dimensiones declaradas. Si alguna falla, ahí tenías una errata que caía al comodín.
 
 **De v0.5.0 a v0.6.0** — nada que hacer. R15 es opt-in: sin declarar los campos de tu
 evidencia en `schema.yaml`, no comprueba nada.

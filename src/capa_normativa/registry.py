@@ -38,11 +38,19 @@ de recencia no pueden mentir y —lo importante— una norma NO puede declarar m
 la que sostiene su evidencia. Hasta aquí la certeza era autodeclarada, así que R1 ("nada
 vinculante con certeza débil") se saltaba escribiendo `alta` a mano y toda la escala era
 decorativa. Los tres chequeos son OPT-IN: el nombre de los campos es del consumidor.
+
+v0.7.0 (R16) cubre por fin la OTRA MITAD del contrato. Todo lo anterior protege lo que se
+ESCRIBE en el YAML; nadie miraba qué pasa cuando el código PREGUNTA. Una errata en la
+llamada se ignoraba en silencio y caía al comodín; un 0 contaba como dato ausente; el
+registro entregaba referencias a sus propias tripas (un `.append()` de quien preguntaba
+cambiaba la norma para todos); y dos ramas comodín convivían dejando que el orden del
+fichero decidiera el valor — en el único sitio donde R10 decidió no mirar.
 """
 from __future__ import annotations
 
 import difflib
 import re
+from copy import deepcopy
 from dataclasses import dataclass
 from datetime import date
 from pathlib import Path
@@ -471,6 +479,18 @@ def _parse_norm(raw: dict, known_evidence: dict[str, dict], today: date,
     # solapan por definición. Exigirle ramas disjuntas sería pedirle que estuviera
     # adjudicada, que es justo lo que declara no estar. Y no hay riesgo de que el orden
     # decida nada, porque no emite: resolverla falla.
+    comodines = [b for b in branches
+                 if b.when and all(str(v).lower() in schema.wildcards for v in b.when.values())]
+    if len(comodines) > 1 and status != "bloqueada":
+        # R16d · punto ciego creado por la propia R10: excluye las ramas todo-comodín
+        # "porque solapan por definición", lo cual es correcto para UNA y deja pasar DOS.
+        # Con dos, el motor sobrescribe `fallback` y gana la ÚLTIMA del fichero — o sea que
+        # el ORDEN decide el valor, justo donde la regla que lo impide decidió no mirar.
+        # Las bloqueadas quedan fuera: sus ramas SON las candidatas en conflicto.
+        raise bad(f"{len(comodines)} ramas del sujeto desconocido ({[b.value for b in comodines]}): "
+                  f"solo puede haber UNA, porque si no gana la última del fichero y el orden "
+                  f"decide el valor")
+
     concretas = [] if status == "bloqueada" else [
         b for b in branches
         if not all(str(v).lower() in schema.wildcards for v in b.when.values())]
@@ -602,6 +622,21 @@ class NormRegistry:
         norm = self._norms.get(slug)
         if norm is None:
             raise NormError(f"norma inexistente: {slug}")
+
+        # ── R16a · el que PREGUNTA tampoco puede inventarse dimensiones ─
+        # R11 protege lo que se escribe en el fichero; esto protege la llamada, que es la
+        # otra mitad del contrato y estaba sin cubrir. Una errata aquí se ignoraba en
+        # silencio y caía al comodín, devolviendo un valor plausible que no era el pedido
+        # — y no siempre hacia el lado seguro: en una norma de bandas, el comodín significa
+        # "no hay dato", así que la errata convierte una señal real en silencio.
+        inventadas = sorted(set(subject) - self._schema.subject_dimensions)
+        if inventadas:
+            pistas = [f"'{k}'" + (f" (¿querías decir '{c[0]}'?)" if (c := difflib.get_close_matches(
+                k, sorted(self._schema.subject_dimensions), n=1, cutoff=0.7)) else "")
+                for k in inventadas]
+            raise NormError(
+                f"[{slug}] la consulta usa dimensiones no declaradas: {', '.join(pistas)}. "
+                f"Se ignoraban en silencio y la respuesta caía al comodín")
         if norm.blocking:
             raise BlockedNormError(
                 f"[{slug}] BLOQUEADA: hay evidencia en conflicto sin adjudicar, así que el "
@@ -615,7 +650,11 @@ class NormRegistry:
 
         # `requires` no cubierto ⇒ dato ausente. No se adivina: se va a la rama por
         # defecto y se DECLARA (`missing`), para que el motor pueda decirlo al usuario.
-        missing = tuple(r for r in norm.requires if not subject.get(r))
+        # R16b · AUSENTE no es lo mismo que CERO. Antes esto era `not subject.get(r)`, así
+        # que un 0, un False o una cadena vacía contaban como "no me lo has dado". Para la
+        # edad coincidía con la guarda del propio código y no mordía — por suerte, no por
+        # diseño: en cualquier dimensión donde el cero signifique algo, mentía.
+        missing = tuple(r for r in norm.requires if subject.get(r) is None)
 
         fallback: Branch | None = None
         for b in norm.branches:
@@ -652,7 +691,11 @@ class NormRegistry:
     @staticmethod
     def _mk(norm: Norm, b: Branch, *, is_fallback: bool,
             missing: tuple[str, ...]) -> Resolution:
-        return Resolution(slug=norm.slug, value=b.value, unit=norm.unit,
-                          semantics=norm.semantics, matched=b.when, evidence=b.evidence,
+        # R16c · se entrega una COPIA, no las tripas. Antes `value` y `matched` eran
+        # referencias a lo que vive dentro del registro, así que un `.append()` de quien
+        # preguntaba cambiaba la norma para todos los demás. Era la negación literal de
+        # "solo hay una copia", que es la tesis entera de esta capa.
+        return Resolution(slug=norm.slug, value=deepcopy(b.value), unit=norm.unit,
+                          semantics=norm.semantics, matched=dict(b.when), evidence=b.evidence,
                           strength=norm.strength, certainty=norm.certainty,
                           is_fallback=is_fallback, missing=missing)
