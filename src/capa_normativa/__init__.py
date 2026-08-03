@@ -16,6 +16,7 @@ Lo que este registro NO hace, a propósito: no ejecuta lógica y no encadena nor
 Es lo que lo separa de un motor de reglas — el patrón donde estos sistemas fracasan.
 """
 from .registry import (
+    BlockedNormError,
     Branch,
     Norm,
     NormError,
@@ -25,6 +26,6 @@ from .registry import (
     Schema,
 )
 
-__version__ = "0.4.0"
+__version__ = "0.5.0"
 __all__ = ["NormRegistry", "Norm", "Branch", "Resolution", "Schema",
-           "NormError", "RetiredNormError"]
+           "NormError", "RetiredNormError", "BlockedNormError"]

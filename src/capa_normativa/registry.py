@@ -25,6 +25,12 @@ v0.4.0 (R13) aplica el mismo principio a la FORMA: las claves que el parser no c
 aceptaban y se descartaban en silencio, así que lo escrito y lo que el registro hace podían
 no coincidir sin que nada fallara. Una errata en `value` llegaba a producir una norma que
 emitía None como si fuera una respuesta deliberada.
+
+v0.5.0 (R14) cierra la familia de "lo declarado tiene que ser de verdad": un `status`
+desconocido ya no se acepta (una errata desactivaba la caducidad), los punteros de
+retirada tienen que apuntar a normas que existen, y `bloqueada` pasa a existir — una
+norma con evidencia en conflicto sin adjudicar se NIEGA a emitir en vez de elegir por
+orden de fichero.
 """
 from __future__ import annotations
 
@@ -89,6 +95,14 @@ class RetiredNormError(NormError):
     """Se pidió una norma RETIRADA. Es lo que impide que el código siga leyendo algo
     que ya no gobierna. Es el fallo del comentario fósil que sobrevive a su propia
     supersesión — aquí, imposible."""
+
+
+class BlockedNormError(NormError):
+    """Se pidió una norma BLOQUEADA: hay evidencia en conflicto y nadie la ha adjudicado.
+
+    Emitir un valor aquí sería resolver el conflicto a escondidas, eligiendo por orden de
+    fichero o por descuido. El registro prefiere no responder: una norma tiene valor o
+    está explícitamente bloqueada, nunca ambigua."""
 
 
 # Rangos numéricos: lo único que el límite de expresividad permite además de
@@ -191,6 +205,7 @@ class Norm:
     requires: tuple[str, ...] = ()
     retirement: dict[str, Any] | None = None
     provenance_note: str | None = None
+    blocking: dict[str, Any] | None = None
 
 
 @dataclass(frozen=True)
@@ -267,8 +282,17 @@ def _check_condition(key: str, value: Any, schema: Schema, bad, i: int) -> None:
 _NORM_KEYS = frozenset({
     "slug", "title", "status", "strength", "certainty", "unit", "semantics",
     "branches", "adjudication", "expires", "requires", "retirement", "provenance_note",
+    "blocking",
 })
 _BRANCH_KEYS = frozenset({"when", "value", "evidence", "note"})
+
+# Los estados que el registro ENTIENDE. No es una etiqueta libre: cada uno cambia lo que
+# hace (si emite, si exige motivo, si caduca), así que uno desconocido es una norma que
+# se comporta de forma imprevista.
+_STATUS = frozenset({"vigente", "retirada", "superseded", "bloqueada"})
+# Los que pueden emitir un valor. Solo a estos les aplican las reglas de vigencia: en una
+# norma retirada o bloqueada, caducar no significa nada (roce anotado desde §5.6).
+_EMITEN = frozenset({"vigente"})
 
 
 def _check_keys(raw: dict, permitidas: frozenset[str], donde: str, bad) -> None:
@@ -300,13 +324,23 @@ def _parse_norm(raw: dict, known_evidence: set[str], today: date, schema: Schema
     if strength == "vinculante" and weak:
         raise bad(f"strength=vinculante con certainty={certainty}: la escala declarada lo prohíbe")
 
-    # ── R2 · caducidad (OPA-style): lo frágil expira solo ──────────────────
+    # ── R14a · el status solo puede ser uno de los que el registro ENTIENDE ─
+    # Cada uno cambia lo que el registro hace, así que un valor desconocido no es una
+    # etiqueta libre: es una norma que se comporta de forma imprevista. Y la caducidad
+    # solo se comprueba en las que EMITEN, así que una errata la desactivaba entera:
+    # `status: vigent` + una fecha pasada cargaba y seguía emitiendo.
     status = raw.get("status")
+    if status not in _STATUS:
+        cerca = difflib.get_close_matches(str(status), sorted(_STATUS), n=1, cutoff=0.6)
+        raise bad(f"status={status!r} desconocido{f' (¿querías decir {cerca[0]!r}?)' if cerca else ''}. "
+                  f"Conocidos: {'|'.join(sorted(_STATUS))}")
+
+    # ── R2 · caducidad (OPA-style): lo frágil expira solo ──────────────────
     expires = raw.get("expires")
     expires = date.fromisoformat(expires) if expires else None
-    if weak and expires is None:
+    if weak and expires is None and status in _EMITEN:
         raise bad("certeza débil sin fecha de expiración")
-    if status == "vigente" and expires and expires < today:
+    if status in _EMITEN and expires and expires < today:
         raise bad(f"norma vigente CADUCADA el {expires}: hay que re-adjudicarla")
 
     # ── R8 · retirar una norma es un ACTO, con motivo y sustituto ──────────
@@ -316,11 +350,27 @@ def _parse_norm(raw: dict, known_evidence: set[str], today: date, schema: Schema
     if status in {"retirada", "superseded"}:
         if not retirement or not retirement.get("reason"):
             raise bad(f"status={status} sin `retirement.reason`")
-        if not retirement.get("replaced_by"):
+        # `replaced_by` puede ser una lista VACÍA —"no hay sustituto" es una respuesta—,
+        # pero tiene que estar ESCRITA. Antes el mensaje decía justo eso y luego lo
+        # rechazaba: `not []` es cierto, así que seguir la instrucción no funcionaba.
+        if "replaced_by" not in retirement:
             raise bad(f"status={status} sin `retirement.replaced_by` "
                       f"(si de verdad no hay sustituto, decláralo como lista vacía)")
     elif retirement:
         raise bad("tiene `retirement` pero su status no es retirada/superseded")
+
+    # ── R14c · BLOQUEADA: evidencia en conflicto SIN adjudicar ─────────────
+    # La propiedad que §5.1 prometía y no existía: una norma tiene valor o está
+    # explícitamente bloqueada, nunca ambigua. Bloquear es un acto y lleva motivo,
+    # igual que retirar; resolverla FALLA en vez de emitir un valor que nadie ha
+    # adjudicado.
+    blocking = raw.get("blocking")
+    if status == "bloqueada":
+        if not blocking or not blocking.get("reason"):
+            raise bad("status=bloqueada sin `blocking.reason`: bloquear es un acto y "
+                      "hay que decir qué conflicto lo motiva")
+    elif blocking:
+        raise bad("tiene `blocking` pero su status no es bloqueada")
 
     # ── R3 · un conflicto declarado exige adjudicación ────────────────────
     adjudication = raw.get("adjudication")
@@ -372,8 +422,13 @@ def _parse_norm(raw: dict, known_evidence: set[str], today: date, schema: Schema
     # en silencio. Ahora se pregunta lo que de verdad importa: ¿existe algún sujeto que
     # cumpla las dos ramas a la vez? Dos condiciones sobre dimensiones DISTINTAS no se
     # estorban; el choque solo puede venir de las claves compartidas.
-    concretas = [b for b in branches
-                 if not all(str(v).lower() in schema.wildcards for v in b.when.values())]
+    # Una norma BLOQUEADA queda fuera: sus ramas SON las candidatas en conflicto, así que
+    # solapan por definición. Exigirle ramas disjuntas sería pedirle que estuviera
+    # adjudicada, que es justo lo que declara no estar. Y no hay riesgo de que el orden
+    # decida nada, porque no emite: resolverla falla.
+    concretas = [] if status == "bloqueada" else [
+        b for b in branches
+        if not all(str(v).lower() in schema.wildcards for v in b.when.values())]
     for i, a in enumerate(concretas):
         for c in concretas[i + 1:]:
             comunes = set(a.when) & set(c.when)
@@ -402,7 +457,8 @@ def _parse_norm(raw: dict, known_evidence: set[str], today: date, schema: Schema
                 strength=strength, certainty=certainty, unit=raw.get("unit", ""),
                 semantics=raw.get("semantics", ""), branches=tuple(branches),
                 adjudication=adjudication, expires=expires, requires=requires,
-                retirement=retirement, provenance_note=raw.get("provenance_note"))
+                retirement=retirement, provenance_note=raw.get("provenance_note"),
+                blocking=blocking)
 
 
 class NormRegistry:
@@ -451,6 +507,20 @@ class NormRegistry:
                 f"normas: {colision}. Un nombre es una cosa o la otra: si ramificas por él, "
                 f"estarías encadenando normas por la puerta de atrás. Renombra uno de los dos"
             )
+
+        # ── R14b · los punteros apuntan a algo que EXISTE ──────────────────
+        # `replaced_by` no se validaba, y el daño no era pasivo: `RetiredNormError`
+        # compone su mensaje con el puntero y se lo enseña al desarrollador como si
+        # fuera ayuda ("→ usa: norma_que_no_existe"). Es el puntero colgante que este
+        # registro existe para impedir, cometido dentro del propio registro.
+        for slug, n in norms.items():
+            colgantes = [s for s in (n.retirement or {}).get("replaced_by", [])
+                         if s not in norms]
+            if colgantes:
+                raise NormError(
+                    f"[{slug}] `retirement.replaced_by` apunta a normas que no existen: "
+                    f"{colgantes}. El mensaje de retirada manda al lector justo ahí, así que "
+                    f"un puntero roto aquí no es un detalle: es una instrucción falsa")
         return cls(norms, schema)
 
     def resolve(self, slug: str, **subject: str) -> Resolution:
@@ -458,6 +528,11 @@ class NormRegistry:
         norm = self._norms.get(slug)
         if norm is None:
             raise NormError(f"norma inexistente: {slug}")
+        if norm.blocking:
+            raise BlockedNormError(
+                f"[{slug}] BLOQUEADA: hay evidencia en conflicto sin adjudicar, así que el "
+                f"registro NO emite valor. Motivo: "
+                f"{' '.join(str(norm.blocking['reason']).split())[:200]}")
         if norm.retirement:
             rep = ", ".join(norm.retirement.get("replaced_by") or []) or "(sin sustituto)"
             raise RetiredNormError(

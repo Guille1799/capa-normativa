@@ -11,7 +11,12 @@ from pathlib import Path
 import pytest
 import yaml
 
-from capa_normativa import NormError, NormRegistry, RetiredNormError
+from capa_normativa import (
+    BlockedNormError,
+    NormError,
+    NormRegistry,
+    RetiredNormError,
+)
 
 FIX = Path(__file__).parent / "fixtures"
 HOY = date(2026, 1, 1)
@@ -410,6 +415,111 @@ def test_las_claves_conocidas_siguen_pasando():
     assert usadas_norma <= _NORM_KEYS and usadas_rama <= _BRANCH_KEYS
     assert usadas_norma >= {"slug", "status", "branches", "certainty", "strength"}
     assert reg().resolve("threshold_by_kind", kind="alpha").value == 10.0
+
+
+# ── R14: los estados y los punteros son reales (v0.5.0) ────────────────
+
+
+def test_ilegal_status_desconocido(tmp_path):
+    """R14a. Y el motivo por el que importa NO es la pulcritud: la caducidad solo se
+    comprobaba `if status == "vigente"`, así que una errata la DESACTIVABA — una norma
+    caducada cargaba y seguía emitiendo."""
+    def meter(n):
+        by_slug(n, "threshold_by_kind")["status"] = "vigent"
+    with pytest.raises(NormError, match=r"desconocido.*¿querías decir 'vigente'\?"):
+        mutando(tmp_path, meter)
+
+
+def test_la_errata_en_status_ya_no_desactiva_la_caducidad(tmp_path):
+    """La demostración del daño: `vigent` + fecha pasada. Antes cargaba tan tranquila."""
+    def meter(n):
+        x = by_slug(n, "threshold_by_kind")
+        x["status"], x["expires"] = "vigent", "2020-01-01"
+    with pytest.raises(NormError, match="desconocido"):
+        mutando(tmp_path, meter)
+
+
+def test_ilegal_replaced_by_que_apunta_a_la_nada(tmp_path):
+    """R14b. El puntero colgante que este registro existe para impedir, cometido dentro
+    del propio registro — y peor que pasivo: `RetiredNormError` compone su mensaje con él
+    y se lo enseña al lector como si fuera ayuda."""
+    def meter(n):
+        by_slug(n, "legacy_cap")["retirement"]["replaced_by"] = ["norma_que_no_existe"]
+    with pytest.raises(NormError, match="apunta a normas que no existen"):
+        mutando(tmp_path, meter)
+
+
+def test_replaced_by_vacio_SI_es_valido(tmp_path):
+    """"No hay sustituto" es una respuesta legítima, y el mensaje de error ya la sugería…
+    mientras la rechazaba: `not []` es cierto, así que seguir la instrucción no funcionaba.
+    Ahora lo que se exige es que la clave esté ESCRITA, no que tenga contenido."""
+    def meter(n):
+        by_slug(n, "legacy_cap")["retirement"]["replaced_by"] = []
+    assert mutando(tmp_path, meter) is not None
+
+
+def test_una_norma_bloqueada_NO_emite_valor(tmp_path):
+    """R14c — la propiedad que §5.1 prometía y no existía.
+
+    Emitir aquí sería resolver el conflicto a escondidas, eligiendo por orden de fichero.
+    El registro prefiere no responder: una norma tiene valor o está explícitamente
+    bloqueada, nunca ambigua."""
+    def bloquear(n):
+        x = by_slug(n, "threshold_by_kind")
+        x["status"] = "bloqueada"
+        x["blocking"] = {"date": "2026-01-01",
+                         "reason": "dos fuentes dan cortes distintos y nadie ha adjudicado",
+                         "conflicting_evidence": ["EV-001", "EV-002"]}
+    r = mutando(tmp_path, bloquear)
+    with pytest.raises(BlockedNormError, match="BLOQUEADA"):
+        r.resolve("threshold_by_kind", kind="alpha")
+    # …y el motivo viaja en el error, que es lo que la hace accionable.
+    try:
+        r.resolve("threshold_by_kind", kind="alpha")
+    except BlockedNormError as e:
+        assert "nadie ha adjudicado" in str(e)
+
+
+def test_bloquear_es_un_ACTO_y_lleva_motivo(tmp_path):
+    """Igual que retirar. Sin motivo, "bloqueada" sería una etiqueta que nadie sabe deshacer."""
+    def meter(n):
+        by_slug(n, "threshold_by_kind")["status"] = "bloqueada"
+    with pytest.raises(NormError, match="blocking.reason"):
+        mutando(tmp_path, meter)
+
+
+def test_una_norma_bloqueada_SI_puede_tener_ramas_que_solapan(tmp_path):
+    """Es la semántica, no una excepción: sus ramas SON las candidatas en conflicto, así
+    que solapan por definición. Exigirle ramas disjuntas sería pedirle que estuviera
+    adjudicada — justo lo que declara no estar. Y no hay riesgo de que el orden decida
+    nada, porque no emite."""
+    def bloquear(n):
+        x = by_slug(n, "threshold_by_kind")
+        x["status"] = "bloqueada"
+        x["blocking"] = {"reason": "conflicto abierto"}
+        x["branches"].insert(0, {"when": {"kind": "alpha"}, "value": 999,
+                                 "evidence": ["EV-002"]})
+    r = mutando(tmp_path, bloquear)          # con R10 activo esto sería "mismo sujeto"
+    with pytest.raises(BlockedNormError):
+        r.resolve("threshold_by_kind", kind="alpha")
+
+
+def test_ilegal_blocking_sin_estar_bloqueada(tmp_path):
+    """Simetría con `retirement`: el campo y el estado no pueden ir por separado."""
+    def meter(n):
+        by_slug(n, "threshold_by_kind")["blocking"] = {"reason": "x"}
+    with pytest.raises(NormError, match="no es bloqueada"):
+        mutando(tmp_path, meter)
+
+
+def test_a_una_norma_que_no_emite_no_se_le_exige_caducidad(tmp_path):
+    """Roce anotado desde el caso 3 y arreglado aquí: las reglas de vigencia se aplicaban
+    también a normas retiradas o bloqueadas, donde caducar no significa nada."""
+    def meter(n):
+        x = by_slug(n, "threshold_by_kind")
+        x["status"], x["blocking"] = "bloqueada", {"reason": "conflicto abierto"}
+        x.pop("expires")                      # certeza baja y SIN caducidad
+    assert mutando(tmp_path, meter) is not None
 
 
 def test_adjudicacion_y_retirada_siguen_siendo_libres(tmp_path):

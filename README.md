@@ -43,6 +43,9 @@ Cada uno corresponde a un modo de fallo real y observado:
 | **dos rangos solapan** (`">=40"` y `">=60"`) | que un sujeto de 70 se lleve el valor de la banda equivocada |
 | **un rango está vacío** (`"[5,3]"`) | una rama muerta que cae al comodín sin avisar |
 | **una clave no se reconoce** (`valeu:`, `certainy:`) | que lo escrito y lo que hace el registro no coincidan |
+| **un `status` no se reconoce** (`vigent:`) | que una errata desactive la caducidad en silencio |
+| **un puntero apunta a una norma inexistente** | mandar al lector a algo que no está |
+| una norma **bloqueada** se intenta leer | resolver un conflicto a escondidas, por orden de fichero |
 
 ## Lo que NO hace, a propósito
 
@@ -132,6 +135,44 @@ que el registro emite, así que una errata ahí es cosmética.
 
 No es breaking: solo rechaza claves que ya se estaban ignorando.
 
+### Estados y punteros reales (v0.5.0)
+
+Tres agujeros de la misma familia — *lo que declaras tiene que ser de verdad*:
+
+**`status` solo admite valores conocidos.** No es pulcritud: la caducidad se comprobaba
+`if status == "vigente"`, así que una errata la **desactivaba**. `status: vigent` con una
+fecha pasada cargaba y seguía emitiendo.
+
+**Los punteros apuntan a algo que existe.** `retirement.replaced_by` no se validaba, y el
+daño no era pasivo: el error de retirada **compone su mensaje con el puntero** y se lo
+enseña al lector como si fuera ayuda (`→ usa: norma_que_no_existe`). Ahora
+`replaced_by: []` sí es válido —*"no hay sustituto"* es una respuesta— pero tiene que estar
+escrito; antes el mensaje lo sugería y lo rechazaba a la vez.
+
+**`bloqueada` existe de verdad.** Una norma con evidencia en conflicto y sin adjudicar
+**se niega a emitir**:
+
+```yaml
+status: bloqueada
+blocking:
+  reason: dos fuentes dan cortes distintos y nadie ha adjudicado
+  conflicting_evidence: [EV-001, EV-002]
+```
+
+```python
+NORMS.resolve("mi_umbral", kind="alpha")   # BlockedNormError, con el motivo dentro
+```
+
+Emitir ahí sería resolver el conflicto a escondidas, eligiendo por orden de fichero. Una
+norma **tiene valor o está explícitamente bloqueada, nunca ambigua**.
+
+Sus ramas **sí** pueden solaparse, y no es una excepción sino la semántica: son las
+candidatas en conflicto. Exigirle ramas disjuntas sería pedirle que estuviera adjudicada,
+que es justo lo que declara no estar. Tampoco se le exige caducidad: en una norma que no
+emite, caducar no significa nada.
+
+No es breaking: `bloqueada` es nueva, y los otros dos solo rechazan lo que ya estaba roto.
+
 ## Ausencia de respaldo, declarada
 
 La mayoría de las constantes de un sistema real no tienen fuente. Si el registro las
@@ -162,10 +203,12 @@ Tres ficheros en el directorio que le pases:
 ## Instalación
 
 ```bash
-pip install git+https://github.com/Guille1799/capa-normativa.git@v0.4.0
+pip install git+https://github.com/Guille1799/capa-normativa.git@v0.5.0
 ```
 
 ## Migrar
+
+**De v0.4.0 a v0.5.0** — nada que hacer. R14 solo rechaza estados y punteros que ya estaban rotos.
 
 **De v0.3.0 a v0.4.0** — nada que hacer. R13 solo rechaza claves que ya se ignoraban.
 
