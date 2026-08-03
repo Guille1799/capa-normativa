@@ -15,6 +15,11 @@ Lo segundo dejó de ser una promesa y pasó a ser una comprobación en v0.2.0 (R
 y una condición que ramifique por cualquier otra cosa NO se construye. Antes de eso el
 límite se cumplía por disciplina: `when: {otra_norma: ">=0.30"}` era un rango bien
 formado y el parser lo aceptaba tan campante.
+
+v0.3.0 (R12) cierra el otro agujero de la misma familia: dos RANGOS que solapan. R10
+comparaba conjuntos de pares, así que ">=40" y ">=60" eran literales distintos y convivían
+— y con un eje partido en bandas eso no es un aviso que falta, es la respuesta equivocada
+en silencio. Ahora se calcula si existe algún sujeto que cumpla las dos ramas.
 """
 from __future__ import annotations
 
@@ -104,6 +109,59 @@ def _range_match(value: str, spec: str) -> bool | None:
             and (x <= hi if hi_b == "]" else x < hi))
 
 
+# ── Aritmética de intervalos (R12) ─────────────────────────────────────────
+# El intervalo se representa como (lo, lo_cerrado, hi, hi_cerrado). Existe SOLO para
+# poder decidir si dos condiciones pueden cumplirse a la vez: no se expone, no se
+# evalúa en runtime y no amplía lo que el registro sabe expresar.
+_INF = float("inf")
+
+
+def _interval(spec: str) -> tuple[float, bool, float, bool] | None:
+    """El rango como intervalo; None si `spec` no es un rango."""
+    m = _CMP.match(spec)
+    if m:
+        op, n = m.group(1), float(m.group(2))
+        return {">=": (n, True, _INF, False), ">": (n, False, _INF, False),
+                "<=": (-_INF, False, n, True), "<": (-_INF, False, n, False)}[op]
+    itv = _ITV.match(spec)
+    if itv:
+        return (float(itv.group(2)), itv.group(1) == "[",
+                float(itv.group(3)), itv.group(4) == "]")
+    return None
+
+
+def _is_empty(iv: tuple[float, bool, float, bool]) -> bool:
+    """Un intervalo vacío es una rama MUERTA: no matchea nunca y cae al fallback en
+    silencio, que es el peor modo de fallo posible."""
+    lo, lo_c, hi, hi_c = iv
+    return lo > hi or (lo == hi and not (lo_c and hi_c))
+
+
+def _intervals_overlap(a: tuple[float, bool, float, bool],
+                       b: tuple[float, bool, float, bool]) -> bool:
+    lo, lo_c = max((a[0], a[1]), (b[0], b[1]), key=lambda p: (p[0], not p[1]))
+    hi, hi_c = min((a[2], a[3]), (b[2], b[3]), key=lambda p: (p[0], p[1]))
+    return not _is_empty((lo, lo_c, hi, hi_c))
+
+
+def _conditions_compatible(va: Any, vb: Any, wildcards: frozenset[str]) -> bool:
+    """¿Existe algún sujeto que cumpla las DOS condiciones a la vez?
+
+    Es la pregunta que R10 respondía solo para igualdad y subsunción. Con rangos hay
+    que calcularla: `">=40"` y `">=60"` son literales distintos y solapan de todas formas.
+    """
+    sa, sb = str(va), str(vb)
+    if sa.lower() in wildcards or sb.lower() in wildcards:
+        return True
+    ia, ib = _interval(sa), _interval(sb)
+    if ia and ib:
+        return _intervals_overlap(ia, ib)
+    if ia or ib:                       # rango contra literal: ¿el literal cae dentro?
+        rango, literal = (sa, sb) if ia else (sb, sa)
+        return _range_match(literal, rango) is True
+    return sa.lower() == sb.lower()
+
+
 @dataclass(frozen=True)
 class Branch:
     when: dict[str, str]
@@ -181,7 +239,13 @@ def _check_condition(key: str, value: Any, schema: Schema, bad, i: int) -> None:
     s = str(value)
     if s.lower() in schema.wildcards:
         return
-    if _range_match("0", s) is not None:      # es un rango bien formado
+    iv = _interval(s)
+    if iv is not None:                        # es un rango bien formado
+        # R12 · un rango VACÍO ("[5,3]", "(4,4)") es una rama muerta: no matchea nunca,
+        # cae al fallback en silencio y devuelve un valor plausible que no es el suyo.
+        if _is_empty(iv):
+            raise bad(f"rama #{i}, '{key}'={s!r}: el rango está VACÍO, así que esa rama "
+                      f"no puede matchear nunca y caería al comodín sin avisar")
         return
     if _OPERATOR_CHARS & set(s):
         raise bad(f"rama #{i}, '{key}'={s!r}: parece un operador inventado. "
@@ -261,21 +325,26 @@ def _parse_norm(raw: dict, known_evidence: set[str], today: date, schema: Schema
     if not branches:
         raise bad("sin ramas: una norma sin valor no es una norma")
 
-    # ── R10 · dos ramas no pueden matchear al mismo sujeto ─────────────────
+    # ── R10 + R12 · dos ramas no pueden matchear al mismo sujeto ───────────
     # Si dos ramas solapan, gana la primera del fichero: el ORDEN decide el valor,
     # que es justo lo que el límite de expresividad prohíbe. La rama del sujeto
     # desconocido queda fuera de la comprobación — solapa por definición, y el
     # motor la prueba SIEMPRE la última (orden fijo del motor, no del fichero).
     #
-    # LIMITACIÓN: detecta igualdad y subsunción exacta de condiciones. NO detecta
-    # solapamiento entre RANGOS (">=50" y ">=100" solapan y aquí pasan).
+    # v0.3.0 (R12): antes esto comparaba CONJUNTOS de pares (igualdad y subsunción), y
+    # por eso no veía los rangos: ">=40" y ">=60" son literales distintos, así que
+    # convivían — y un sujeto de 70 se llevaba el valor de la primera rama del fichero,
+    # en silencio. Ahora se pregunta lo que de verdad importa: ¿existe algún sujeto que
+    # cumpla las dos ramas a la vez? Dos condiciones sobre dimensiones DISTINTAS no se
+    # estorban; el choque solo puede venir de las claves compartidas.
     concretas = [b for b in branches
                  if not all(str(v).lower() in schema.wildcards for v in b.when.values())]
     for i, a in enumerate(concretas):
         for c in concretas[i + 1:]:
-            sa, sc = set(a.when.items()), set(c.when.items())
-            if sa <= sc or sc <= sa:
-                raise bad(f"dos ramas matchean al mismo sujeto ({dict(sa)} y {dict(sc)}): "
+            comunes = set(a.when) & set(c.when)
+            if all(_conditions_compatible(a.when[k], c.when[k], schema.wildcards)
+                   for k in comunes):
+                raise bad(f"dos ramas matchean al mismo sujeto ({a.when} y {c.when}): "
                           f"el orden del fichero decidiría el valor. Hazlas disjuntas")
 
     # ── R5 · ANTI-HARDCODEO: hay que declarar qué pasa con quien NO conoces ─

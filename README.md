@@ -40,6 +40,8 @@ Cada uno corresponde a un modo de fallo real y observado:
 | se cuela lógica en una condición | convertir esto en un motor de reglas |
 | **dos ramas matchean al mismo sujeto** | que el orden del fichero decida el valor |
 | **una norma ramifica por otra norma** | **encadenar reglas por la puerta de atrás** |
+| **dos rangos solapan** (`">=40"` y `">=60"`) | que un sujeto de 70 se lleve el valor de la banda equivocada |
+| **un rango está vacío** (`"[5,3]"`) | una rama muerta que cae al comodín sin avisar |
 
 ## Lo que NO hace, a propósito
 
@@ -83,6 +85,29 @@ valor por defecto sin que nada fallara.
 > agujero abierto por defecto, que es la forma exacta de tener un límite que no impide nada.
 > Migrar es una línea — la unión de las claves `when` que ya usas.
 
+### Solapamiento entre rangos (v0.3.0)
+
+Hasta la v0.2.0, *"dos ramas no pueden matchear al mismo sujeto"* se comprobaba comparando
+**conjuntos de pares**: detectaba igualdad y subsunción, pero dos rangos son literales
+distintos y convivían tan tranquilos. Con un eje partido en bandas eso no es un aviso que
+falta, es la **respuesta equivocada en silencio**:
+
+```yaml
+- when: {age_band: ">=40"}   # master
+- when: {age_band: ">=60"}   # adulto mayor   ← nunca se alcanzaba
+```
+
+Un sujeto de 70 se llevaba el valor de la primera rama del fichero. Ahora la pregunta que se
+hace el parser es la que de verdad importa —**¿existe algún sujeto que cumpla las dos
+ramas?**— resuelta con aritmética de intervalos sobre la gramática de rangos. Dos condiciones
+sobre dimensiones distintas no se estorban; el choque solo puede venir de las claves
+compartidas.
+
+Se rechaza también el **rango vacío** (`"[5,3]"`, `"(4,4)"`): una rama que no puede matchear
+nunca cae al comodín y devuelve un valor plausible que no es el suyo.
+
+No es breaking: si tus rangos ya eran disjuntos, no cambia nada. Si no lo eran, tenías un bug.
+
 ## Ausencia de respaldo, declarada
 
 La mayoría de las constantes de un sistema real no tienen fuente. Si el registro las
@@ -113,12 +138,15 @@ Tres ficheros en el directorio que le pases:
 ## Instalación
 
 ```bash
-pip install git+https://github.com/Guille1799/capa-normativa.git@v0.2.0
+pip install git+https://github.com/Guille1799/capa-normativa.git@v0.3.0
 ```
 
-## Migrar de v0.1.0 a v0.2.0
+## Migrar
 
-Una línea en `schema.yaml`. Si el registro no arranca, el mensaje dice qué falta:
+**De v0.2.0 a v0.3.0** — nada que hacer. R12 solo rechaza rangos que ya estaban mal.
+
+**De v0.1.0 a v0.2.0** — una línea en `schema.yaml`. Si el registro no arranca, el mensaje
+dice qué falta:
 
 ```yaml
 subject_dimensions: [las, claves, de, tus, when]

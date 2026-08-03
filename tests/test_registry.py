@@ -282,3 +282,69 @@ def test_las_dimensiones_declaradas_siguen_funcionando(tmp_path):
     """Sin falsos positivos: lo declarado se resuelve igual que antes."""
     assert colar(tmp_path, {"kind": "alpha"}).resolve("intento", kind="alpha").value == 1
     assert reg().resolve("coefficient_by_range", size="150", mode="fast").value == 1.5
+
+
+# ── R12: el solapamiento entre RANGOS (v0.3.0) ──────────────────────────
+# R10 comparaba CONJUNTOS de pares, así que solo veía igualdad y subsunción. Dos rangos
+# son literales distintos y convivían tan tranquilos. Encontrado tendiendo la trampa a
+# propósito sobre un eje de bandas: con ">=40" y ">=60" declaradas, un sujeto de 70 se
+# llevaba el valor de la PRIMERA rama del fichero. No un aviso ausente: la respuesta mal.
+
+
+def dos_ramas(tmp_path, when_a, when_b):
+    norms = [{"slug": "intento", "title": "t", "status": "vigente",
+              "strength": "condicional", "certainty": "moderada", "unit": "u",
+              "semantics": "s",
+              "branches": [{"when": when_a, "value": 1, "evidence": ["EV-001"]},
+                           {"when": when_b, "value": 2, "evidence": ["EV-001"]},
+                           {"when": {k: "any" for k in {**when_a, **when_b}},
+                            "value": 0, "evidence": ["EV-001"]}]}]
+    p = tmp_path / "n.yaml"
+    p.write_text(yaml.safe_dump(norms, allow_unicode=True), "utf-8")
+    return NormRegistry.load(norms_path=p, evidence_path=FIX / "evidence.yaml",
+                             schema_path=FIX / "schema.yaml", today=HOY)
+
+
+@pytest.mark.parametrize("a, b, motivo", [
+    (">=40", ">=60", "bandas abiertas: todo lo de b esta tambien en a"),
+    ("[10,20]", "[20,30)", "comparten exactamente el extremo cerrado"),
+    ("<=50", ">=50", "se tocan en 50 y ambos lo incluyen"),
+    (">=18", "20", "un literal numerico que cae DENTRO del rango"),
+])
+def test_ilegal_dos_rangos_que_solapan(tmp_path, a, b, motivo):
+    with pytest.raises(NormError, match="mismo sujeto"):
+        dos_ramas(tmp_path, {"size": a}, {"size": b})
+
+
+@pytest.mark.parametrize("a, b, motivo", [
+    (">=100", "[10,100)", "el 100 queda fuera del intervalo abierto"),
+    ("[10,20)", "[20,30)", "adyacentes pero disjuntos"),
+    ("<50", ">=50", "se tocan sin compartir ningun punto"),
+    (">=18", "10", "el literal cae fuera"),
+    (">=18", "alpha", "un literal no numerico no puede cumplir un rango"),
+])
+def test_rangos_disjuntos_no_dan_falso_positivo(tmp_path, a, b, motivo):
+    """La mitad que importa: un gate que rechaza de más se acaba desactivando."""
+    assert dos_ramas(tmp_path, {"size": a}, {"size": b}).resolve("intento", size="0") is not None
+
+
+def test_no_solapan_si_discriminan_por_OTRA_dimension(tmp_path):
+    """Dos rangos idénticos en `size` conviven si `mode` los separa: el sujeto tendría
+    que cumplir las dos a la vez, y no puede."""
+    r = dos_ramas(tmp_path, {"size": ">=10", "mode": "fast"}, {"size": ">=10", "mode": "slow"})
+    assert r.resolve("intento", size="50", mode="fast").value == 1
+    assert r.resolve("intento", size="50", mode="slow").value == 2
+
+
+def test_ilegal_un_rango_vacio_es_una_rama_muerta(tmp_path):
+    """`[5,3]` no matchea nunca: cae al comodín y devuelve un valor plausible que no es
+    el suyo. Es el modo de fallo que más cuesta ver, porque nada falla."""
+    with pytest.raises(NormError, match="VACÍO"):
+        colar(tmp_path, {"size": "[5,3]"})
+    with pytest.raises(NormError, match="VACÍO"):
+        colar(tmp_path, {"size": "(4,4)"})
+
+
+def test_un_rango_de_un_solo_punto_sigue_siendo_valido(tmp_path):
+    """`[4,4]` es raro pero legítimo: matchea exactamente el 4."""
+    assert colar(tmp_path, {"size": "[4,4]"}).resolve("intento", size="4").value == 1
