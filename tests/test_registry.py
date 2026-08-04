@@ -708,3 +708,108 @@ def test_adjudicacion_y_retirada_siguen_siendo_libres(tmp_path):
     def meter(n):
         by_slug(n, "legacy_cap")["retirement"]["nota_libre"] = "lo que sea"
     assert mutando(tmp_path, meter) is not None
+
+
+# ── R17 · una afirmación que no respalda nada no es evidencia ────────────
+
+def _con_evidencia(tmp_path, mutate):
+    """Como `mutando`, pero la mutación es sobre `evidence.yaml`."""
+    ev = yaml.safe_load((FIX / "evidence.yaml").read_text("utf-8"))
+    mutate(ev)
+    p = tmp_path / "evidence.yaml"
+    p.write_text(yaml.safe_dump(ev, allow_unicode=True), "utf-8")
+    return NormRegistry.load(norms_path=FIX / "norms.yaml", evidence_path=p,
+                             schema_path=FIX / "schema.yaml", today=HOY)
+
+
+def test_R17_una_evidencia_sin_respaldo_se_rechaza_DONDE_ESTA(tmp_path):
+    """Encontrado escribiendo siete de ellas y chocando con el muro (§5.34).
+
+    Hasta la v0.8.0 el registro aceptaba una entrada de evidencia con la certeza más baja
+    de la escala y reventaba después, en la NORMA que la citara, con un mensaje que
+    culpaba a la norma. Y no había salida: si la cita, no puede declararse `sin_respaldo`
+    (R4); si declara más, se salta R15b. La entrada era **inutilizable por construcción**
+    y nada lo decía — el que la escribía descubría el problema en otro fichero.
+    """
+    with pytest.raises(NormError, match="no es evidencia"):
+        _con_evidencia(tmp_path, lambda ev: ev[0].update(certeza="sin_respaldo"))
+
+
+def test_R17_el_mensaje_dice_cual_es_la_salida(tmp_path):
+    """Un rechazo sin salida convierte el gate en un obstáculo, y los obstáculos se rodean."""
+    with pytest.raises(NormError) as e:
+        _con_evidencia(tmp_path, lambda ev: ev[0].update(certeza="sin_respaldo"))
+    assert "provenance_note" in str(e.value) and "SIN entrada de evidencia" in str(e.value)
+
+
+# ── R18 · con cuánta fuerza obliga, y en qué se apoya ────────────────────
+
+def test_R18_strength_desconocido_no_se_construye(tmp_path):
+    """El mismo agujero que R14a cerró para `status`, abierto en `strength` hasta hoy.
+
+    Solo se comparaba contra el literal "vinculante", así que `vinculnte` no era un error:
+    era una norma OBLIGATORIA degradada a sugerencia, en silencio y sin que nada lo notara.
+    """
+    with pytest.raises(NormError, match="desconocido"):
+        mutando(tmp_path, lambda n: by_slug(n, "threshold_by_kind").update(strength="vinculnte"))
+
+
+def test_R18_la_errata_sugiere_el_valor_correcto(tmp_path):
+    with pytest.raises(NormError, match="precautorio"):
+        mutando(tmp_path, lambda n: by_slug(n, "threshold_by_kind").update(strength="precautrio"))
+
+
+def test_R18_precautorio_OBLIGA_pese_a_la_certeza_debil(tmp_path):
+    """El caso que faltaba, y es real: un veto de seguridad.
+
+    R1 dice "nada vinculante con certeza débil", y en general acierta. Pero un veto
+    PRECAUTORIO obliga *precisamente porque* la evidencia es débil: no obliga porque
+    sepamos que hace daño, sino porque **no sabemos que sea seguro**. Con solo dos
+    valores, esas reglas tenían que escribirse `condicional` mientras el código las
+    aplicaba a rajatabla — el registro describiendo mal lo que el motor hace, y en
+    seguridad, que es donde menos se puede permitir.
+    """
+    r = mutando(tmp_path, lambda n: by_slug(n, "threshold_by_kind").update(
+        strength="precautorio", precaution="alto impacto excéntrico sobre un tendón ya cargado"))
+    assert r._norms["threshold_by_kind"].is_binding
+
+
+def test_R18_precautorio_sin_decir_de_que_protege_no_se_construye(tmp_path):
+    """La puerta de atrás obvia: vincular lo que sea con evidencia floja cambiando una palabra.
+
+    El daño evitado es texto libre y nadie puede verificarlo, igual que `provenance_note`.
+    Lo que sí consigue es obligar a NOMBRARLO, y que la afirmación quede en el diff donde
+    alguien puede discutirla.
+    """
+    with pytest.raises(NormError, match="de qué daño protege"):
+        mutando(tmp_path, lambda n: by_slug(n, "threshold_by_kind").update(strength="precautorio"))
+
+
+def test_R18_precautorio_con_certeza_FUERTE_tampoco(tmp_path):
+    """Si la evidencia sostiene la regla, es `vinculante` — y decirlo así informa más.
+
+    Sin este rechazo `precautorio` se convertiría en el valor cómodo por defecto: obliga
+    siempre y no exige nada. Queriendo decir exactamente "obliga porque NO sabemos que sea
+    seguro", con certeza fuerte deja de ser cierto.
+    """
+    def mut(n):
+        by_slug(n, "binding_high")["strength"] = "precautorio"
+        by_slug(n, "binding_high")["precaution"] = "da igual lo que ponga aquí"
+    with pytest.raises(NormError, match="es `vinculante`"):
+        mutando(tmp_path, mut)
+
+
+def test_R18_precaution_en_una_norma_que_no_es_precautoria_no_se_construye(tmp_path):
+    """Simétrico a `provenance_note`: un campo que no aplica es una afirmación que engaña."""
+    with pytest.raises(NormError, match="no es precautorio"):
+        mutando(tmp_path, lambda n: by_slug(n, "threshold_by_kind").update(precaution="algo"))
+
+
+def test_R18_is_binding_evita_que_el_consumidor_conozca_el_vocabulario():
+    """El día que apareció `precautorio`, todo `if strength == "vinculante"` que hubiera por
+    ahí dejó de ser correcto **y falló hacia el lado malo**: tratando un veto de seguridad
+    como una sugerencia. `is_binding` existe para que ese `if` no haya que escribirlo.
+    """
+    norms = reg()._norms
+    assert not norms["threshold_by_kind"].is_binding
+    assert norms["binding_high"].is_binding

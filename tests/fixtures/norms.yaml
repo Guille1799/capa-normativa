@@ -69,3 +69,19 @@
       value: 3.3
   semantics: equivalencia
   expires: "2099-01-01"
+
+# Necesaria desde la v0.8.0: `precautorio` se define por CONTRASTE con una norma que sí
+# obliga por evidencia, y sin un caso vinculante-con-certeza-alta ese contraste no se podía
+# probar. (`threshold_by_kind` es condicional; `unsupported_number` no tiene respaldo.)
+- slug: binding_high
+  title: Norma que obliga porque la evidencia lo sostiene
+  status: vigente
+  strength: vinculante
+  certainty: alta
+  unit: unidades
+  branches:
+    - when: {kind: any}
+      value: 1.0
+      evidence: [EV-003]
+  semantics: veto
+  expires: "2099-01-01"

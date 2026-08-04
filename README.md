@@ -230,6 +230,46 @@ Con ella, tres más de la misma familia:
 
 Lo único que puede requerir un cambio es lo primero — y si falla, ahí tenías un bug.
 
+### Obligar por PRECAUCIÓN, y una afirmación que no afirma (v0.8.0)
+
+Dos huecos que aparecieron migrando reglas de seguridad reales.
+
+**`strength: precautorio`.** Hasta aquí una norma obligaba (`vinculante`) o no
+(`condicional`), y *"nada vinculante con certeza débil"* lo impedía cuando la evidencia era
+floja. En general acierta. Pero deja fuera un caso que existe:
+
+> Un veto **precautorio** obliga *precisamente porque* la evidencia es débil. No obliga
+> porque sepamos que hace daño: obliga porque **no sabemos que sea seguro**.
+
+Con dos valores, esas reglas había que escribirlas `condicional` mientras el código las
+aplicaba a rajatabla — el registro describiendo mal lo que el sistema hace, y justo en
+seguridad. Ahora se declaran, a cambio de decir **de qué protegen**:
+
+```yaml
+strength: precautorio
+certainty: baja
+precaution: >
+  Impacto excéntrico alto sobre un tendón ya cargado por carrera y déficit.
+  No hay evidencia de que sea seguro a esta densidad; el veto no espera a tenerla.
+```
+
+Para que no sea la puerta de atrás de la regla anterior, `precautorio` **exige** ese campo y
+**rechaza la certeza fuerte**: si la evidencia sostiene la regla, es `vinculante`, y decirlo
+así informa más. Y `strength` pasa a ser vocabulario cerrado — hasta ahora solo se comparaba
+contra el literal `"vinculante"`, así que `vinculnte` degradaba una norma obligatoria a
+sugerencia en silencio.
+
+Los consumidores no deberían conocer el vocabulario: usa **`norm.is_binding`**. Todo
+`if strength == "vinculante"` escrito antes de la v0.8.0 dejó de ser correcto al aparecer
+`precautorio`, y falla **hacia el lado malo** — tratando un veto de seguridad como una
+sugerencia.
+
+**Una evidencia `sin_respaldo` se rechaza donde está.** Antes se aceptaba y reventaba después,
+en la norma que la citara, culpando a la norma. Y no había salida: si la cita no puede
+declararse `sin_respaldo`, y si declara más se salta la regla de la certeza. La entrada era
+inutilizable por construcción y nada lo decía. Si un número no tiene fuente, va en la NORMA
+(`certainty: sin_respaldo` + `provenance_note`), sin entrada de evidencia.
+
 ## Ausencia de respaldo, declarada
 
 La mayoría de las constantes de un sistema real no tienen fuente. Si el registro las
@@ -260,10 +300,14 @@ Tres ficheros en el directorio que le pases:
 ## Instalación
 
 ```bash
-pip install git+https://github.com/Guille1799/capa-normativa.git@v0.7.0
+pip install git+https://github.com/Guille1799/capa-normativa.git@v0.8.0
 ```
 
 ## Migrar
+
+**De v0.7.0 a v0.8.0** — dos cosas. (1) Si tu `evidence.yaml` tiene entradas con la certeza
+más baja de tu escala, bórralas: no eran citables. (2) Busca `strength ==` en tu código y
+cámbialo por `norm.is_binding`, o `precautorio` te pasará por delante como si no obligara.
 
 **De v0.6.0 a v0.7.0** — comprueba tus LLAMADAS: `resolve()` ya no acepta kwargs que no
 sean dimensiones declaradas. Si alguna falla, ahí tenías una errata que caía al comodín.

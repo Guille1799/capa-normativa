@@ -238,6 +238,18 @@ class Norm:
     retirement: dict[str, Any] | None = None
     provenance_note: str | None = None
     blocking: dict[str, Any] | None = None
+    precaution: str | None = None
+
+    @property
+    def is_binding(self) -> bool:
+        """¿OBLIGA? `vinculante` y `precautorio` obligan igual; cambia en qué se apoyan.
+
+        Existe para que el consumidor no tenga que conocer el vocabulario: sin esto, cada
+        `if norm.strength == "vinculante"` que hay por ahí dejó de ser correcto el día que
+        apareció `precautorio` — y habría fallado hacia el lado malo, tratando un veto de
+        seguridad como una sugerencia.
+        """
+        return self.strength in _OBLIGAN
 
 
 @dataclass(frozen=True)
@@ -314,7 +326,7 @@ def _check_condition(key: str, value: Any, schema: Schema, bad, i: int) -> None:
 _NORM_KEYS = frozenset({
     "slug", "title", "status", "strength", "certainty", "unit", "semantics",
     "branches", "adjudication", "expires", "requires", "retirement", "provenance_note",
-    "blocking",
+    "blocking", "precaution",
 })
 _BRANCH_KEYS = frozenset({"when", "value", "evidence", "note"})
 
@@ -322,6 +334,19 @@ _BRANCH_KEYS = frozenset({"when", "value", "evidence", "note"})
 # hace (si emite, si exige motivo, si caduca), así que uno desconocido es una norma que
 # se comporta de forma imprevista.
 _STATUS = frozenset({"vigente", "retirada", "superseded", "bloqueada"})
+
+# R18 (v0.8.0) · con cuánta fuerza OBLIGA una norma. Vocabulario cerrado por el mismo motivo
+# que `status`: hasta la v0.7.0 solo se comparaba contra "vinculante", así que `vinculnte`
+# convertía una norma obligatoria en una sugerencia, en silencio.
+#
+# `precautorio` es la pieza nueva, y existe porque faltaba un caso REAL: un veto de seguridad
+# obliga *precisamente porque* la evidencia es débil — no porque sepamos que hace daño, sino
+# porque NO sabemos que sea seguro. R1 ("nada vinculante con certeza débil") lo prohibía, así
+# que esas reglas tenían que declararse `condicional` mientras el código las aplicaba a
+# rajatabla: el registro describiendo mal lo que el motor hace, y justo en seguridad.
+_STRENGTH = frozenset({"vinculante", "condicional", "precautorio"})
+# Las que OBLIGAN. `precautorio` obliga igual que `vinculante`; lo que cambia es en qué se apoya.
+_OBLIGAN = frozenset({"vinculante", "precautorio"})
 # Los que pueden emitir un valor. Solo a estos les aplican las reglas de vigencia: en una
 # norma retirada o bloqueada, caducar no significa nada (roce anotado desde §5.6).
 _EMITEN = frozenset({"vigente"})
@@ -351,11 +376,36 @@ def _parse_norm(raw: dict, known_evidence: dict[str, dict], today: date,
 
     _check_keys(raw, _NORM_KEYS, "en la norma", bad)
 
-    # ── R1 · certeza débil ⇒ jamás vinculante (en medicina, GRADE) ─────────
+    # ── R18 · `strength` es vocabulario cerrado ────────────────────────────
     strength, certainty = raw.get("strength"), raw.get("certainty")
+    if strength not in _STRENGTH:
+        cerca = difflib.get_close_matches(str(strength), sorted(_STRENGTH), n=1, cutoff=0.6)
+        raise bad(f"strength={strength!r} desconocido{f' (¿querías decir {cerca[0]!r}?)' if cerca else ''}. "
+                  f"Conocidos: {'|'.join(sorted(_STRENGTH))}")
+
+    # ── R1 · certeza débil ⇒ jamás vinculante (en medicina, GRADE) ─────────
     weak = schema.is_weak(certainty)
     if strength == "vinculante" and weak:
-        raise bad(f"strength=vinculante con certainty={certainty}: la escala declarada lo prohíbe")
+        raise bad(f"strength=vinculante con certainty={certainty}: la escala declarada lo prohíbe. "
+                  f"Si obliga POR PRECAUCIÓN —porque no sabes que sea seguro— eso es "
+                  f"strength=precautorio, y exige declarar de qué protege")
+
+    # ── R18b · `precautorio` obliga, pero tiene que decir de qué protege ───
+    # Sin esto sería la puerta de atrás de R1: cualquiera vincula cualquier cosa con
+    # evidencia floja sin más que cambiar una palabra. El daño evitado es texto libre y
+    # nadie puede verificarlo, pero obliga a NOMBRARLO y deja la afirmación en el diff —
+    # el mismo trato que `provenance_note`.
+    precaution = raw.get("precaution")
+    if strength == "precautorio":
+        if not precaution:
+            raise bad("strength=precautorio exige `precaution`: de qué daño protege, y por qué "
+                      "obliga aun sin evidencia fuerte")
+        if not weak:
+            raise bad(f"strength=precautorio con certainty={certainty}: si la evidencia SOSTIENE "
+                      f"la regla, es `vinculante`. `precautorio` significa 'obliga porque NO "
+                      f"sabemos que sea seguro', y con certeza fuerte eso ya no es cierto")
+    elif precaution:
+        raise bad("tiene `precaution` pero su strength no es precautorio")
 
     # ── R14a · el status solo puede ser uno de los que el registro ENTIENDE ─
     # Cada uno cambia lo que el registro hace, así que un valor desconocido no es una
@@ -523,7 +573,7 @@ def _parse_norm(raw: dict, known_evidence: dict[str, dict], today: date,
                 semantics=raw.get("semantics", ""), branches=tuple(branches),
                 adjudication=adjudication, expires=expires, requires=requires,
                 retirement=retirement, provenance_note=raw.get("provenance_note"),
-                blocking=blocking)
+                blocking=blocking, precaution=precaution)
 
 
 class NormRegistry:
@@ -566,6 +616,24 @@ class NormRegistry:
                 f"colapsan y nadie puede saber cuál cita una norma")
 
         evidencia = {e["id"]: e for e in ev_raw}
+
+        # ── R17 (v0.8.0) · una afirmación `sin_respaldo` NO es evidencia ────
+        # El registro las aceptaba y luego reventaba en la NORMA que las citara, con un
+        # mensaje que culpaba a la norma: si cita evidencia no puede declararse
+        # `sin_respaldo` (R4), y si declara más se salta R15b. No hay salida — la entrada
+        # era inutilizable por construcción y nadie lo decía. El sitio de la queja es
+        # aquí, donde está el error.
+        if schema.evidence_certainty_field and schema.unsupported_level:
+            campo = schema.evidence_certainty_field
+            huecas = sorted(i for i, e in evidencia.items()
+                            if e.get(campo) == schema.unsupported_level)
+            if huecas:
+                raise NormError(
+                    f"evidencia con {campo}={schema.unsupported_level}: {huecas}. Una "
+                    f"afirmación que no respalda nada no es evidencia — ninguna norma puede "
+                    f"citarla sin romper una regla u otra. Si el número no tiene fuente, la "
+                    f"norma va con certainty={schema.unsupported_level} y `provenance_note`, "
+                    f"SIN entrada de evidencia")
 
         # ── R15c · las marcas de recencia no mienten ───────────────────────
         # Un clásico se puede citar; lo que no se puede es citarlo sin marcarlo. Solo se
