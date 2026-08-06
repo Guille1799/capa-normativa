@@ -813,3 +813,103 @@ def test_R18_is_binding_evita_que_el_consumidor_conozca_el_vocabulario():
     norms = reg()._norms
     assert not norms["threshold_by_kind"].is_binding
     assert norms["binding_high"].is_binding
+
+
+# ── v0.9.0 · el paquete deja de apagarse en silencio ────────────────────────────
+#
+# Los tres bugs que motivan esta versión eran EL MISMO: algo se desactiva y nada avisa.
+# Y el más embarazoso es que R13 —"una clave desconocida no se construye"— llevaba desde
+# la v0.4.0 protegiendo las normas y las ramas mientras el fichero que ENCIENDE Y APAGA
+# reglas se tragaba cualquier cosa.
+
+def test_una_ERRATA_en_schema_yaml_ya_no_apaga_reglas_en_silencio(tmp_path):
+    """El caso real, medido en un consumidor: `evidence_certainty_field` escrito
+    `evidence_certanty_field` hacía que el registro cargara igual, con R15b y R17
+    **desactivadas**, sin un solo aviso. La regla que impide que una norma se declare más
+    segura de lo que su fuente sostiene simplemente dejaba de existir.
+    """
+    import yaml as _yaml
+    raw = _yaml.safe_load((FIX / "schema.yaml").read_text("utf-8"))
+    raw["evidence_certanty_field"] = raw.pop("evidence_certainty_field")
+    p = tmp_path / "schema.yaml"
+    p.write_text(_yaml.safe_dump(raw, allow_unicode=True), "utf-8")
+    with pytest.raises(NormError, match="claves desconocidas"):
+        NormRegistry.load(norms_path=FIX / "norms.yaml", evidence_path=FIX / "evidence.yaml",
+                          schema_path=p, today=HOY)
+
+
+def test_el_mensaje_del_schema_SUGIERE_la_clave_correcta(tmp_path):
+    """Un "clave desconocida" a secas obliga a ir a buscar la lista. La sugerencia es la
+    diferencia entre arreglarlo en diez segundos y abrir el código del paquete."""
+    import yaml as _yaml
+    raw = _yaml.safe_load((FIX / "schema.yaml").read_text("utf-8"))
+    raw["recency_horizonn"] = raw.pop("recency_horizon")
+    p = tmp_path / "schema.yaml"
+    p.write_text(_yaml.safe_dump(raw, allow_unicode=True), "utf-8")
+    with pytest.raises(NormError, match=r"¿querías decir 'recency_horizon'\?"):
+        NormRegistry.load(norms_path=FIX / "norms.yaml", evidence_path=FIX / "evidence.yaml",
+                          schema_path=p, today=HOY)
+
+
+def test_format_version_se_acepta_aunque_todavia_no_se_use(tmp_path):
+    """Va declarada desde el día uno A PROPÓSITO: si se añadiera después, la comprobación
+    de arriba la rechazaría — el gate nuevo mordiendo a la versión siguiente."""
+    r = esquema(tmp_path, format_version=1)
+    assert r._norms, "el registro tiene que cargar con `format_version` presente"
+
+
+def test_una_ERRATA_en_un_campo_de_evidencia_no_pasa(tmp_path):
+    """El cuarto sitio del mismo bug, y el peor de todos: `evidence.yaml` no validaba NADA.
+    El día que exista un campo `verified`, un `verifed` haría que una entrada pareciera
+    comprobada — en el único campo cuyo trabajo es decir que algo lo está.
+    """
+    import yaml as _yaml
+    ev = _yaml.safe_load((FIX / "evidence.yaml").read_text("utf-8"))
+    campo = _yaml.safe_load((FIX / "schema.yaml").read_text("utf-8"))["evidence_certainty_field"]
+    ev[0][campo[:-1]] = ev[0].pop(campo)          # se come la última letra
+    p = tmp_path / "evidence.yaml"
+    p.write_text(_yaml.safe_dump(ev, allow_unicode=True), "utf-8")
+    with pytest.raises(NormError, match="parecen una errata"):
+        NormRegistry.load(norms_path=FIX / "norms.yaml", evidence_path=p,
+                          schema_path=FIX / "schema.yaml", today=HOY)
+
+
+def test_un_campo_de_evidencia_NUEVO_si_pasa(tmp_path):
+    """La otra mitad, y es la que mantiene esto agnóstico: el vocabulario de la evidencia es
+    del consumidor (§5.25). Un campo que NO se parece a ninguno declarado es vocabulario
+    propio y tiene que entrar sin pedir permiso — si no, el paquete se estaría apropiando
+    del esquema de datos de su inquilino."""
+    import yaml as _yaml
+    ev = _yaml.safe_load((FIX / "evidence.yaml").read_text("utf-8"))
+    ev[0]["exact"] = "the quick brown fox"
+    ev[0]["prefix"] = "…"
+    ev[0]["revisado_por"] = "guille"
+    p = tmp_path / "evidence.yaml"
+    p.write_text(_yaml.safe_dump(ev, allow_unicode=True), "utf-8")
+    r = NormRegistry.load(norms_path=FIX / "norms.yaml", evidence_path=p,
+                          schema_path=FIX / "schema.yaml", today=HOY)
+    assert r._norms, "un campo nuevo de evidencia no puede bloquear la carga"
+
+
+def test_la_version_del_modulo_y_la_del_paquete_NO_pueden_divergir():
+    """Estaban divergidas: `__version__` decía **0.7.0** con el wheel en **0.8.0**. Un
+    consumidor que mire la versión para saber si puede usar una regla obtiene la respuesta
+    equivocada — y el paquete lleva dos versiones mintiendo sobre sí mismo.
+
+    ⚠️ La receta de PyPA es comparar contra `importlib.metadata`, y **aquí no vale**: el
+    `conftest` inyecta `src/` a propósito (los tests miden ESTE repo), mientras
+    `importlib.metadata` lee la copia INSTALADA. Comparar las dos cosas hace que el test
+    falle siempre que el repo va por delante de la instalación, que es el estado normal
+    mientras se desarrolla — un test que falla por el motivo equivocado se acaba borrando.
+    La fuente de verdad del wheel es `pyproject.toml`, así que es contra eso.
+    (La comprobación instalado-vs-declarado es del CONSUMIDOR, y allí ya existe.)
+    """
+    import re
+    from pathlib import Path
+    import capa_normativa
+
+    pyproject = (Path(__file__).resolve().parent.parent / "pyproject.toml").read_text("utf-8")
+    declarada = re.search(r'^version = "([^"]+)"', pyproject, re.MULTILINE).group(1)
+    assert capa_normativa.__version__ == declarada, (
+        f"__init__.py dice {capa_normativa.__version__} y pyproject.toml dice {declarada}. "
+        f"El wheel se construye con la de pyproject: el módulo mentiría a sus consumidores.")

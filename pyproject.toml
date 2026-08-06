@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "capa-normativa"
-version = "0.8.0"
+version = "0.9.0"
 description = "Registro normativo: conocimiento externo que gobierna código, como datos verificables"
 readme = "README.md"
 requires-python = ">=3.10"
@@ -18,3 +18,7 @@ dev = ["pytest>=7.0"]
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/capa_normativa"]
+
+# PEP 561: sin este marcador en el WHEEL, las anotaciones del paquete se ignoran en
+# silencio en los proyectos que lo usan. `packages` no lo incluye por si solo.
+force-include = { "src/capa_normativa/py.typed" = "capa_normativa/py.typed" }

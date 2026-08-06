@@ -87,6 +87,14 @@ class Schema:
     @classmethod
     def load(cls, path: Path) -> "Schema":
         raw = yaml.safe_load(path.read_text("utf-8"))
+        # ── R13 aplicado al PROPIO ESQUEMA (v0.9.0) ────────────────────────
+        # El agujero más embarazoso del paquete: R13 rechaza una clave desconocida en una
+        # norma o en una rama desde la v0.4.0, y este fichero —el que ENCIENDE Y APAGA
+        # reglas— se las tragaba. Una errata de UNA letra en `evidence_certainty_field`
+        # desactivaba R15b y R17 **sin un solo aviso**: el registro cargaba, y la regla
+        # que impide que una norma se declare más segura de lo que su fuente sostiene
+        # dejaba de existir. La puerta blindada y la ventana abierta al lado.
+        _check_keys(raw, _SCHEMA_KEYS, "en schema.yaml", NormError)
         scale = tuple(raw["certainty_scale"])
         for key in ("weak_from", "unsupported_level"):
             if raw.get(key) and raw[key] not in scale:
@@ -352,6 +360,16 @@ _OBLIGAN = frozenset({"vinculante", "precautorio"})
 _EMITEN = frozenset({"vigente"})
 
 
+# Claves del ESQUEMA. `format_version` entra ya declarada aunque todavía no se use: si se
+# añadiera después, la propia comprobación de arriba la rechazaría — el gate nuevo mordiendo
+# a la fase siguiente.
+_SCHEMA_KEYS = frozenset({
+    "certainty_scale", "weak_from", "wildcards", "subject_dimensions", "unsupported_level",
+    "evidence_certainty_field", "evidence_year_field", "evidence_recent_field",
+    "recency_horizon", "format_version",
+})
+
+
 def _check_keys(raw: dict, permitidas: frozenset[str], donde: str, bad) -> None:
     sobran = sorted(set(raw) - permitidas)
     if not sobran:
@@ -601,6 +619,31 @@ class NormRegistry:
 
         schema = Schema.load(_p(schema_path, "schema.yaml"))
         ev_raw = yaml.safe_load(_p(evidence_path, "evidence.yaml").read_text("utf-8")) or []
+
+        # ── R13 aplicado a la EVIDENCIA (v0.9.0) — el cuarto sitio, y el peor ──
+        # Aquí NO se puede cerrar el vocabulario: los campos de la evidencia son del
+        # consumidor (§5.25, y es lo que mantiene esto agnóstico). Pero eso no obliga a
+        # tragarse una ERRATA. Un `certza` o un `verifed` no es vocabulario propio: es un
+        # campo declarado escrito mal, y el efecto es que la comprobación que depende de
+        # él **se apaga sin avisar** — en el único sitio donde eso significa que algo
+        # parece comprobado y no lo está.
+        # Solo se queja de lo que se PARECE a un campo declarado: un nombre nuevo pasa.
+        _conocidas = {"id"} | {c for c in (schema.evidence_certainty_field,
+                                           schema.evidence_year_field,
+                                           schema.evidence_recent_field) if c}
+        erratas = []
+        for e in ev_raw:
+            for k in e:
+                if k in _conocidas:
+                    continue
+                cerca = difflib.get_close_matches(str(k), sorted(_conocidas), n=1, cutoff=0.7)
+                if cerca:
+                    erratas.append(f"{e.get('id', '?')}: '{k}' (¿'{cerca[0]}'?)")
+        if erratas:
+            raise NormError(
+                f"claves de evidencia que parecen una errata: {'; '.join(erratas)}. Un campo "
+                f"declarado escrito mal no da error — apaga en silencio la regla que lo usa. "
+                f"Si el nombre es intencionado y no un typo, decláralo en schema.yaml")
 
         # ── R15a · los ids de la evidencia son ÚNICOS ──────────────────────
         # Antes esto era un `set` a secas, así que dos entradas DISTINTAS con el mismo id
