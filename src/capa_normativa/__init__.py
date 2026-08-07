@@ -26,6 +26,6 @@ from .registry import (
     Schema,
 )
 
-__version__ = "0.9.0"
+__version__ = "0.9.1"
 __all__ = ["NormRegistry", "Norm", "Branch", "Resolution", "Schema",
            "NormError", "RetiredNormError", "BlockedNormError"]

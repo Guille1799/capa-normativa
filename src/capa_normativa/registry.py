@@ -335,7 +335,7 @@ def _check_condition(key: str, value: Any, schema: Schema, bad, i: int) -> None:
 # devolvía la certeza de la norma. Y una errata en `value` (`valeu: 55.0`) hacía que la
 # norma cargara y emitiera None como si fuera una respuesta deliberada.
 _NORM_KEYS = frozenset({
-    "value", "evidence",          # v0.9.0 · la forma constante (sin `branches`)
+    "value", "evidence", "note",  # v0.9.0 · la forma constante (sin `branches`)
     "slug", "title", "status", "strength", "certainty", "unit", "semantics",
     "branches", "adjudication", "expires", "requires", "retirement", "provenance_note",
     "blocking", "precaution",
@@ -507,7 +507,8 @@ def _parse_norm(raw: dict, known_evidence: dict[str, dict], today: date,
         raise bad("tiene `value`/`evidence` en la norma Y `branches`: o es una constante o "
                   "ramifica, no las dos. Si la rama no discrimina nada, quita el `when`")
     if constante:
-        raw = dict(raw, branches=[{"value": raw.get("value"), "evidence": raw.get("evidence")}])
+        raw = dict(raw, branches=[{"value": raw.get("value"), "evidence": raw.get("evidence"),
+                                   "note": raw.get("note")}])
 
     branches: list[Branch] = []
     for i, b in enumerate(raw.get("branches") or []):

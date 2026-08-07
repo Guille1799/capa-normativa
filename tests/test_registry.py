@@ -1002,3 +1002,14 @@ def test_requires_sigue_siendo_imposible_en_una_constante(tmp_path):
     se cae solo, y conviene que quede fijado."""
     with pytest.raises(NormError, match="ninguna rama ramifica"):
         _const(tmp_path, value=55.0, requires=["sex"])
+
+
+def test_una_constante_puede_llevar_NOTE(tmp_path):
+    """Lo cazó la migración real del primer inquilino, no la lectura: `note` estaba en
+    `_BRANCH_KEYS` y no en `_NORM_KEYS`, así que al subir una constante a la forma nueva su
+    nota —el porqué del número— era una clave desconocida y el registro no cargaba.
+
+    Y la nota importa más aquí que en una rama: en una constante es lo ÚNICO que queda del
+    razonamiento, porque ya no hay un `when` que explique a qué caso aplica."""
+    r = _const(tmp_path, value=55.0, note="por esto y por lo otro")
+    assert r._norms["cte"].branches[0].note == "por esto y por lo otro"
