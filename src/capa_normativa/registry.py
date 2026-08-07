@@ -245,6 +245,9 @@ class Norm:
     requires: tuple[str, ...] = ()
     retirement: dict[str, Any] | None = None
     provenance_note: str | None = None
+    # v0.9.0 · True si la norma NO ramifica: un valor con procedencia, no una decisión.
+    # Es lo que permite al consumidor distinguir "no hay sujeto" de "no te conozco".
+    constant: bool = False
     blocking: dict[str, Any] | None = None
     precaution: str | None = None
 
@@ -332,6 +335,7 @@ def _check_condition(key: str, value: Any, schema: Schema, bad, i: int) -> None:
 # devolvía la certeza de la norma. Y una errata en `value` (`valeu: 55.0`) hacía que la
 # norma cargara y emitiera None como si fuera una respuesta deliberada.
 _NORM_KEYS = frozenset({
+    "value", "evidence",          # v0.9.0 · la forma constante (sin `branches`)
     "slug", "title", "status", "strength", "certainty", "unit", "semantics",
     "branches", "adjudication", "expires", "requires", "retirement", "provenance_note",
     "blocking", "precaution",
@@ -486,9 +490,35 @@ def _parse_norm(raw: dict, known_evidence: dict[str, dict], today: date,
     if not unsupported and raw.get("provenance_note"):
         raise bad("`provenance_note` solo se usa cuando NO hay evidencia; aquí cita la evidencia")
 
+    # ── v0.9.0 · la forma CONSTANTE: un valor sin ramas ────────────────────
+    # Medido en el primer inquilino: **el 54 % de las normas no ramifica por nada** — son
+    # un número con procedencia y caducidad, escrito con la ceremonia de una rama
+    # `{sex: any}` cuya dimensión el autor elegía a capricho (`sex` ×18, `event` ×12,
+    # `modality` ×8: si el eje llevara información no se podría elegir así).
+    #
+    # El molde hace TRES cosas —ramificar por el sujeto, declarar procedencia, y caducar—
+    # y **solo la primera exige un sujeto**. Acopladas, un proyecto que quiera procedencia
+    # y caducidad sin ramificación paga una rama vacía. Aquí se separan.
+    #
+    # Se implementa sintetizando la rama, no salteándola: así R4, R15b y el resto siguen
+    # mirando exactamente lo mismo, y esta forma no abre una puerta de atrás.
+    constante = "value" in raw or "evidence" in raw
+    if constante and raw.get("branches"):
+        raise bad("tiene `value`/`evidence` en la norma Y `branches`: o es una constante o "
+                  "ramifica, no las dos. Si la rama no discrimina nada, quita el `when`")
+    if constante:
+        raw = dict(raw, branches=[{"value": raw.get("value"), "evidence": raw.get("evidence")}])
+
     branches: list[Branch] = []
     for i, b in enumerate(raw.get("branches") or []):
         _check_keys(b, _BRANCH_KEYS, f"rama #{i}", bad)
+        # `when: {}` explícito NO es la forma constante: es una rama que no discrimina, y
+        # R16d no la ve (filtra con `if b.when`), así que DOS de ellas cargaban y ganaba la
+        # última del fichero — el bug que R16d existe para cerrar, en la forma que esta
+        # versión vuelve canónica. Verificado en vivo antes de cerrarlo (55.0 y 99.0 → 99.0).
+        if "when" in b and not b["when"]:
+            raise bad(f"rama #{i} con `when` vacío: no discrimina nada y dos así se pisan en "
+                      f"silencio. Si es una constante, quita `branches` y pon `value` en la norma")
         ev = tuple(b.get("evidence") or ())
         if not ev and not unsupported:
             raise bad(f"rama #{i} sin evidencia (si de verdad no la hay, declara "
@@ -509,7 +539,7 @@ def _parse_norm(raw: dict, known_evidence: dict[str, dict], today: date,
         branches.append(Branch(when=dict(b.get("when") or {}), value=b.get("value"),
                                evidence=ev, note=b.get("note")))
     if not branches:
-        raise bad("sin ramas: una norma sin valor no es una norma")
+        raise bad("sin ramas y sin `value`: una norma sin valor no es una norma. Si es una constante, declara `value` (y su `evidence` o su `provenance_note`) en la norma")
 
     # ── R15b · la certeza NO puede superar a la de su evidencia ────────────
     # Hasta la v0.6.0 la certeza era AUTODECLARADA y no estaba anclada a nada, así que R1
@@ -591,6 +621,7 @@ def _parse_norm(raw: dict, known_evidence: dict[str, dict], today: date,
                 semantics=raw.get("semantics", ""), branches=tuple(branches),
                 adjudication=adjudication, expires=expires, requires=requires,
                 retirement=retirement, provenance_note=raw.get("provenance_note"),
+                constant=constante,
                 blocking=blocking, precaution=precaution)
 
 
@@ -766,6 +797,14 @@ class NormRegistry:
         # edad coincidía con la guarda del propio código y no mordía — por suerte, no por
         # diseño: en cualquier dimensión donde el cero signifique algo, mentía.
         missing = tuple(r for r in norm.requires if subject.get(r) is None)
+
+        # v0.9.0 · una CONSTANTE no tiene sujeto que desconocer. Sin este atajo su única
+        # rama (sintetizada, `when` vacío) satisfaría el `all()` de abajo y saldría marcada
+        # `is_fallback=True` — o sea, el registro diría "he aplicado la rama del sujeto
+        # desconocido" del 54 % de las normas, y `__str__` imprimiría "(rama por defecto)"
+        # para todas. Es la diferencia entre "no te conozco" y "aquí no hay a quién conocer".
+        if norm.constant:
+            return self._mk(norm, norm.branches[0], is_fallback=False, missing=missing)
 
         fallback: Branch | None = None
         for b in norm.branches:

@@ -913,3 +913,92 @@ def test_la_version_del_modulo_y_la_del_paquete_NO_pueden_divergir():
     assert capa_normativa.__version__ == declarada, (
         f"__init__.py dice {capa_normativa.__version__} y pyproject.toml dice {declarada}. "
         f"El wheel se construye con la de pyproject: el módulo mentiría a sus consumidores.")
+
+
+# ── v0.9.0 · la forma CONSTANTE ─────────────────────────────────────────────────
+#
+# Medido en el primer inquilino: el 54 % de las normas no ramifica por nada. Escribían
+# `when: {sex: any}` como peaje, y la dimensión se elegía a capricho (`sex` ×18, `event`
+# ×12, `modality` ×8) — si el eje llevara información, no se podría elegir así.
+
+def _const(tmp_path, **campos):
+    """Una norma constante mínima, escrita en el YAML como se escribiría de verdad."""
+    import yaml as _yaml
+    base = {"slug": "cte", "title": "constante", "status": "vigente",
+            "strength": "condicional", "certainty": "baja", "unit": "u",
+            "semantics": "umbral", "expires": "2027-12-31", "evidence": ["EV-001"]}
+    base.update(campos)
+    base = {k: v for k, v in base.items() if v is not None}
+    p = tmp_path / "norms.yaml"
+    p.write_text(_yaml.safe_dump([base], allow_unicode=True), "utf-8")
+    return NormRegistry.load(norms_path=p, evidence_path=FIX / "evidence.yaml",
+                             schema_path=FIX / "schema.yaml", today=HOY)
+
+
+def test_una_norma_puede_ser_UN_VALOR_sin_ramas(tmp_path):
+    """Lo que compra la v0.9.0: procedencia y caducidad sin pagar una ramificación falsa."""
+    r = _const(tmp_path, value=55.0)
+    res = r.resolve("cte")
+    assert res.value == 55.0 and res.evidence == ("EV-001",)
+    assert r._norms["cte"].constant is True
+
+
+def test_una_constante_NO_se_marca_como_sujeto_desconocido(tmp_path):
+    """El arreglo semántico, y no es cosmético: sin él, el 54 % del registro respondería
+    `is_fallback=True` — «he aplicado la rama del sujeto desconocido»— y `__str__` diría
+    "(rama por defecto)". No es lo mismo *no te conozco* que *aquí no hay a quién conocer*:
+    lo primero es un aviso de que falta un dato, y un aviso que sale siempre no avisa."""
+    res = _const(tmp_path, value=55.0).resolve("cte")
+    assert res.is_fallback is False
+    assert res.matched == {}
+    assert "rama por defecto" not in str(res)
+
+
+def test_una_constante_SIGUE_sujeta_a_todas_las_reglas(tmp_path):
+    """La forma nueva no puede ser una puerta de atrás. Se implementa SINTETIZANDO la rama,
+    no salteándola, así que R4 y R15b miran exactamente lo mismo que antes."""
+    with pytest.raises(NormError, match="sin evidencia"):
+        _const(tmp_path, value=55.0, evidence=None)          # R4
+    with pytest.raises(NormError, match="evidencia inexistente"):
+        _const(tmp_path, value=55.0, evidence=["EV-NO-EXISTE"])
+    with pytest.raises(NormError, match="MEJOR evidencia"):
+        _const(tmp_path, value=55.0, certainty="alta")        # R15b
+    with pytest.raises(NormError, match="no puede ser"):
+        _const(tmp_path, value=55.0, certainty="sin_respaldo",
+               provenance_note="x")                           # R4: sin_respaldo con evidencia
+
+
+def test_constante_y_ramas_a_la_vez_no_se_construye(tmp_path):
+    """O es una constante o ramifica. Las dos cosas es un estado ambiguo, y el registro no
+    tiene que adivinar cuál gana."""
+    with pytest.raises(NormError, match="no las dos"):
+        _const(tmp_path, value=55.0,
+               branches=[{"when": {"sex": "any"}, "value": 1.0, "evidence": ["EV-001"]}])
+
+
+def test_una_norma_sin_valor_y_sin_ramas_sigue_sin_existir(tmp_path):
+    """El guard de siempre, con el mensaje ampliado para nombrar la salida nueva."""
+    with pytest.raises(NormError, match="sin ramas y sin `value`"):
+        _const(tmp_path, evidence=None, branches=[])
+
+
+def test_dos_ramas_con_when_VACIO_ya_no_se_pisan_en_silencio(tmp_path):
+    """🔴 Bug VIVO hasta la v0.9.0, verificado antes de cerrarlo: dos ramas `when: {}` con
+    valores 55.0 y 99.0 **cargaban**, y `resolve()` devolvía 99.0 — ganaba la última del
+    fichero. R16d no las veía porque filtra con `if b.when`, y una rama vacía no es ni
+    comodín ni concreta para ese filtro.
+
+    Es exactamente lo que R16d existe para impedir (que el ORDEN decida el valor), en la
+    forma que esta misma versión convierte en canónica. Cerrarlo iba PRIMERO."""
+    with pytest.raises(NormError, match="`when` vacío"):
+        _const(tmp_path, evidence=None,
+               branches=[{"when": {}, "value": 55.0, "evidence": ["EV-001"]},
+                         {"when": {}, "value": 99.0, "evidence": ["EV-001"]}])
+
+
+def test_requires_sigue_siendo_imposible_en_una_constante(tmp_path):
+    """No hace falta tocar nada: R7 ya exige que lo declarado en `requires` sea una
+    dimensión por la que alguna rama ramifique. Sin ramas, no hay ninguna. El caso feo
+    se cae solo, y conviene que quede fijado."""
+    with pytest.raises(NormError, match="ninguna rama ramifica"):
+        _const(tmp_path, value=55.0, requires=["sex"])
