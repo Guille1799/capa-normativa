@@ -21,10 +21,15 @@ from __future__ import annotations
 from .hallazgo import Hallazgo
 from .punteros import revisar_punteros
 from .sintaxis import revisar_sintaxis
+from .trinquete import Entrada, Trinquete
 
-__all__ = ["Hallazgo", "revisar_punteros", "revisar_sintaxis", "DETECTORES"]
+__all__ = ["Hallazgo", "revisar_punteros", "revisar_sintaxis",
+           "Trinquete", "Entrada", "DETECTORES"]
 
-#: Registro de detectores. Añadir uno aquí es lo que lo hace visible al CLI.
+#: Detectores que el CLI puede correr sobre una ruta, sin configuración.
+#: `Trinquete` NO está aquí a propósito: necesita un baseline, un tope y el extractor del
+#: inquilino, así que es API, no subcomando. Meterlo aquí exigiría inventarle un formato de
+#: configuración antes de tener un segundo consumidor que lo justifique.
 DETECTORES = {
     "punteros": revisar_punteros,
     "sintaxis": revisar_sintaxis,
