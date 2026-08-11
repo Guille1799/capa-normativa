@@ -129,6 +129,51 @@ def test_todos_los_patrones_son_regex_compilados():
         assert hasattr(patron, "search"), nombre
 
 
+def test_coge_el_formato_moderno_sk_proj(tmp_path: Path):
+    """`sk-proj-…` lleva guiones dentro. El patrón anterior paraba en el primer guion y no
+    veía ninguna clave de OpenAI emitida después del cambio de formato."""
+    falso = "sk-" + "proj-" + "AbCd1234" + "_efGH-5678" + "ijKL90mn"
+    repo = _repo_git(tmp_path, {"c.py": f'K = "{falso}"\n'})
+    assert falso in (repo / "c.py").read_text(encoding="utf-8"), "la mutación no entró"
+    assert len(revisar_secretos(repo)) == 1, "no ve el formato moderno de OpenAI"
+
+
+def test_NO_salta_con_palabras_que_terminan_en_sk(tmp_path: Path):
+    """La trampa que abre el guion: `task-`, `disk-`, `risk-` contienen un `sk-` seguido de
+    20+ caracteres válidos. El `\\b` del patrón es lo único que separa ampliar cobertura de
+    fabricar ruido, así que se verifica."""
+    repo = _repo_git(tmp_path, {
+        "a.py": "clase = 'task-management-controller-factory'\n",
+        "b.py": "modo = 'disk-usage-monitoring-daemon'\n",
+        "c.md": "El modelo `risk-adjusted-returns-estimator` no es una clave.\n",
+    })
+    assert revisar_secretos(repo) == [], "el guion en la clase abrió un falso positivo"
+
+
+def test_patrones_nuevos_de_google_y_supabase(tmp_path: Path):
+    falso_aiza = "AIza" + "B" * 35
+    falso_aq = "AQ." + "Ab8" + "C" * 44
+    falso_sb = "sb" + "_secret_" + "D" * 24
+    repo = _repo_git(tmp_path, {
+        "g1.env.example": f"GEMINI={falso_aiza}\n",
+        "g2.md": f"clave: {falso_aq}\n",
+        "s.py": f'K = "{falso_sb}"\n',
+    })
+    ficheros = {h.fichero for h in revisar_secretos(repo)}
+    assert len(ficheros) == 3, f"falta algún patrón nuevo: {ficheros}"
+
+
+def test_el_nombre_de_variable_SUPABASE_no_es_un_secreto(tmp_path: Path):
+    """Guardia de regresión de una medición, no una opinión: `SUPABASE.{0,20}(key|KEY)` se
+    propuso como patrón y se rechazó porque daba 35 aciertos y los 35 eran falsos. Si alguien
+    lo vuelve a añadir, esto lo para."""
+    repo = _repo_git(tmp_path, {
+        ".env.example": "SUPABASE_URL=https://ejemplo.supabase.co\nSUPABASE_KEY=tu-clave-aqui\n",
+        "cfg.py": 'SUPABASE_SERVICE_KEY = os.environ["SUPABASE_SERVICE_KEY"]\n',
+    })
+    assert revisar_secretos(repo) == [], "el nombre de la variable no es la credencial"
+
+
 def test_todo_hallazgo_dice_que_hacer(tmp_path: Path):
     repo = _repo_git(tmp_path, {"c.py": f'K = "{FALSO_GROQ}"\n'})
     for h in revisar_secretos(repo):

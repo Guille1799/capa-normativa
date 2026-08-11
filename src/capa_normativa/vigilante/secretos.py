@@ -37,15 +37,33 @@ from pathlib import Path
 from .hallazgo import Hallazgo
 
 #: Solo prefijos publicados por sus emisores. Precisión sobre cobertura, a propósito.
+#:
+#: Cada patrón nuevo se mide antes de entrar: se corre sobre los 8 repos reales del usuario y
+#: solo pasa si no produce falsos positivos. La medición del 2026-08-11 rechazó por eso el
+#: `SUPABASE.{0,20}(key|KEY)` que se había propuesto: **35 aciertos, los 35 falsos** (nombres
+#: de variable en código y placeholders de `.env.example`). Un patrón así no añade cobertura,
+#: apaga el detector — que es el modo de fallo que este módulo existe para no repetir.
 PATRONES: dict[str, re.Pattern[str]] = {
     "groq": re.compile(r"gsk_[A-Za-z0-9]{20,}"),
     "github-pat-clasico": re.compile(r"gh[pousr]_[A-Za-z0-9]{36}"),
     "github-pat-fino": re.compile(r"github_pat_[A-Za-z0-9_]{22,}"),
     "anthropic": re.compile(r"sk-ant-[A-Za-z0-9_-]{20,}"),
-    "openai": re.compile(r"sk-(?!ant-)[A-Za-z0-9]{20,}"),
+    # El `-` en la clase cubre el formato moderno `sk-proj-…`, que el patrón anterior no veía.
+    # El `\b` es lo que hace que eso no cueste falsos positivos: sin él, `task-management-…`
+    # y `disk-usage-…` contienen un `sk-` seguido de 20+ caracteres válidos.
+    "openai": re.compile(r"\bsk-(?!ant-)[A-Za-z0-9_-]{20,}"),
     "aws-access-key": re.compile(r"AKIA[0-9A-Z]{16}"),
     "slack-bot": re.compile(r"xox[baprs]-[0-9A-Za-z-]{10,}"),
     "clave-privada": re.compile(r"-----BEGIN [A-Z ]{0,20}PRIVATE KEY-----"),
+    # Estaba en el hook al que esto sustituye y se había perdido al reescribirlo: una
+    # regresión de cobertura, no una decisión.
+    "google-api": re.compile(r"AIza[0-9A-Za-z_-]{35}"),
+    # No es un prefijo tan publicado como los demás, y entra igual porque es la forma exacta
+    # de la clave de Gemini que SOBREVIVIÓ a la redacción del incidente de 2026-06-26 y sigue
+    # hoy en un fichero versionado. Cobertura pagada con evidencia: 1 acierto en 8 repos, real.
+    "google-oauth": re.compile(r"\bAQ\.[A-Za-z0-9_-]{40,}"),
+    "supabase-secret": re.compile(r"sb_secret_[A-Za-z0-9_-]{20,}"),
+    "supabase-pat": re.compile(r"sbp_[a-f0-9]{40}"),
 }
 
 _SUPRESION = re.compile(r"#\s*(?:nosec|noqa)\b")
