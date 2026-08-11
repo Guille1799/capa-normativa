@@ -386,29 +386,25 @@ el umbral de certeza débil, hereda gratis: no puede ser vinculante y **caduca s
 
 ## Instalación
 
-**Último tag publicado: `v0.9.1`** — solo el registro, **sin el vigilante y sin CLI**.
-
 ```bash
-pip install git+https://github.com/Guille1799/capa-normativa.git@v0.9.1
+pip install git+https://github.com/Guille1799/capa-normativa.git@v0.10.0
 ```
 
-⚠️ **La `v0.10.0` —la que trae el vigilante y el comando— está en la rama
-`feat/vigilante-modulo` y NO está publicada todavía.** Hasta que se etiquete y se empuje, la única
-forma de usar el vigilante es desde el repo local:
+Instala las dos cosas: el registro (`from capa_normativa import NormRegistry`) y el comando
+`capa-normativa-vigilante`.
+
+**Verificado el 2026-08-11 en un entorno virtual limpio**, no supuesto: se instaló desde el tag, el
+ejecutable apareció en `Scripts/`, y los dos módulos se importan (`__version__ == "0.10.0"`, los tres
+detectores registrados y `Trinquete` disponible). Sin dependencias más allá de `PyYAML`, que solo
+necesita el registro.
+
+<details>
+<summary>Sin instalar nada, desde un clon</summary>
 
 ```bash
-# desde un clon de este repo, en la rama feat/vigilante-modulo
-pip install -e .                                    # deja el comando disponible
-# o sin instalar nada:
 PYTHONPATH=src python -m capa_normativa.vigilante.cli <ruta> --detector sintaxis
 ```
-
-Una vez publicada, `pip install …@v0.10.0` instala las dos cosas: el registro
-(`from capa_normativa import NormRegistry`) y el comando `capa-normativa-vigilante`.
-
-*Esta nota existe porque al escribir este README se puso `@v0.10.0` como si el tag existiera. No
-existía. Es la clase de fallo que el propio paquete persigue, cometida en su documentación — y la
-cazó comprobar la afirmación en vez de darla por buena.*
+</details>
 
 ## Migrar
 
