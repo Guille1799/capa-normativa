@@ -22,6 +22,91 @@ r.certainty    # 'baja'  → nunca podrá ser una recomendación fuerte
 r.is_fallback  # False   → hubo rama específica para este sujeto
 ```
 
+---
+
+# Dos módulos
+
+Un artefacto, dos módulos, y **no se importan entre sí** (verificado por un test que lo comprueba
+por AST — una frontera que no se verifica es una frontera que deriva):
+
+| Módulo | Qué hace | Cuándo corre |
+|---|---|---|
+| **`capa_normativa`** — el registro | los números viven como datos con procedencia y caducidad. **Fail-fast**: si algo está mal, el programa no arranca | en tu proceso, al arrancar |
+| **`capa_normativa.vigilante`** — el vigilante | chequeos **deterministas** sobre un repo. **Enumera** en vez de parar en el primer error | en pre-commit, en CI, o a mano |
+
+## El vigilante — empieza por aquí si solo quieres los chequeos
+
+No necesita el registro. Funciona en cualquier repo, incluso sin un solo `.yaml`.
+
+```bash
+capa-normativa-vigilante <ruta>                      # todos los detectores
+capa-normativa-vigilante <ruta> --detector sintaxis  # uno solo
+capa-normativa-vigilante <dir-de-md> --detector punteros --tambien ../otro/docs
+capa-normativa-vigilante <ruta> --json               # salida para consumo por máquina
+```
+
+**Contrato de salida**, porque el consumidor previsto es un agente sin contexto:
+
+| Código | Significa | Qué hacer |
+|---|---|---|
+| **0** | limpio | nada |
+| **1** | hay hallazgos | arreglarlos: cada hallazgo **dice qué hacer** |
+| **2** | no se pudo ejecutar | investigar: «falló» y «encontró cosas» exigen reacciones opuestas |
+
+### Los detectores
+
+| Código | Caza | Nota |
+|---|---|---|
+| **`SYN001`** | un `.py` versionado que no parsea | encontró un `SyntaxError` de **dos meses** que ningún otro mecanismo había visto |
+| **`PTR001`** | un puntero `§N.M` que no resuelve | no comprueba que la sección *diga* lo atribuido —eso no es automatizable—: comprueba que **exista** |
+| **`SEC001`** | una credencial con forma reconocible en un fichero versionado | escanea **todo** lo versionado, informes incluidos. El hallazgo **nunca contiene el secreto**. `# nosec` al final de la línea lo suprime |
+| **`TRI001`-`TRI007`** | el **trinquete**: una deuda declarada que solo puede decrecer | es API, no subcomando: necesita tu baseline y tu extractor. Ver abajo |
+
+### El trinquete
+
+Un gate absoluto sale rojo el día 1 y **se desactiva**. El trinquete se calibra sobre el estado
+actual y solo prohíbe empeorar, así que entra en un repo con deuda sin bloquearlo. Y no muere de
+fatiga: no pide atención por evento, pide que un número no suba.
+
+```python
+from capa_normativa.vigilante import Trinquete
+
+t = Trinquete("tests/const_baseline.json", tope=206,
+              vocabulario={"norma", "tecnica", "mundo", "clasificador"},
+              que_migrar_a="engine/norms/norms.yaml")
+
+for h in t.revisar(mi_extractor_de_constantes()):
+    print(h)          # cada uno con su código estable y su arreglo
+```
+
+El **extractor y el vocabulario son tuyos**: este módulo no sabe qué constantes tiene tu dominio.
+Comprueba seis cosas, y **cada una salió de un fallo real**: entradas nuevas · valores cambiados sin
+cambiar el nombre · **entradas obsoletas** (una entrada que ya no existe es un *permiso de
+reentrada*: sin esta comprobación, lo migrado se puede volver a escribir a mano sin que nada se
+queje) · el tope superado · entradas sin explicar por qué siguen ahí · y **el tope flojo**, porque un
+tope por encima del recuento real es decoración.
+
+Lo que **no** puede hacer, y el mensaje lo dice en vez de esconderlo: distinguir *«la deuda creció»*
+de *«el instrumento dejó de estar ciego»*. Eso es intención, y la intención no se calcula.
+
+### Cablearlo a un pre-commit
+
+```bash
+#!/bin/sh
+capa-normativa-vigilante . --detector sintaxis --detector secretos || exit 1
+```
+
+⚠️ **Los hooks locales son cortesía: la copia que de verdad puede bloquear es la de CI.** Un
+pre-commit se salta con `--no-verify` y no existe en el clon de nadie más.
+
+### Por qué determinista y no un LLM
+
+Un detector que oscila **es otra respuesta viva más**: empeora el problema que viene a resolver. Y no
+cuesta tokens, así que sigue funcionando cuando el presupuesto baja. Los módulos del vigilante tienen
+un test que verifica por AST que **no importan nada de red** — la ley se mecaniza, no se confía.
+
+---
+
 ## Estados ilegales que no se pueden construir
 
 Cada uno corresponde a un modo de fallo real y observado:
@@ -290,18 +375,40 @@ el umbral de certeza débil, hereda gratis: no puede ser vinculante y **caduca s
 
 ## Estructura
 
-Tres ficheros en el directorio que le pases:
+**El registro** lee tres ficheros del directorio que le pases:
 
 - `schema.yaml` — la escala de certeza y las dimensiones del sujeto, **declaradas, no
   cableadas**: cada dominio usa las suyas.
 - `evidence.yaml` — lo que dicen las fuentes. **Append-only.** No gobierna nada directamente.
 - `norms.yaml` — lo que *tu* sistema hace. Es lo único que el código puede citar.
 
+**El vigilante** no lee nada de eso: se le pasa una ruta y trabaja sobre lo que git conoce.
+
 ## Instalación
 
+**Último tag publicado: `v0.9.1`** — solo el registro, **sin el vigilante y sin CLI**.
+
 ```bash
-pip install git+https://github.com/Guille1799/capa-normativa.git@v0.8.0
+pip install git+https://github.com/Guille1799/capa-normativa.git@v0.9.1
 ```
+
+⚠️ **La `v0.10.0` —la que trae el vigilante y el comando— está en la rama
+`feat/vigilante-modulo` y NO está publicada todavía.** Hasta que se etiquete y se empuje, la única
+forma de usar el vigilante es desde el repo local:
+
+```bash
+# desde un clon de este repo, en la rama feat/vigilante-modulo
+pip install -e .                                    # deja el comando disponible
+# o sin instalar nada:
+PYTHONPATH=src python -m capa_normativa.vigilante.cli <ruta> --detector sintaxis
+```
+
+Una vez publicada, `pip install …@v0.10.0` instala las dos cosas: el registro
+(`from capa_normativa import NormRegistry`) y el comando `capa-normativa-vigilante`.
+
+*Esta nota existe porque al escribir este README se puso `@v0.10.0` como si el tag existiera. No
+existía. Es la clase de fallo que el propio paquete persigue, cometida en su documentación — y la
+cazó comprobar la afirmación en vez de darla por buena.*
 
 ## Migrar
 
