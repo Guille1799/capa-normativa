@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "capa-normativa"
-version = "0.9.1"
+version = "0.10.0"
 description = "Registro normativo: conocimiento externo que gobierna código, como datos verificables"
 readme = "README.md"
 requires-python = ">=3.10"
@@ -15,6 +15,14 @@ dependencies = ["PyYAML>=6.0"]
 
 [project.optional-dependencies]
 dev = ["pytest>=7.0"]
+
+# Primera superficie de línea de comandos del paquete (hasta hoy `entry_points` estaba vacío,
+# y eso era el muro de adopción: la única interfaz era `load()`+`resolve()` en proceso Python).
+# UNA entrada, no un dispatcher: cuando exista un segundo subcomando (`validate`, `emit`) se
+# decide el despacho. Construir el dispatcher para un solo comando sería la sobre-ingeniería
+# que este proyecto declara como su riesgo principal.
+[project.scripts]
+capa-normativa-vigilante = "capa_normativa.vigilante.cli:main"
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/capa_normativa"]
