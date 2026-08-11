@@ -20,10 +20,11 @@ from __future__ import annotations
 
 from .hallazgo import Hallazgo
 from .punteros import revisar_punteros
+from .secretos import revisar_secretos
 from .sintaxis import revisar_sintaxis
 from .trinquete import Entrada, Trinquete
 
-__all__ = ["Hallazgo", "revisar_punteros", "revisar_sintaxis",
+__all__ = ["Hallazgo", "revisar_punteros", "revisar_secretos", "revisar_sintaxis",
            "Trinquete", "Entrada", "DETECTORES"]
 
 #: Detectores que el CLI puede correr sobre una ruta, sin configuración.
@@ -32,5 +33,6 @@ __all__ = ["Hallazgo", "revisar_punteros", "revisar_sintaxis",
 #: configuración antes de tener un segundo consumidor que lo justifique.
 DETECTORES = {
     "punteros": revisar_punteros,
+    "secretos": revisar_secretos,
     "sintaxis": revisar_sintaxis,
 }
