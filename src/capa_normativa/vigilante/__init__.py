@@ -22,16 +22,23 @@ from .hallazgo import Hallazgo
 from .preguntas import revisar_preguntas
 from .punteros import revisar_punteros
 from .secretos import revisar_secretos
+from .semantica import OPUESTOS, revisar_semantica
 from .sintaxis import revisar_sintaxis
 from .trinquete import Entrada, Trinquete
 
-__all__ = ["Hallazgo", "revisar_preguntas", "revisar_punteros", "revisar_secretos", "revisar_sintaxis",
+__all__ = ["Hallazgo", "revisar_preguntas", "revisar_punteros", "revisar_secretos",
+           "revisar_semantica", "OPUESTOS", "revisar_sintaxis",
            "Trinquete", "Entrada", "DETECTORES"]
 
 #: Detectores que el CLI puede correr sobre una ruta, sin configuración.
 #: `Trinquete` NO está aquí a propósito: necesita un baseline, un tope y el extractor del
 #: inquilino, así que es API, no subcomando. Meterlo aquí exigiría inventarle un formato de
 #: configuración antes de tener un segundo consumidor que lo justifique.
+#:
+#: `revisar_semantica` tampoco, y por el MISMO motivo: necesita el mapa `slug -> semantics` del
+#: registro del inquilino. Podría leerlo del YAML, pero entonces el vigilante conocería el formato
+#: del registro y la frontera del 2026-08-09 pasaría de «no importa» a «no importa, pero parsea sus
+#: ficheros», que es la misma dependencia con otro nombre.
 DETECTORES = {
     "preguntas": revisar_preguntas,
     "punteros": revisar_punteros,

@@ -102,6 +102,60 @@ capa-normativa-vigilante <ruta> --json               # salida para consumo por m
 | **`PTR001`** | un puntero `§N.M` que no resuelve | no comprueba que la sección *diga* lo atribuido —eso no es automatizable—: comprueba que **exista**. Recorre el árbol **en profundidad** (ver el aviso de abajo) |
 | **`SEC001`** | una credencial con forma reconocible en un fichero versionado | escanea **todo** lo versionado, informes incluidos. El hallazgo **nunca contiene el secreto**. `# nosec` al final de la línea lo suprime |
 | **`TRI001`-`TRI007`** | el **trinquete**: una deuda declarada que solo puede decrecer | es API, no subcomando: necesita tu baseline y tu extractor. Ver abajo |
+| **`SEM001`** | una constante cuyo **nombre** dice `..._CAP` y resuelve una norma con `semantics: suelo` (o al revés) | es API: necesita el mapa `slug → semantics` de **tu** registro. Ver abajo |
+
+### `SEM001` — la migración correcta al número equivocado
+
+Es el detector más joven (`v0.13.0`) y nace de un fallo **medido**, no imaginado.
+
+Migrando una constante llamada `_PLANNED_LOAD_CARB_GKG_CAP` —un **tope** de carbohidrato extra— la
+herramienta de triaje la propuso como candidata a la norma `carb_floor_g_per_kg_ffm`, que es un
+**suelo** diario. Los dos valían `1.5`, y la candidatura era razonable: mismo valor, y los nombres
+comparten la palabra `CARB`. Lo único que lo impidió fue leer el comentario del sitio.
+
+Después se midió qué habría pasado sin leerlo. Se hizo la migración equivocada con el ritual
+completo y se corrió el gate del proyecto:
+
+```
+2634 passed, 1 skipped, 1 xfailed
+```
+
+**Verde.** Y se entiende: todo el arnés comprueba que el **valor** no cambie, y el valor era `1.5`
+antes y `1.5` después. **Nada miraba el significado.** El error habría quedado permanente e
+invisible — un techo funcionando como piso, con procedencia falsa y aspecto de estar resuelto.
+
+Peor: la condición que lo hace posible —que los dos números coincidan— es exactamente la condición
+que hace que un triaje por valor te lo proponga. **No es un fallo raro: es el modo de fallo natural
+de este trabajo.**
+
+```python
+from capa_normativa.vigilante import revisar_semantica
+
+# El mapa sale de TU registro en una línea. Se pasa (no se lee) para que el vigilante
+# no conozca el formato del registro: la frontera entre los dos módulos es del paquete.
+mapa = {s: NORMS.norma(s).semantics for s in NORMS.slugs()}
+for h in revisar_semantica("backend", mapa):
+    print(h)
+```
+
+**Cómo se mantiene callado.** Exige **dos** condiciones a la vez: que el nombre traiga una palabra
+de polaridad *semántica*, y que la norma declare la contraria. Sobre un backend real con 81 normas
+da **0 hallazgos** — y encuentra el caso de arriba en cuanto se introduce. Un slug que no esté en tu
+mapa se **ignora en silencio**, así que puedes pasar un mapa parcial sin generar ruido.
+
+`_MIN` y `_MAX` desnudos **no** están en el vocabulario, y es deliberado: en el proyecto de origen
+esa misma tentación marcaba el 100 % de las constantes, porque casi siempre son tamaños de muestra
+(`_MIN_READINGS`). Un señalizador que dispara para todo no señaliza nada.
+
+> ⚠️ **Lo que NO cubre, y conviene tenerlo claro para no confundirlo con cobertura:** dos
+> constantes que responden preguntas distintas cuando **ninguna** se llama tope ni suelo — cuatro
+> dosis de proteína (pre-entreno, post-entreno, pre-sueño…) son todas «gramos de proteína» y para
+> esto son invisibles. Ahí el único defensor sigue siendo **leer el comentario del sitio**. Este
+> detector tapa **una** clase de fallo: la que se pudo hacer determinista.
+
+> ⚠️ **Sin mapa devuelve `[]`.** Es el no-op silencioso, así que **comprueba con un test que tu
+> mapa llega lleno** (`assert len(mapa) >= N`). Un gate que no encuentra sus datos pasa en verde
+> sin haber mirado nada, y ese es el modo de fallo que este paquete existe para impedir.
 
 ### ⚠️ Sobre `PTR001`: qué cuenta como «el corpus»
 
