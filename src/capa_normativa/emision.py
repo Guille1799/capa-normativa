@@ -93,9 +93,13 @@ def recoger(registro: NormRegistry, *, hoy: date | None = None
         rama = n.branches[0]
         fuera.append(Constante(
             slug=n.slug, valor=rama.value, unidad=n.unit,
-            evidencia=tuple(rama.evidence), certeza=n.certainty, fuerza=n.strength,
+            # v0.14.0 · la certeza y la procedencia son de LA RAMA (que en una constante es
+            # la sintetizada, así que para las emitibles de hoy no cambia nada). Antes esto
+            # emitía `n.certainty`, y con procedencia por rama eso volvería a ser la mentira
+            # que la v0.14.0 cierra: exportar un número con la certeza de su hermana.
+            evidencia=tuple(rama.evidence), certeza=rama.certainty, fuerza=n.strength,
             caduca=n.expires.isoformat() if n.expires else None,
-            nota=rama.note or n.provenance_note,
+            nota=rama.note if rama.note is not None else rama.provenance_note,
         ))
     return fuera, omitidas
 

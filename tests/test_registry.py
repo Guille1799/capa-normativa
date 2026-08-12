@@ -363,13 +363,29 @@ def test_un_rango_de_un_solo_punto_sigue_siendo_valido(tmp_path):
 # confianza y no había hecho nada.
 
 
-def test_ilegal_certainty_dentro_de_una_rama(tmp_path):
-    """LA sonda que destapó R13. La certeza por rama es una limitación ABIERTA del molde:
-    lo que no puede pasar es que se acepte y se ignore, porque entonces la limitación deja
-    de ser visible justo para quien intenta saltársela."""
+def test_la_certeza_por_rama_YA_NO_se_ignora_pero_TAMPOCO_es_libre(tmp_path):
+    """LA sonda que destapó R13, reescrita al contrato de la v0.14.0.
+
+    Decía: *«la certeza por rama es una limitación ABIERTA del molde; lo que no puede pasar
+    es que se acepte y se ignore»*. Eso último sigue siendo el punto — pero la limitación se
+    cerró, así que `certainty` en una rama ya no es una clave desconocida: es la forma
+    correcta. Lo que la sonda vigila ahora es que **se lea y se compruebe**, que es lo mismo
+    que vigilaba antes por el otro lado: la certeza sube a `alta` en una rama cuya evidencia
+    es `moderada`, y R15b la para. Si algún día se volviera a ignorar, esto pasaría a verde
+    solo — por eso el mensaje se comprueba, y no solo que falle.
+    """
     def meter(n):
         by_slug(n, "threshold_by_kind")["branches"][0]["certainty"] = "alta"
-    with pytest.raises(NormError, match="claves desconocidas"):
+    with pytest.raises(NormError, match="rama #0 viaja con certainty='alta'"):
+        mutando(tmp_path, meter)
+
+
+def test_una_certeza_de_rama_fuera_de_la_escala_no_se_construye(tmp_path):
+    """La escala la declara el consumidor, así que un valor que no está en ella no es una
+    certeza distinta: es una errata que apagaría R15b y R19 en esa rama."""
+    def meter(n):
+        by_slug(n, "threshold_by_kind")["branches"][0]["certainty"] = "altísima"
+    with pytest.raises(NormError, match="no está en la escala declarada"):
         mutando(tmp_path, meter)
 
 
@@ -550,7 +566,7 @@ def test_ilegal_declarar_mas_certeza_de_la_que_sostiene_la_evidencia(tmp_path):
         x["certainty"] = "alta"                     # su evidencia es moderada/alta…
         for b in x["branches"]:
             b["evidence"] = ["EV-001"]              # …y aquí solo queda la moderada
-    with pytest.raises(NormError, match="MEJOR evidencia que cita es"):
+    with pytest.raises(NormError, match="MEJOR evidencia que ELLA cita es"):
         mutando(tmp_path, inflar)
 
 

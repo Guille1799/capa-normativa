@@ -228,6 +228,12 @@ class Branch:
     value: Any
     evidence: tuple[str, ...]
     note: str | None = None
+    # v0.14.0 · procedencia POR RAMA. Los dos campos son EFECTIVOS, no declarados: si la
+    # rama no dice nada, aquí ya está lo que hereda de la norma. Así nadie aguas abajo
+    # tiene que repetir el `if es None` —que es donde se pierden estas cosas— y `resolve`
+    # entrega la certeza de la rama que de verdad contestó.
+    certainty: str = ""
+    provenance_note: str | None = None
 
 
 @dataclass(frozen=True)
@@ -273,15 +279,20 @@ class Resolution:
     matched: dict[str, str]
     evidence: tuple[str, ...]
     strength: str
-    certainty: str
+    certainty: str             # v0.14.0 · la de LA RAMA que contestó, no la de la norma
     is_fallback: bool          # True = se aplicó la rama del sujeto desconocido
     missing: tuple[str, ...] = ()   # datos del sujeto que faltan (declarados, no adivinados)
+    # De dónde salió ESTE número cuando no lo sostiene nadie. `None` si hay evidencia.
+    provenance_note: str | None = None
 
     def __str__(self) -> str:
         via = " (rama por defecto)" if self.is_fallback else ""
         falta = f" ⚠ falta: {','.join(self.missing)}" if self.missing else ""
+        # Sin la nota, una rama sin respaldo se imprime igual que una respaldada salvo por
+        # `ev=` vacío — y eso se lee como "no me lo han contado", no como "no lo sostiene nadie".
+        proc = f" · {self.provenance_note}" if self.provenance_note else ""
         return (f"{self.slug}={self.value} {self.unit}{via} · {self.matched} · "
-                f"{self.strength}/{self.certainty} · ev={','.join(self.evidence)}{falta}")
+                f"{self.strength}/{self.certainty} · ev={','.join(self.evidence)}{falta}{proc}")
 
 
 # Caracteres que delatan un operador inventado (glob, regex, alternancia, negación).
@@ -334,13 +345,18 @@ def _check_condition(key: str, value: Any, schema: Schema, bad, i: int) -> None:
 # Encontrado intentando poner `certainty` en una rama: se aceptaba, se tiraba, y `resolve`
 # devolvía la certeza de la norma. Y una errata en `value` (`valeu: 55.0`) hacía que la
 # norma cargara y emitiera None como si fuera una respuesta deliberada.
+#
+# v0.14.0 · aquel `certainty` en una rama ya no es una errata: es la forma correcta, y entra
+# en `_BRANCH_KEYS`. Lo que R13 cazó entonces era el silencio, no el campo — se aceptaba y se
+# tiraba. El caso se conserva porque es de donde salió la regla.
 _NORM_KEYS = frozenset({
     "value", "evidence", "note",  # v0.9.0 · la forma constante (sin `branches`)
     "slug", "title", "status", "strength", "certainty", "unit", "semantics",
     "branches", "adjudication", "expires", "requires", "retirement", "provenance_note",
     "blocking", "precaution",
 })
-_BRANCH_KEYS = frozenset({"when", "value", "evidence", "note"})
+_BRANCH_KEYS = frozenset({"when", "value", "evidence", "note",
+                          "certainty", "provenance_note"})
 
 # Los estados que el registro ENTIENDE. No es una etiqueta libre: cada uno cambia lo que
 # hace (si emite, si exige motivo, si caduca), así que uno desconocido es una norma que
@@ -482,13 +498,15 @@ def _parse_norm(raw: dict, known_evidence: dict[str, dict], today: date,
     if adjudication and not adjudication.get("resolution"):
         raise bad("adjudicación sin `resolution`")
 
-    # ── R4 · ramas: toda rama lleva evidencia, y la evidencia debe EXISTIR ──
-    unsupported = (certainty == schema.unsupported_level)
-    if unsupported and not raw.get("provenance_note"):
-        raise bad(f"certainty={certainty} exige `provenance_note`: de dónde salió el número "
-                  f"(y 'nadie lo sabe' es una respuesta válida y útil)")
-    if not unsupported and raw.get("provenance_note"):
-        raise bad("`provenance_note` solo se usa cuando NO hay evidencia; aquí cita la evidencia")
+    # ── R4 (v0.14.0) · la procedencia es DE LA RAMA, no de la norma ────────
+    # Hasta aquí R4 era todo-o-nada a nivel de NORMA, así que *"esta rama está respaldada y
+    # esta otra es convención"* no era representable y una norma mixta tenía que mentir en un
+    # sentido u otro: inflar la certeza de la rama sin respaldo, o borrar el respaldo real de
+    # la otra. Se topó cuatro veces con ello antes de moverlo.
+    #
+    # Lo que se paga está en `resolve()`: la certeza salía de la NORMA, así que el consumidor
+    # recibía la misma le contestara la rama respaldada o la convención.
+    nota_norma = raw.get("provenance_note")
 
     # ── v0.9.0 · la forma CONSTANTE: un valor sin ramas ────────────────────
     # Medido en el primer inquilino: **el 54 % de las normas no ramifica por nada** — son
@@ -520,13 +538,37 @@ def _parse_norm(raw: dict, known_evidence: dict[str, dict], today: date,
         if "when" in b and not b["when"]:
             raise bad(f"rama #{i} con `when` vacío: no discrimina nada y dos así se pisan en "
                       f"silencio. Si es una constante, quita `branches` y pon `value` en la norma")
+        # La certeza EFECTIVA de la rama: la suya si la declara, y si no la de la norma.
+        # `is not None` y no `or`: con `or`, una certeza que fuera cadena vacía —o cualquier
+        # valor falsy que un día entre en la escala— se fundiría con "no la declara".
+        b_cert = b.get("certainty")
+        if b_cert is not None and b_cert not in schema.certainty_scale:
+            raise bad(f"rama #{i}: certainty={b_cert!r} no está en la escala declarada "
+                      f"({'|'.join(schema.certainty_scale)})")
+        cert = b_cert if b_cert is not None else certainty
+        unsupported = (cert == schema.unsupported_level)
+
         ev = tuple(b.get("evidence") or ())
+        b_nota = b.get("provenance_note")
         if not ev and not unsupported:
             raise bad(f"rama #{i} sin evidencia (si de verdad no la hay, declara "
-                      f"certainty={schema.unsupported_level} y su `provenance_note`)")
+                      f"certainty={schema.unsupported_level} EN LA RAMA —o en la norma, si "
+                      f"ninguna tiene respaldo— y su `provenance_note`)")
         if ev and unsupported:
             raise bad(f"rama #{i}: si hay evidencia, la certeza no puede ser "
                       f"{schema.unsupported_level}")
+        if ev and b_nota:
+            raise bad(f"rama #{i}: `provenance_note` solo se usa cuando NO hay evidencia; "
+                      f"aquí cita la evidencia. El matiz de una cita va en `note`")
+        # El PRECIO de declararse sin respaldo: decir de dónde salió el número. La nota de la
+        # norma vale si la rama no trae la suya —es el caso de las convenciones enteras, que
+        # no tienen dos orígenes que distinguir—; lo que no vale es que no haya ninguna.
+        nota_efectiva = b_nota if b_nota is not None else (nota_norma if unsupported else None)
+        if unsupported and not nota_efectiva:
+            raise bad(f"rama #{i} con certainty={schema.unsupported_level} exige "
+                      f"`provenance_note`: de dónde salió el número (y 'nadie lo sabe' es una "
+                      f"respuesta válida y útil). Ponla en la rama, o en la norma si vale "
+                      f"para todas")
         missing = [e for e in ev if e not in known_evidence]
         if missing:
             raise bad(f"rama #{i} cita evidencia inexistente: {missing}")
@@ -538,29 +580,75 @@ def _parse_norm(raw: dict, known_evidence: dict[str, dict], today: date,
         for k, v in (b.get("when") or {}).items():
             _check_condition(k, v, schema, bad, i)
         branches.append(Branch(when=dict(b.get("when") or {}), value=b.get("value"),
-                               evidence=ev, note=b.get("note")))
+                               evidence=ev, note=b.get("note"),
+                               certainty=cert, provenance_note=nota_efectiva))
     if not branches:
         raise bad("sin ramas y sin `value`: una norma sin valor no es una norma. Si es una constante, declara `value` (y su `evidence` o su `provenance_note`) en la norma")
 
-    # ── R15b · la certeza NO puede superar a la de su evidencia ────────────
+    # ── R15b (v0.14.0: POR RAMA) · nadie afirma más de lo que sostiene su fuente ──
     # Hasta la v0.6.0 la certeza era AUTODECLARADA y no estaba anclada a nada, así que R1
     # —"nada vinculante con certeza débil"— se saltaba escribiendo `alta` a mano. Toda la
-    # escala era decorativa. Ahora una norma no puede afirmar más de lo que sostiene su
-    # mejor fuente. Solo se comprueba si el consumidor declara dónde vive la certeza de su
-    # evidencia: el nombre del campo es suyo, no del registro.
+    # escala era decorativa.
+    #
+    # Y hasta la v0.14.0 esto miraba la UNIÓN de la evidencia de todas las ramas
+    # (`{i for b in branches for i in b.evidence}` y luego `min`), o sea la MEJOR fuente de
+    # la norma entera. Con eso, una rama que solo cita una fuente floja **viajaba con la
+    # certeza que sostiene la fuente de su hermana** — la certeza autodeclarada otra vez, un
+    # nivel más abajo. Medido en el primer inquilino: pasaba en una norma `vigente` que
+    # resolvía en producción, y su guarda escrito a mano años después tenía el mismo punto
+    # ciego. Dos veces la misma ceguera no es un descuido: la regla estaba escrita en la
+    # unidad equivocada, porque la norma era la unidad y el sujeto ya no lo es.
+    #
+    # Esto SUSTITUYE a la comprobación de norma, no se suma: si la certeza de la norma es la
+    # de su peor rama (abajo) y ninguna rama infla, la norma tampoco puede.
     campo = schema.evidence_certainty_field
-    if campo and not unsupported:
-        citadas = {i for b in branches for i in b.evidence}
-        certezas = [known_evidence[i][campo] for i in citadas
-                    if i in known_evidence and campo in known_evidence[i]]
-        if certezas:
+    if campo:
+        for i, b in enumerate(branches):
+            certezas = [known_evidence[e][campo] for e in b.evidence
+                        if e in known_evidence and campo in known_evidence[e]]
+            if not certezas:
+                continue
             mejor = min(certezas, key=schema.rank)
-            if schema.rank(certainty) < schema.rank(mejor):
+            if schema.rank(b.certainty) < schema.rank(mejor):
                 raise bad(
-                    f"declara certainty={certainty!r} pero la MEJOR evidencia que cita es "
-                    f"{mejor!r}. La certeza no es una etiqueta libre: es lo que decide si "
-                    f"algo puede ser vinculante, así que no puede afirmar más de lo que la "
-                    f"fuente sostiene")
+                    f"rama #{i} viaja con certainty={b.certainty!r} pero la MEJOR evidencia "
+                    f"que ELLA cita es {mejor!r}. La certeza no es una etiqueta libre: es lo "
+                    f"que decide si algo puede ser vinculante, así que no puede afirmar más "
+                    f"de lo que la fuente sostiene. Si las ramas tienen respaldo desigual, "
+                    f"declara `certainty` en cada una")
+
+    # ── R19 (v0.14.0) · la certeza de la NORMA es la de su rama MÁS DÉBIL ──
+    # La etiqueta de la norma es lo que leen R1 (nada vinculante con certeza débil) y R2 (lo
+    # débil caduca solo), así que si pudiera declararse por encima de su peor rama, la
+    # procedencia por rama sería la forma nueva de la certeza autodeclarada.
+    #
+    # Se exige IGUALDAD, no "al menos tan débil": declararse por debajo obligaría a caducar y
+    # bloquearía `vinculante` sin motivo, y la etiqueta dejaría de significar nada. Y sigue
+    # DECLARADA en vez de calcularse en silencio, por lo mismo que R15c no calcula la marca de
+    # recencia: es lo que lee un humano en el diff, así que lo que hay que impedir no es que
+    # exista — es que mienta.
+    mas_debil = max((b.certainty for b in branches), key=schema.rank)
+
+    # R1 contra la PEOR rama, y por eso `strength` NO se parte: el consumidor lee
+    # `is_binding` sin saber qué rama le contestó, así que una norma vinculante con una rama
+    # sin respaldo obliga a obedecer un número que no sostiene nadie. Quien necesite
+    # "vinculante aquí, condicional allá" escribe DOS normas con `when` disjuntos.
+    if strength == "vinculante" and schema.is_weak(mas_debil):
+        raise bad(f"strength=vinculante con una rama de certainty={mas_debil}: obliga a "
+                  f"obedecer un valor que su propia fuente no sostiene. `strength` es de la "
+                  f"norma y no se parte por rama — si una banda del sujeto sí puede obligar, "
+                  f"son DOS normas con `when` disjuntos")
+    if certainty != mas_debil:
+        raise bad(f"declara certainty={certainty!r} pero su rama más débil es {mas_debil!r}. "
+                  f"La certeza de la norma es la de su PEOR rama: es lo que deciden R1 y R2, "
+                  f"y por encima de ella la etiqueta afirmaría lo que ninguna rama sostiene")
+
+    # `provenance_note` en la norma solo si ALGUNA rama carece de respaldo. Con todas
+    # respaldadas no hay número sin fuente que explicar, y la nota daría apariencia de
+    # procedencia donde lo que hay es una cita.
+    if nota_norma and not any(b.certainty == schema.unsupported_level for b in branches):
+        raise bad("`provenance_note` solo se usa cuando NO hay evidencia; aquí todas las "
+                  "ramas la citan. El matiz de una cita va en `note`")
 
     # ── R10 + R12 · dos ramas no pueden matchear al mismo sujeto ───────────
     # Si dos ramas solapan, gana la primera del fichero: el ORDEN decide el valor,
@@ -878,7 +966,11 @@ class NormRegistry:
         # referencias a lo que vive dentro del registro, así que un `.append()` de quien
         # preguntaba cambiaba la norma para todos los demás. Era la negación literal de
         # "solo hay una copia", que es la tesis entera de esta capa.
+        # v0.14.0 · la certeza y la procedencia salen de LA RAMA. Antes salían de la norma,
+        # así que el consumidor recibía la misma certeza le contestara la rama respaldada o la
+        # convención — y es en `resolve()` donde eso se paga, no en el YAML.
         return Resolution(slug=norm.slug, value=deepcopy(b.value), unit=norm.unit,
                           semantics=norm.semantics, matched=dict(b.when), evidence=b.evidence,
-                          strength=norm.strength, certainty=norm.certainty,
-                          is_fallback=is_fallback, missing=missing)
+                          strength=norm.strength, certainty=b.certainty,
+                          is_fallback=is_fallback, missing=missing,
+                          provenance_note=b.provenance_note)

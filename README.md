@@ -488,6 +488,42 @@ el umbral de certeza débil, hereda gratis: no puede ser vinculante y **caduca s
 > El objetivo no es que todo tenga evidencia. Es que **la ausencia de evidencia sea visible,
 > caduque, y no gobierne como si fuera dogma**.
 
+### …y declarada POR RAMA (v0.14.0)
+
+Hasta aquí eso era todo-o-nada **a nivel de norma**, así que *"esta rama está respaldada y
+esta otra es convención"* no se podía escribir: la norma mixta tenía que mentir en un sentido
+u otro — inflar la certeza de la rama sin respaldo, o borrar el respaldo real de la otra.
+
+```yaml
+certainty: sin_respaldo          # = la de su rama MÁS DÉBIL
+branches:
+  - when: {mode: alfa}
+    value: 3
+    certainty: moderada
+    evidence: [EV-A]
+  - when: {mode: any}
+    value: 9
+    certainty: sin_respaldo
+    provenance_note: convención del motor — es lo que el código hace hoy, sin fuente
+```
+
+Y donde se paga es en `resolve()`: **la certeza y la procedencia que recibes son las de la
+rama que contestó**, no las de la norma.
+
+Tres reglas lo sujetan, para que el campo nuevo no sea una etiqueta libre:
+
+- **Cada rama responde de SU evidencia.** La comprobación de que nadie afirma más de lo que
+  sostiene su fuente miraba la **unión** de todas las ramas, o sea la mejor fuente de la
+  norma entera — así que una rama que solo citaba una fuente floja viajaba con la certeza que
+  sostiene la fuente de su hermana. Ahora se mira rama a rama.
+- **La certeza de la norma es la de su rama más débil**, y se comprueba que la declarada
+  coincide. Sigue escrita a mano en vez de calcularse: es lo que lee un humano en el diff, y
+  lo que hay que impedir no es que exista — es que mienta.
+- **`strength` NO se parte.** El consumidor lee `norm.is_binding` sin saber qué rama le
+  contestó, así que una norma vinculante con una rama sin respaldo obligaría a obedecer un
+  número que no sostiene nadie. Si una banda del sujeto sí puede obligar y otra no, **son dos
+  normas con `when` disjuntos**, una declarando `null` donde gobierna la otra.
+
 ## Estructura
 
 **El registro** lee tres ficheros del directorio que le pases:
@@ -522,6 +558,17 @@ PYTHONPATH=src python -m capa_normativa.vigilante.cli <ruta> --detector sintaxis
 </details>
 
 ## Migrar
+
+**De v0.13.0 a v0.14.0** — el YAML **no necesita cambios**: sin campos por rama, cada rama
+hereda la certeza de la norma y todo significa lo mismo. Dos cosas que sí pueden morder:
+
+1. La regla de la certeza pasa a mirarse **por rama**, así que puede rechazar una norma que
+   antes cargaba: aquella cuya rama floja viajaba con la certeza de la evidencia de su
+   hermana. No es daño colateral — es una inflación real que nadie veía. Medido en el primer
+   inquilino: **1 norma de 74**, y estaba `vigente` resolviendo en producción.
+2. `Resolution.certainty` es ahora la de **la rama**. Para una norma que no use los campos
+   nuevos es idéntica; si adoptas la procedencia por rama, cambia a propósito — hacia arriba
+   en la rama respaldada y hacia abajo en la que no.
 
 **De v0.7.0 a v0.8.0** — dos cosas. (1) Si tu `evidence.yaml` tiene entradas con la certeza
 más baja de tu escala, bórralas: no eran citables. (2) Busca `strength ==` en tu código y
