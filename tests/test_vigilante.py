@@ -212,3 +212,35 @@ def test_los_detectores_registrados_son_invocables():
     assert set(DETECTORES) == {"punteros", "secretos", "sintaxis"}
     for nombre, fn in DETECTORES.items():
         assert callable(fn), nombre
+
+
+def test_ROJO_los_punteros_de_un_SUBDIRECTORIO_tambien_cuentan(tmp_path: Path):
+    """FALSO NEGATIVO real, encontrado el 2026-08-11 por un agente que adoptó el paquete leyendo
+    solo el README — no por estos tests, cuyos corpus eran todos de un nivel.
+
+    `… docs --detector punteros` decía «limpio, 0 hallazgos» y exit 0 mientras
+    `docs/fundamentos/` tenía 8 punteros colgantes. Un detector que da confianza falsa es peor
+    que ninguno, y este la daba porque usaba `glob` en vez de `rglob`.
+    """
+    _corpus(tmp_path, "raiz.md", "## 1.1 Existe\n")
+    _corpus(tmp_path / "hondo" / "mas_hondo", "perdido.md", "Ver §9.9 que no existe.\n")
+
+    hallazgos = revisar_punteros(tmp_path)
+    assert len(hallazgos) == 1, f"no baja a los subdirectorios: {hallazgos}"
+    assert hallazgos[0].fichero == "hondo/mas_hondo/perdido.md", (
+        "la ruta debe ser relativa al corpus: con recursion, el nombre base no localiza")
+
+
+def test_una_cabecera_en_un_SUBDIRECTORIO_resuelve_un_puntero_de_la_raiz(tmp_path: Path):
+    """La otra mitad de la recursión: si se leen los ficheros hondos, sus cabeceras también
+    cuentan como destino. Si no, arreglar el falso negativo abriría falsos positivos."""
+    _corpus(tmp_path, "raiz.md", "Ver §7.3 para el detalle.\n")
+    _corpus(tmp_path / "sub", "destino.md", "## 7.3 La seccion, un nivel mas abajo\n")
+    assert revisar_punteros(tmp_path) == [], "la cabeceras de subdirectorios deben contar"
+
+
+def test_no_baja_a_node_modules_ni_a_venv(tmp_path: Path):
+    _corpus(tmp_path, "ok.md", "## 1.1 Algo\n")
+    _corpus(tmp_path / "node_modules" / "pkg", "ajeno.md", "Ver §9.9.\n")
+    _corpus(tmp_path / "venv" / "lib", "ajeno2.md", "Ver §8.8.\n")
+    assert revisar_punteros(tmp_path) == [], "no debe auditar dependencias ajenas"

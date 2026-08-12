@@ -58,9 +58,29 @@ capa-normativa-vigilante <ruta> --json               # salida para consumo por m
 | Código | Caza | Nota |
 |---|---|---|
 | **`SYN001`** | un `.py` versionado que no parsea | encontró un `SyntaxError` de **dos meses** que ningún otro mecanismo había visto |
-| **`PTR001`** | un puntero `§N.M` que no resuelve | no comprueba que la sección *diga* lo atribuido —eso no es automatizable—: comprueba que **exista** |
+| **`PTR001`** | un puntero `§N.M` que no resuelve | no comprueba que la sección *diga* lo atribuido —eso no es automatizable—: comprueba que **exista**. Recorre el árbol **en profundidad** (ver el aviso de abajo) |
 | **`SEC001`** | una credencial con forma reconocible en un fichero versionado | escanea **todo** lo versionado, informes incluidos. El hallazgo **nunca contiene el secreto**. `# nosec` al final de la línea lo suprime |
 | **`TRI001`-`TRI007`** | el **trinquete**: una deuda declarada que solo puede decrecer | es API, no subcomando: necesita tu baseline y tu extractor. Ver abajo |
+
+### ⚠️ Sobre `PTR001`: qué cuenta como «el corpus»
+
+**Recorre el directorio en profundidad** (excluyendo `node_modules`, `venv`, `.git` y similares),
+y las cabeceras de los subdirectorios **también** cuentan como destino válido.
+
+> **En la `v0.10.0` NO recorría**: solo miraba el primer nivel. Sobre un `docs/` con
+> subcarpetas decía **«limpio, 0 hallazgos»** y salía con **0** mientras había **8 punteros
+> colgantes** una carpeta más abajo. Un falso negativo es la peor forma de fallo para un
+> detector: da confianza. **Si usas la `0.10.0`, actualiza.**
+>
+> Lo encontró un agente sin contexto adoptando el paquete con solo este README — no los tests
+> del propio detector, cuyos corpus eran todos de un nivel. *La forma del test copiaba la forma
+> del bug.*
+
+Y una consecuencia que conviene saber: al recorrer en profundidad aparecen **referencias a
+secciones de documentos ajenos** (una especificación, un estándar) escritas sin prefijo. Eso sale
+como colgante y es un falso positivo legítimo. Dos salidas: poner el documento delante en
+MAYÚSCULAS (`DMN §10.3`), o declarar su corpus con `--tambien`. **El detector no adivina qué es
+tuyo: se lo dices.**
 
 ### El trinquete
 

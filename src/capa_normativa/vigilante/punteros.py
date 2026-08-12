@@ -29,10 +29,30 @@ _REFERENCIA = re.compile(
 )
 
 
+#: Al recorrer en profundidad hay que excluir lo que no es documentación del proyecto.
+_EXCLUIR = ("node_modules", ".git", "venv", "site-packages", "__pycache__", ".next", "/dist/")
+
+
+def _markdowns(d: Path) -> list[Path]:
+    """Todos los `.md` del árbol, **en profundidad**.
+
+    ⚠️ Antes era `glob("*.md")` —solo el primer nivel— y eso producía un FALSO NEGATIVO, que es
+    la peor forma de fallo para un detector: `… docs --detector punteros` decía «limpio, 0
+    hallazgos» y exit 0 mientras `docs/fundamentos/` tenía **8 punteros colgantes** reales.
+    Un detector que da confianza falsa es peor que ninguno.
+
+    Lo encontró un agente sin contexto al adoptar el paquete leyendo solo el README (experimento
+    del 2026-08-11), no sus propios tests: todos usaban corpus de un solo nivel. La forma del
+    test copiaba la forma del bug.
+    """
+    return sorted(p for p in d.rglob("*.md")
+                  if not any(x in "/" + str(p).replace("\\", "/") for x in _EXCLUIR))
+
+
 def _cabeceras(dirs: list[Path]) -> set[str]:
     vistas: set[str] = set()
     for d in dirs:
-        for f in sorted(d.glob("*.md")):
+        for f in _markdowns(d):
             vistas.update(_CABECERA.findall(f.read_text(encoding="utf-8", errors="replace")))
     return vistas
 
@@ -58,7 +78,7 @@ def revisar_punteros(
     conocidas = _cabeceras([principal, *[p for p in extra if p.is_dir()]])
 
     hallazgos: list[Hallazgo] = []
-    for f in sorted(principal.glob("*.md")):
+    for f in _markdowns(principal):
         texto = f.read_text(encoding="utf-8", errors="replace")
         for m in _REFERENCIA.finditer(texto):
             sec, doc = m.group("sec"), m.group("doc")
@@ -67,10 +87,17 @@ def revisar_punteros(
                 continue
             if sec in conocidas:
                 continue
+            # Ruta RELATIVA al corpus, no `f.name`: al bajar a subdirectorios dos ficheros con
+            # el mismo nombre en carpetas distintas serían indistinguibles, y un hallazgo que
+            # no se puede localizar no es un hallazgo. Consecuencia del arreglo de la recursión.
+            try:
+                donde = str(f.relative_to(principal)).replace("\\", "/")
+            except ValueError:
+                donde = f.name
             hallazgos.append(Hallazgo(
                 detector="punteros",
                 codigo="PTR001",
-                fichero=f.name,
+                fichero=donde,
                 linea=texto[: m.start()].count("\n") + 1,
                 mensaje=f"§{sec} no existe en el corpus revisado",
                 arreglo=("Corrige el número, o declara el corpus donde vive con "
