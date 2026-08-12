@@ -209,7 +209,7 @@ def test_el_vigilante_no_usa_red_ni_LLM():
 def test_los_detectores_registrados_son_invocables():
     """El conjunto va escrito a mano a propósito: añadir un detector debe ser un acto
     consciente que aparece en el diff, no algo que entra sin que nadie lo note."""
-    assert set(DETECTORES) == {"punteros", "secretos", "sintaxis"}
+    assert set(DETECTORES) == {"preguntas", "punteros", "secretos", "sintaxis"}
     for nombre, fn in DETECTORES.items():
         assert callable(fn), nombre
 

@@ -19,12 +19,13 @@ arrancar; el vigilante tiene que poder decirte los 12 hallazgos de una pasada.
 from __future__ import annotations
 
 from .hallazgo import Hallazgo
+from .preguntas import revisar_preguntas
 from .punteros import revisar_punteros
 from .secretos import revisar_secretos
 from .sintaxis import revisar_sintaxis
 from .trinquete import Entrada, Trinquete
 
-__all__ = ["Hallazgo", "revisar_punteros", "revisar_secretos", "revisar_sintaxis",
+__all__ = ["Hallazgo", "revisar_preguntas", "revisar_punteros", "revisar_secretos", "revisar_sintaxis",
            "Trinquete", "Entrada", "DETECTORES"]
 
 #: Detectores que el CLI puede correr sobre una ruta, sin configuración.
@@ -32,6 +33,7 @@ __all__ = ["Hallazgo", "revisar_punteros", "revisar_secretos", "revisar_sintaxis
 #: inquilino, así que es API, no subcomando. Meterlo aquí exigiría inventarle un formato de
 #: configuración antes de tener un segundo consumidor que lo justifique.
 DETECTORES = {
+    "preguntas": revisar_preguntas,
     "punteros": revisar_punteros,
     "secretos": revisar_secretos,
     "sintaxis": revisar_sintaxis,

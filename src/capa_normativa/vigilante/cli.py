@@ -29,6 +29,9 @@ def _parser() -> argparse.ArgumentParser:
                    help="detector a correr; repetible. Por defecto: todos")
     p.add_argument("--tambien", action="append", default=[], metavar="DIR",
                    help="corpus adicional para resolver punteros entre repos; repetible")
+    p.add_argument("--catalogo", metavar="YAML",
+                   help="catálogo de preguntas del inquilino (obligatorio para --detector preguntas). "
+                        "La autoridad vive en TU persistencia, así que el paquete no puede adivinarla.")
     p.add_argument("--json", action="store_true", help="salida JSON (para consumo por máquina)")
     return p
 
@@ -45,7 +48,15 @@ def main(argv: list[str] | None = None) -> int:
     for nombre in elegidos:
         fn = DETECTORES[nombre]
         try:
-            if nombre == "punteros":
+            if nombre == "preguntas":
+                if not args.catalogo:
+                    if args.detector:                       # lo pidió explícitamente: es error
+                        print("error: --detector preguntas exige --catalogo <yaml>",
+                              file=sys.stderr)
+                        return ERROR
+                    continue                                # en el barrido «todos», se omite
+                hallazgos.extend(fn(ruta, args.catalogo))
+            elif nombre == "punteros":
                 hallazgos.extend(fn(ruta, tambien=args.tambien))
             else:
                 hallazgos.extend(fn(ruta))
