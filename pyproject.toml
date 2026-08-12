@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "capa-normativa"
-version = "0.10.1"
+version = "0.11.0"
 description = "Registro normativo: conocimiento externo que gobierna código, como datos verificables"
 readme = "README.md"
 requires-python = ">=3.10"
@@ -23,6 +23,7 @@ dev = ["pytest>=7.0"]
 # que este proyecto declara como su riesgo principal.
 [project.scripts]
 capa-normativa-vigilante = "capa_normativa.vigilante.cli:main"
+capa-normativa-emit = "capa_normativa.emision:main"
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/capa_normativa"]

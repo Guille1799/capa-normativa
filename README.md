@@ -34,6 +34,47 @@ por AST — una frontera que no se verifica es una frontera que deriva):
 | **`capa_normativa`** — el registro | los números viven como datos con procedencia y caducidad. **Fail-fast**: si algo está mal, el programa no arranca | en tu proceso, al arrancar |
 | **`capa_normativa.vigilante`** — el vigilante | chequeos **deterministas** sobre un repo. **Enumera** en vez de parar en el primer error | en pre-commit, en CI, o a mano |
 
+## `emit` — si tu consumidor no es Python
+
+El registro se lee con `load()`+`resolve()` **en proceso Python**. `emit` saca las constantes a
+otro lenguaje **con su procedencia**, para el frontend en TypeScript, los umbrales en R, o un
+JSON universal.
+
+```bash
+capa-normativa-emit norms/ --formato typescript --salida frontend/norms.ts
+capa-normativa-emit norms/ --formato r          --salida R/constants.R
+capa-normativa-emit norms/ --formato json       --salida build/norms.json
+capa-normativa-emit norms/ --formato python     --salida app/norms_gen.py
+```
+
+**Y esto es lo que hace que `emit` no sea un problema nuevo:**
+
+```bash
+capa-normativa-emit norms/ --formato typescript --salida frontend/norms.ts --check
+```
+
+`--check` no escribe: **re-emite y compara**. Si difiere, sale con **1**. Commitea el fichero
+generado **y pon `--check` en CI** — es el patrón de `protobuf`, `OpenAPI` y
+`kubernetes/hack/verify-codegen.sh`. **Sin `--check`, `emit` añade un artefacto más que puede
+derivar, que es exactamente el problema que este paquete existe para impedir.**
+
+Cada valor sale con su unidad, sus IDs de evidencia, su certeza, su fuerza y su caducidad:
+
+```typescript
+/** puntos porcentuales de grasa · ev=EV-0113 · certeza=baja · condicional · caduca=2027-01-30 */
+export const BIA_MEASUREMENT_ERROR_MARGIN = 3.0 as const;
+```
+
+> **Si `emit` solo sacara números, habría reinventado el problema en un sitio nuevo.** Un
+> `EA_FLOOR <- 30` generado es el mismo número mágico, con un paso de build de por medio.
+
+**Solo emite las constantes** (las que no ramifican por el sujeto). Una que ramifica no se puede
+volcar sin reproducir su tabla de decisión y su hit policy en cada lenguaje, así que **no se
+emite y sale en `omitidas` con su motivo** — una ausencia silenciosa haría parecer completo al
+fichero generado. En el registro real del primer inquilino: **38 constantes emitidas, 36
+omitidas**, cada una con su razón. Y **lo que el registro no serviría tampoco se emite**:
+retiradas y bloqueadas quedan fuera, o `emit` sería la puerta de atrás.
+
 ## El vigilante — empieza por aquí si solo quieres los chequeos
 
 No necesita el registro. Funciona en cualquier repo, incluso sin un solo `.yaml`.

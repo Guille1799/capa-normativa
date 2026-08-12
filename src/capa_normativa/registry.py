@@ -631,6 +631,38 @@ class NormRegistry:
         self._norms = norms
         self._schema = schema
 
+    # ── iteración pública (v0.11.0) ──
+    # Antes no existía, y eso obligaba a los consumidores a tocar `_norms`. No era una
+    # comodidad: `tools/triage.py` del primer inquilino lo hacía, y con ello se ataba a un
+    # detalle interno del paquete — uno de los 6 acoplamientos que impedían empaquetarlo.
+    # Un registro que no se puede recorrer no se puede exportar ni auditar desde fuera.
+
+    def normas(self) -> tuple[Norm, ...]:
+        """Todas las normas, ordenadas por slug. `Norm` es un dataclass congelado, así que
+        esto no expone estado mutable."""
+        return tuple(self._norms[k] for k in sorted(self._norms))
+
+    def slugs(self) -> tuple[str, ...]:
+        return tuple(sorted(self._norms))
+
+    def norma(self, slug: str) -> Norm:
+        """La norma completa, con su procedencia. `resolve()` da el VALOR para un sujeto;
+        esto da la ENTRADA — que es lo que necesita quien exporta o audita.
+
+        No filtra por estado a propósito: quien pregunta por una norma retirada o bloqueada
+        tiene derecho a verla para saber POR QUÉ lo está. El que no debe emitir valor es
+        `resolve()`, y sigue sin emitirlo.
+        """
+        if slug not in self._norms:
+            raise NormError(f"no existe la norma `{slug}`. Disponibles: {', '.join(self.slugs())}")
+        return self._norms[slug]
+
+    def __len__(self) -> int:
+        return len(self._norms)
+
+    def __contains__(self, slug: object) -> bool:
+        return slug in self._norms
+
     @classmethod
     def load(cls, base_dir: Path | str | None = None, *, norms_path: Path | None = None,
              evidence_path: Path | None = None, schema_path: Path | None = None,
