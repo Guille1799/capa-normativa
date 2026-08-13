@@ -34,6 +34,30 @@ por AST — una frontera que no se verifica es una frontera que deriva):
 | **`capa_normativa`** — el registro | los números viven como datos con procedencia y caducidad. **Fail-fast**: si algo está mal, el programa no arranca | en tu proceso, al arrancar |
 | **`capa_normativa.vigilante`** — el vigilante | chequeos **deterministas** sobre un repo. **Enumera** en vez de parar en el primer error | en pre-commit, en CI, o a mano |
 
+## `init` — empieza aquí si no tienes registro todavía
+
+```bash
+capa-normativa-init norms/            # crea schema.yaml, evidence.yaml y norms.yaml
+capa-normativa-validate norms/        # y compruébalo: sale verde tal cual
+```
+
+Genera los tres YAML **comentados y válidos**: cargan y resuelven sin tocar nada. Traen **las dos
+formas que existen** —una norma constante con evidencia y una ramificada por un atributo del
+sujeto— porque con una sola, la primera norma real que ramifique se escribe adivinando.
+
+**Un generador cuya salida no valida es peor que no tenerlo**: la primera experiencia sería un error
+en un fichero que te acaba de dar el paquete, y no sabrías si el problema es tuyo o del ejemplo. Hay
+un test que lo fija y es el único que no se puede relajar.
+
+- **No sobreescribe.** Si ya hay ficheros sale con `1` y **no toca ninguno** — todo-o-nada, porque un
+  registro medio sobrescrito es peor que no haber tocado nada. `--forzar` si de verdad quieres.
+- **No trae dominio de nadie.** Los ejemplos son genéricos a propósito (un test lo comprueba): meter
+  aquí umbrales de nutrición o de entrenamiento ataría el paquete a su primer inquilino.
+
+Los comentarios explican **por qué** cada campo existe, no solo qué acepta — en particular que
+`subject_dimensions` es una **lista cerrada** y que eso es lo único que impide encadenar normas, y
+que una `expires` vencida **impide arrancar la aplicación**.
+
 ## `emit` — si tu consumidor no es Python
 
 El registro se lee con `load()`+`resolve()` **en proceso Python**. `emit` saca las constantes a
