@@ -75,6 +75,55 @@ fichero generado. En el registro real del primer inquilino: **38 constantes emit
 omitidas**, cada una con su razón. Y **lo que el registro no serviría tampoco se emite**:
 retiradas y bloqueadas quedan fuera, o `emit` sería la puerta de atrás.
 
+## `validate` — comprueba el registro sin arrancar la app, y avisa de lo que va a caducar
+
+```bash
+capa-normativa-validate norms/                          # 0 válido · 1 problemas · 2 no se pudo
+capa-normativa-validate norms/ --avisa-en 90            # horizonte del aviso (por defecto 60 días)
+capa-normativa-validate norms/ --falla-si-caduca-en 30  # para CI: el aviso pasa a ser un GATE
+capa-normativa-validate norms/ --json                   # para consumo por máquina
+```
+
+**No es `load()` con otro nombre.** Cubre dos huecos que `load()` deja, y ninguno es cosmético.
+
+### ① Una norma caducada es una caída de producción, y nada la anunciaba
+
+Una norma `vigente` cuya `expires` ya pasó **hace que `load()` lance**: el día que caduca, **la
+aplicación no arranca**. Ese diseño es deliberado —es la mitad *«niégate a servir lo rancio»* del
+modelo de gettext— pero sin aviso previo es una mina: el mecanismo que te protege de la información
+vieja se manifiesta como un despliegue que falla un martes, sin relación aparente con nada que
+hayas tocado.
+
+**`--avisa-en` es la otra mitad**, y `--falla-si-caduca-en` la convierte en un gate de CI. Caducar
+pronto **no** es un error —si lo fuera, alguien apagaría el aviso—, así que sale en verde con
+advertencia hasta que tú decidas lo contrario.
+
+### ② `load()` para en el primer error; quien escribe YAML quiere los siete
+
+Mismo reparto que entre el registro y el vigilante: el registro **para** porque su trabajo es no
+arrancar; esto **enumera** porque su trabajo es que alguien arregle un fichero.
+
+Se enumeran los errores **por norma**, que son independientes. Los de `schema.yaml` y de la
+evidencia **no**, y es deliberado: todo lo demás depende de ellos, así que seguir tras un esquema
+roto produce una cascada de errores derivados que oculta el único que importa.
+
+> ⚠️ **No reimplementa ninguna comprobación**: llama al mismo validador que `load()`. Dos
+> validadores que se pretenden equivalentes divergen, y entonces `validate` diría verde sobre un
+> registro que no arranca — peor que no tenerlo. Un test lo comprueba por AST.
+
+### Lo que encontró en su primera corrida
+
+Contra el registro real del primer inquilino, y sin arrancar su aplicación:
+
+```
+✗ [working_sets_by_mode] rama #0 viaja con certainty='baja' pero la MEJOR evidencia
+  que ELLA cita es 'muy_baja'.
+```
+
+Una rama que **se presentaba como más fiable que su única fuente**, heredando certeza de la rama de
+al lado. Habría impedido arrancar la app al actualizar el paquete. Eso es exactamente el caso de
+uso: enterarse antes, y sin levantar nada.
+
 ## El vigilante — empieza por aquí si solo quieres los chequeos
 
 No necesita el registro. Funciona en cualquier repo, incluso sin un solo `.yaml`.
