@@ -1,0 +1,75 @@
+name: CI
+
+# POR QUÉ EXISTE ESTE FICHERO (2026-08-12)
+#
+# El paquete llegó a la v0.15.0 con 242 tests y **sin CI ninguno**: solo corrían cuando alguien se
+# acordaba de correrlos. Y este paquete lo PINEA otro repo (`ponerse_wenorro` lo instala desde un
+# tag), así que un push roto se propaga al inquilino en cuanto alguien sube el pin.
+#
+# Es el mismo patrón que el propio paquete persigue —un mecanismo que solo funciona si alguien se
+# acuerda no es un mecanismo— aplicado al paquete mismo.
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  tests:
+    name: pytest (py${{ matrix.python }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        # ⚠️ LAS TRES VERSIONES SON DELIBERADAS, y ninguna es decorativa:
+        #   · 3.10 — es lo que `requires-python = ">=3.10"` DECLARA. Hasta hoy ese soporte no se
+        #     había verificado NUNCA: el desarrollo ha ido sobre 3.14, así que la promesa vivía
+        #     solo en los metadatos. Y `requires-python` es load-bearing — pip lo usa para decidir
+        #     si el paquete se puede instalar, o sea que una promesa falsa ahí rompe una
+        #     instalación, no un test.
+        #   · 3.12 — es lo que corre el ÚNICO inquilino real (su CI y su runtime). Si algo se
+        #     rompe ahí, se rompe en producción de alguien.
+        #   · 3.14 — es donde se desarrolla. Sin ella, el CI podría estar verde mientras el
+        #     entorno de trabajo real falla.
+        # Probar solo una convertiría el rango declarado en una afirmación sin comprobar, que es
+        # exactamente lo que este paquete existe para impedir.
+        python: ["3.10", "3.12", "3.14"]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python }}
+          cache: pip
+      - run: pip install -e ".[dev]"
+      - run: python -m pytest -q
+
+  dogfood:
+    name: el vigilante sobre SÍ MISMO
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+      - run: pip install -e ".[dev]"
+
+      # Un paquete que vende detectores y no se los aplica a sí mismo es difícil de defender.
+      # `sintaxis` y `secretos` valen en cualquier repo; `punteros` corre sobre el README y los
+      # docs, que es donde este repo tiene sus referencias §.
+      - name: sintaxis + secretos + punteros
+        run: capa-normativa-vigilante . --detector sintaxis --detector secretos --detector punteros
+
+      # ⚠️ POR QUÉ NO HAY UN PASO DE `emit --check` AQUÍ, que es lo primero que alguien buscaría.
+      #
+      # `emit --check` protege un ARTEFACTO GENERADO de derivar respecto al registro. Este repo no
+      # tiene registro propio —es el paquete, no un inquilino— así que aquí no hay nada que emitir.
+      #
+      # Y en el inquilino real se comprobó el 2026-08-12: su frontend NO tiene ni uno de estos
+      # números escrito a mano (búsqueda de 8 valores de norma: cero candidatos). Generar un
+      # `norms.ts` que nadie importa sería añadir un artefacto que puede derivar para poder
+      # vigilarlo — la sobre-ingeniería que este proyecto declara como su riesgo principal.
+      #
+      # `--check` está construido y probado, y el sitio donde se cablea es el CI del inquilino que
+      # PRIMERO tenga un consumidor no-Python de verdad. Hasta entonces, cablearlo sería teatro.
