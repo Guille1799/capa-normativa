@@ -617,16 +617,16 @@ Tres reglas lo sujetan, para que el campo nuevo no sea una etiqueta libre:
 ## Instalación
 
 ```bash
-pip install git+https://github.com/Guille1799/capa-normativa.git@v0.10.0
+pip install git+https://github.com/Guille1799/capa-normativa.git@v0.16.1
 ```
 
 Instala las dos cosas: el registro (`from capa_normativa import NormRegistry`) y el comando
 `capa-normativa-vigilante`.
 
-**Verificado el 2026-08-11 en un entorno virtual limpio**, no supuesto: se instaló desde el tag, el
-ejecutable apareció en `Scripts/`, y los dos módulos se importan (`__version__ == "0.10.0"`, los tres
-detectores registrados y `Trinquete` disponible). Sin dependencias más allá de `PyYAML`, que solo
-necesita el registro.
+> ⚠️ **No instales `v0.10.0`.** Hasta el 2026-08-14 este bloque fijaba ese tag, que es anterior a
+> **SEC001** (añadido en `v0.13.0`) y arrastra el bug de recorrido descrito más arriba: **solo miraba
+> el primer nivel** del árbol. La verificación en entorno limpio del 2026-08-11 era real, pero se hizo
+> **sobre ese tag antiguo** — se conserva la nota porque el método vale, no la versión.
 
 <details>
 <summary>Sin instalar nada, desde un clon</summary>
