@@ -57,6 +57,24 @@ def _norma(slug="umbral", *, certainty="moderada", expires="2027-12-31", extra="
             f"{extra}")
 
 
+def _retirada(slug="vieja", *, expires):
+    """Una norma RETIRADA con `expires` — el caso que puso rojo un gate real por un no-motivo."""
+    return (f"- slug: {slug}\n"
+            f"  title: Norma retirada de prueba\n"
+            f"  status: retirada\n"
+            f"  strength: condicional\n"
+            f"  certainty: moderada\n"
+            f"  unit: unidades\n"
+            f"  value: 1.0\n"
+            f"  evidence: [EV-1]\n"
+            f"  semantics: umbral\n"
+            f'  expires: "{expires}"\n'
+            f"  retirement:\n"
+            f'    date: "2026-01-01"\n'
+            f"    reason: se retiró porque ya no se sostenía\n"
+            f"    replaced_by: []\n")
+
+
 # ── lo que da sentido al módulo: el aviso ANTES de que la app no arranque ──
 
 def test_avisa_de_lo_que_va_a_CADUCAR_sin_que_sea_un_error(tmp_path):
@@ -193,6 +211,64 @@ def test_falla_si_caduca_en_convierte_el_aviso_en_GATE(tmp_path, capsys):
     assert main([str(repo), "--falla-si-caduca-en", "5"]) == LIMPIO, "fuera del plazo, no falla"
 
 
+# ── el gate mira SOLO a las que EMITEN, y esto es lo que faltaba probar ──
+
+def test_una_RETIRADA_vencida_se_reporta_pero_NO_falla_el_gate(tmp_path):
+    """EL CASO REAL, y el hueco por el que se coló.
+
+    El 2026-08-13, en un inquilino, `long_run_share_cap` (status `retirada`, sustituida por
+    `long_run_share_diagnostic`) llevaba `expires` duplicando su `retirement.date`. Con eso,
+    `--falla-si-caduca-en` ponía el gate ROJO por una norma que **no emite** y que por
+    construcción no puede impedir que arranque nada.
+
+    El defecto sobrevivió porque el test del gate solo probaba con normas VIGENTES. Y la pista
+    estaba escrita: el propio informe la imprimía como «no emiten, así que no rompen» mientras el
+    exit code decía lo contrario.
+
+    Contrato: se REPORTA (la fecha muerta miente a quien lee el YAML) pero no decide.
+    """
+    ayer = (date.today() - timedelta(days=1)).isoformat()
+    # La vigente se pone LEJOS a propósito: así la única candidata a disparar el gate es la
+    # retirada, y un rojo solo puede venir del defecto. (La primera versión de este test dejó el
+    # `expires` por defecto —2027-12-31— y con horizonte 3650 la vigente lo disparaba con toda
+    # la razón: el dato de prueba estaba mal, no el código.)
+    lejos = (date.today() + timedelta(days=400)).isoformat()
+    repo = _registro(tmp_path, _norma(expires=lejos) + _retirada(expires=ayer))
+
+    inf = validar(repo)
+    assert inf.ok, "una retirada vencida no rompe el registro: ni siquiera se resuelve"
+    assert [(s, e) for s, _, e in inf.caducadas_inertes] == [("vieja", "retirada")], (
+        "se sigue reportando: el aviso es útil aunque no decida")
+    assert inf.caducan_pronto == [], "una que no emite tampoco entra en el aviso de caducidad"
+
+    assert main([str(repo), "--falla-si-caduca-en", "30"]) == LIMPIO, (
+        "el gate existe para anticipar que la app NO ARRANQUE; una retirada no puede causar eso")
+
+
+def test_una_RETIRADA_que_caduca_PRONTO_tampoco_entra_en_el_gate(tmp_path):
+    """La misma rama, un día antes. Si solo se filtrara lo ya vencido, la retirada seguiría
+    disparando el gate mientras su `expires` estuviera dentro del horizonte — el mismo no-motivo
+    con otra fecha."""
+    cerca = (date.today() + timedelta(days=10)).isoformat()
+    repo = _registro(tmp_path, _norma() + _retirada(expires=cerca))
+
+    inf = validar(repo, avisa_en=60)
+    assert inf.caducan_pronto == [] and inf.caducadas_inertes == []
+    assert main([str(repo), "--falla-si-caduca-en", "30"]) == LIMPIO
+
+
+def test_una_VIGENTE_vencida_SI_falla_el_gate(tmp_path):
+    """La otra mitad del contrato: quitar el falso rojo no puede quitar el rojo de verdad.
+
+    Una `vigente` vencida ni siquiera llega al gate — `load()` lanza y sale por `errores`— pero
+    lo que importa es el exit code, que es lo que lee CI, y tiene que seguir siendo 1."""
+    ayer = (date.today() - timedelta(days=1)).isoformat()
+    repo = _registro(tmp_path, _norma(expires=ayer))
+
+    assert main([str(repo), "--falla-si-caduca-en", "30"]) == PROBLEMAS
+    assert main([str(repo)]) == PROBLEMAS, "y sin el flag también: no arranca"
+
+
 def test_dice_que_NO_hay_nada_por_caducar_en_vez_de_callar(tmp_path, capsys):
     """Una ausencia no distingue «no hay nada» de «no lo miré». Mismo principio que hizo que el
     triaje diga «CERO» y que `emit` liste sus omitidas con motivo."""
@@ -212,7 +288,7 @@ def test_el_json_trae_lo_MISMO_que_la_salida_humana(tmp_path, capsys):
     assert d["ok"] is True and d["total"] == 1
     assert d["caducan_pronto"] and d["caducan_pronto"][0][0] == "umbral"
     assert set(d) >= {"ok", "errores", "total", "por_estado", "por_certeza",
-                      "sin_expires", "caducadas", "caducan_pronto"}
+                      "sin_expires", "caducadas_inertes", "caducan_pronto"}
 
 
 def test_NO_reimplementa_la_validacion(tmp_path):
@@ -234,9 +310,19 @@ def test_NO_reimplementa_la_validacion(tmp_path):
     # saber la forma del AST, en un test que existe para cazar falsos verdes.
     importados = {a.name for n in ast.walk(arbol) if isinstance(n, ast.ImportFrom)
                   for a in n.names if n.module == "registry" and n.level == 1}
-    assert {"NormRegistry", "_parse_norm", "Schema"} <= importados, (
+    # `_EMITEN` entra en la lista desde la v0.16.1: saber QUIÉN emite es lo que decide el gate,
+    # y una copia local ("status == 'vigente'") sería justo la divergencia que este test vigila
+    # — el día que el registro añadiera un estado que emite, el gate dejaría de mirarlo.
+    assert {"NormRegistry", "_parse_norm", "Schema", "_EMITEN"} <= importados, (
         f"validacion.py dejó de reusar el validador del registro: importa {importados}")
     assert "NormRegistry.load(" in fuente, "ya no pasa por el camino real de arranque"
+    # Y se busca por AST, no por texto: la primera versión buscaba `'status == "vigente"'` en el
+    # FUENTE y la cazó... dentro del comentario que explica por qué no se hace eso. Los
+    # comentarios no están en el AST, así que aquí solo salta una constante de verdad.
+    literales = {n.value for n in ast.walk(arbol)
+                 if isinstance(n, ast.Constant) and isinstance(n.value, str)}
+    assert "vigente" not in literales, (
+        "quién emite lo decide `_EMITEN` en el registro, no un literal aquí")
 
 
 def test_un_registro_REAL_de_ejemplo_no_hace_falta_para_nada(tmp_path):

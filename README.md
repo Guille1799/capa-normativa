@@ -122,6 +122,12 @@ hayas tocado.
 pronto **no** es un error —si lo fuera, alguien apagaría el aviso—, así que sale en verde con
 advertencia hasta que tú decidas lo contrario.
 
+El gate mira **solo a las normas que EMITEN** (v0.16.1). Una `retirada` o `bloqueada` vencida se
+sigue reportando —una fecha muerta en el YAML miente a quien la lee— pero no lo falla: no emite
+valor, así que su caducidad no puede tirar nada. Hasta la v0.16.0 sí lo fallaba, y eso ponía un
+gate rojo por un no-motivo: en una norma que no emite, la fecha que manda es la de `retirement`,
+y ponerle además un `expires` solo duplica esa fecha donde no gobierna nada.
+
 ### ② `load()` para en el primer error; quien escribe YAML quiere los siete
 
 Mismo reparto que entre el registro y el vigilante: el registro **para** porque su trabajo es no

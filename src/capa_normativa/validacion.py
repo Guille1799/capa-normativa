@@ -43,7 +43,7 @@ from pathlib import Path
 
 import yaml
 
-from .registry import NormError, NormRegistry, Schema, _parse_norm
+from .registry import _EMITEN, NormError, NormRegistry, Schema, _parse_norm
 
 LIMPIO, PROBLEMAS, ERROR = 0, 1, 2
 
@@ -53,9 +53,22 @@ class Informe:
     """Lo que `validate` sabe del registro. `ok` es el veredicto; el resto, para leerlo."""
 
     errores: list[str] = field(default_factory=list)
-    #: (slug, fecha) de normas que EMITEN y ya caducaron. Estas hacen que `load()` lance.
-    caducadas: list[tuple[str, date]] = field(default_factory=list)
-    #: (slug, fecha, días) de las que caducan dentro del horizonte de aviso.
+    #: (slug, fecha, status) de normas ya vencidas que **NO EMITEN** — retiradas, superseded,
+    #: bloqueadas. Se reportan porque una fecha muerta en el YAML miente a quien la lee, pero
+    #: **no deciden nada**: sin emisión, caducar no significa nada (`registry.py:378`).
+    #:
+    #: El nombre lleva `_inertes` porque el anterior (`caducadas`) no decía cuál era, su
+    #: docstring afirmaba lo contrario de su comentario, y `--falla-si-caduca-en` acabó cableado
+    #: a él: gate ROJO por una norma que por construcción no puede romper nada (pasó el
+    #: 2026-08-13 con `long_run_share_cap` en un inquilino real). Un nombre que no distingue
+    #: acaba conectado al revés — así que ahora lo distingue.
+    #:
+    #: Una que EMITA no puede aparecer aquí: si una `vigente` hubiera vencido, `load()` habría
+    #: lanzado y esto sería un `errores`, no un aviso. Por eso NO hay un campo hermano
+    #: `caducadas_que_emiten`: sería un campo estructuralmente imposible de rellenar.
+    caducadas_inertes: list[tuple[str, date, str]] = field(default_factory=list)
+    #: (slug, fecha, días) de las que EMITEN y caducan dentro del horizonte de aviso. Solo las
+    #: que emiten: es la lista que decide el gate, y en las demás caducar no cuenta.
     caducan_pronto: list[tuple[str, date, int]] = field(default_factory=list)
     total: int = 0
     por_certeza: dict[str, int] = field(default_factory=dict)
@@ -129,10 +142,23 @@ def validar(base_dir: Path | str, *, hoy: date | None = None,
         if n.expires is None:
             inf.sin_fecha += 1
             continue
+        if n.status not in _EMITEN:
+            # Caducar no significa NADA en una norma que no emite (`registry.py:378-380`): no se
+            # resuelve, no emite valor, y `load()` ni le mira la fecha. Se REPORTA si ya venció
+            # —una fecha muerta miente a quien lee el YAML— pero ni entra en el aviso ni decide
+            # el gate. Y se pregunta por `_EMITEN`, no por `status == "vigente"`, por lo mismo
+            # que el módulo entero no reimplementa nada: si el registro cambiara qué emite, esto
+            # cambiaría con él en vez de quedarse con una copia que ya no es verdad.
+            if n.expires < hoy:
+                inf.caducadas_inertes.append((n.slug, n.expires, n.status))
+            continue
         if n.expires < hoy:
-            # No debería poder pasar en las que EMITEN (`load` habría lanzado), así que si algo
-            # aparece aquí es una retirada o bloqueada vencida: no rompe, pero conviene verlo.
-            inf.caducadas.append((n.slug, n.expires))
+            # No debería poder pasar: `load()` ya habría lanzado (`registry.py:464`) y `validar`
+            # habría vuelto arriba con el error. Se comprueba igual, y como ERROR y no como
+            # aviso: si el registro y este módulo divergieran, el único fallo que este módulo no
+            # puede permitirse es decir VERDE sobre un registro que no arranca.
+            inf.errores.append(f"{n.slug}: norma vigente CADUCADA el {n.expires}: "
+                               f"hay que re-adjudicarla")
         elif n.expires <= limite:
             inf.caducan_pronto.append((n.slug, n.expires, (n.expires - hoy).days))
     inf.caducan_pronto.sort(key=lambda t: t[1])
@@ -154,10 +180,13 @@ def _imprime(inf: Informe, base: Path, avisa_en: int) -> None:
     if inf.sin_fecha:
         print(f"    sin `expires`: {inf.sin_fecha} (permitido solo si su certeza no es débil)")
 
-    if inf.caducadas:
-        print(f"\n  ⚠ {len(inf.caducadas)} CADUCADAS (no emiten, así que no rompen — pero mienten):")
-        for slug, f in inf.caducadas:
-            print(f"      {slug} — venció el {f}")
+    if inf.caducadas_inertes:
+        print(f"\n  ⚠ {len(inf.caducadas_inertes)} CADUCADAS pero INERTES "
+              f"(no emiten: ni rompen ni fallan el gate — pero mienten):")
+        for slug, f, estado in inf.caducadas_inertes:
+            print(f"      {slug} ({estado}) — venció el {f}")
+        print("     En una que no emite, la fecha que manda es la de `retirement`/`blocking`.")
+        print("     Quítale el `expires`: ahí no gobierna nada y duplica una fecha que sí manda.")
 
     if inf.caducan_pronto:
         print(f"\n  ⏳ {len(inf.caducan_pronto)} caducan en los próximos {avisa_en} días.")
@@ -183,8 +212,10 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument("--avisa-en", type=int, default=60, metavar="DIAS",
                    help="horizonte del aviso de caducidad (por defecto 60)")
     p.add_argument("--falla-si-caduca-en", type=int, default=None, metavar="DIAS",
-                   help="salir con 1 si algo caduca dentro de DIAS. Para CI: convierte el aviso "
-                        "en un gate ANTES de que la caducidad tire la aplicación.")
+                   help="salir con 1 si algo que EMITE caduca dentro de DIAS. Para CI: convierte "
+                        "el aviso en un gate ANTES de que la caducidad tire la aplicación. Las "
+                        "retiradas y bloqueadas vencidas se reportan, pero no lo fallan: no "
+                        "emiten, así que no pueden tirar nada.")
     p.add_argument("--json", action="store_true", help="salida JSON (para consumo por máquina)")
     args = p.parse_args(argv)
 
@@ -209,7 +240,7 @@ def main(argv: list[str] | None = None) -> int:
             "por_estado": inf.por_estado,
             "por_certeza": inf.por_certeza,
             "sin_expires": inf.sin_fecha,
-            "caducadas": [[s, f.isoformat()] for s, f in inf.caducadas],
+            "caducadas_inertes": [[s, f.isoformat(), e] for s, f, e in inf.caducadas_inertes],
             "caducan_pronto": [[s, f.isoformat(), d] for s, f, d in inf.caducan_pronto],
         }, ensure_ascii=False, indent=2))
     else:
@@ -218,11 +249,15 @@ def main(argv: list[str] | None = None) -> int:
     if not inf.ok:
         return PROBLEMAS
     if args.falla_si_caduca_en is not None:
+        # SOLO las que emiten. `caducan_pronto` ya no trae otra cosa, y `caducadas_inertes` no
+        # entra a propósito: una retirada vencida se sigue REPORTANDO —el aviso es útil, la
+        # fecha miente— pero no decide el veredicto de un gate que existe para anticipar que la
+        # aplicación no arranque. Una norma que no emite no puede impedir que arranque nada.
         pronto = [t for t in inf.caducan_pronto if t[2] <= args.falla_si_caduca_en]
-        if pronto or inf.caducadas:
+        if pronto:
             if not args.json:
                 print(f"\n✗ --falla-si-caduca-en {args.falla_si_caduca_en}: "
-                      f"{len(pronto) + len(inf.caducadas)} norma(s) dentro del plazo.",
+                      f"{len(pronto)} norma(s) que EMITEN dentro del plazo.",
                       file=sys.stderr)
             return PROBLEMAS
     return LIMPIO
