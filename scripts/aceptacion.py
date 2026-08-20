@@ -19,11 +19,9 @@ comprobar nada, así que deja pasar cualquier `PRÓXIMO PASO` en prosa. Existir 
 del valor — el gate deja de fallar abierto
 aquí aunque hoy no haya ninguna promesa abierta.
 
-Hoy este tablero está VACÍO, y es un estado legítimo: significa «no hay promesas caducadas
-conocidas», no «nadie ha mirado». Con COMPROBADORES vacío el gate sigue mordiendo: un
-`PRÓXIMO PASO` en prosa lo bloquea igual, y uno que nombre un comprobador inexistente
-también. Para abrir una promesa: añade su función aquí (que salga ROJA), su entrada en
-ARTEFACTOS para que `--verifica` pueda mutarla, y la entrada de cola correspondiente.
+Su ultimo checkpoint (2026-08-17) dice literalmente «la linea de la capa normativa esta
+sana y puede esperar», asi que aqui no hay promesas caducadas de codigo. La unica
+entrada es una DECISION pendiente sobre su propia cadena de checkpoints.
 """
 from __future__ import annotations
 
@@ -32,14 +30,62 @@ from pathlib import Path
 
 RAIZ = Path(__file__).resolve().parent.parent
 
+CONTEXTO = Path(r"C:/Users/Guille/proyectos/Contexto/capa-normativa")
+CONFIG_RAG = Path(r"C:/Users/Guille/proyectos/mcp_smart_context/projects_config.yaml")
+CORE = RAIZ / "docs/CN_REFERENCIA_CORE.md"
+DECISION = RAIZ / "docs/decisiones/CONTEXTO_PROPIO.md"
+
+
+def contexto_propio():
+    """¿Tiene capa-normativa cadena de checkpoints PROPIA, o se decide por escrito que no?
+
+    EL DANO ESTA MEDIDO, no es cuestion de orden. Hoy sus sesiones se guardan dentro de
+    `Contexto/mcp_smart_context/` y `Contexto/ponerse_wenorro/`, y eso hace dos cosas:
+
+      · En la medicion del 2026-08-20, las parejas 11-14 de la cadena de `mcp` eran trabajo de
+        capa-normativa archivado bajo mcp. Por eso "el proximo paso no se recogio" quedo
+        ambiguo: el checkpoint siguiente era de OTRO proyecto. Corrompio la unica medicion
+        que tenemos.
+      · El paso B de `/checkpoint` copia ESTADO ACTUAL al CORE del proyecto de la carpeta, asi
+        que el CORE de mcp acaba describiendo estado de capa-normativa.
+
+    Pero montarla no es un `mkdir`: son CINCO piezas (carpeta, entrada en projects_config.yaml,
+    CN_REFERENCIA_CORE.md, SUMMARY.md, reindexado del RAG). Media cableada es peor que ninguna
+    — el drift-check del paso F reportaria stale para siempre.
+
+    Forma DECISION: se monta entera, o se declara por escrito que no y por que.
+    """
+    import re
+    if DECISION.exists():
+        t = DECISION.read_text("utf-8", errors="replace")
+        if re.search(r"^decidido:\s*no\s*$", t, re.M) and re.search(r"^motivo:\s*\S", t, re.M):
+            return True, "declarado por escrito que NO se monta, con motivo"
+    faltan = []
+    if not CONTEXTO.exists():
+        faltan.append("la carpeta Contexto/capa-normativa")
+    if not CORE.exists():
+        faltan.append("docs/CN_REFERENCIA_CORE.md")
+    try:
+        if "capa-normativa" not in CONFIG_RAG.read_text("utf-8", errors="replace"):
+            faltan.append("su entrada en projects_config.yaml")
+    except Exception:
+        faltan.append("no se pudo leer projects_config.yaml")
+    if faltan:
+        return False, "faltan " + str(len(faltan)) + "/3 piezas: " + ", ".join(faltan)
+    return True, "cadena propia montada"
+
 # Nota: `emit --check` NO está cableado al CI de este repo, y eso NO es una promesa abierta
 # sino una decisión ya tomada y escrita con su motivo en `.github/workflows/ci.yml`: este repo
 # es el paquete, no un inquilino, así que no tiene registro que emitir. Es justo la forma que
 # este tablero persigue — decidir y dejar el porqué, en vez de dejarlo pendiente en prosa.
 
 SIN_MUTACION = {}
-ARTEFACTOS = {}
-COMPROBADORES = {}
+ARTEFACTOS = {
+    "contexto-propio": [(str(DECISION), "decidido: no" + chr(10) + "motivo: stub" + chr(10))],
+}
+COMPROBADORES = {
+    "contexto-propio": contexto_propio,
+}
 
 # ── MUTACIÓN: un comprobador en el que se puede confiar es uno que se ha VISTO cambiar ──
 #
