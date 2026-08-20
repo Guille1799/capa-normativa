@@ -34,6 +34,7 @@ import re
 import subprocess
 from pathlib import Path
 
+from .versionados import versionados
 from .hallazgo import Hallazgo
 
 #: Solo prefijos publicados por sus emisores. Precisión sobre cobertura, a propósito.
@@ -75,13 +76,12 @@ _BINARIO = {".png", ".jpg", ".jpeg", ".gif", ".pdf", ".zip", ".gz", ".ico", ".wo
 def _ficheros_versionados(repo: Path) -> list[Path]:
     """TODO lo versionado. Deliberadamente sin filtrar por tipo: la fuga real de 2026-06-26
     vivía en un `.md` de un directorio de informes, no en código."""
-    try:
-        r = subprocess.run(["git", "ls-files"], cwd=repo, capture_output=True,
-                           text=True, timeout=120)
-        if r.returncode == 0 and r.stdout.strip():
-            return [repo / linea for linea in r.stdout.splitlines() if linea.strip()]
-    except (OSError, subprocess.SubprocessError):
-        pass
+    # ⚠️ Misma enumeración que `sintaxis`, en UN sitio. La copia anterior se dejaba secuestrar
+    # por el `GIT_DIR` de los hooks de git: en un worktree, este escáner de secretos recorría
+    # CERO ficheros y respondía «limpio». Un escáner que miente es peor que no tenerlo.
+    lista = versionados(repo)
+    if lista is not None:
+        return lista
     return [p for p in repo.rglob("*") if p.is_file()]
 
 

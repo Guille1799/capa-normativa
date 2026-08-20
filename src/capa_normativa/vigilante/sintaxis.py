@@ -11,6 +11,7 @@ import ast
 import subprocess
 from pathlib import Path
 
+from .versionados import versionados
 from .hallazgo import Hallazgo
 
 _EXCLUIR = ("venv", "site-packages", "__pycache__", "node_modules", ".git", "_archive")
@@ -22,15 +23,12 @@ def _ficheros_py(repo: Path) -> list[Path]:
     Se pregunta a git a propósito: un fichero sin versionar que no parsea es ruido del
     directorio de trabajo, no deuda del repo.
     """
-    try:
-        r = subprocess.run(
-            ["git", "ls-files", "*.py"],
-            cwd=repo, capture_output=True, text=True, timeout=60,
-        )
-        if r.returncode == 0 and r.stdout.strip():
-            return [repo / linea for linea in r.stdout.splitlines() if linea.strip()]
-    except (OSError, subprocess.SubprocessError):
-        pass
+    # ⚠️ La enumeración vive en `versionados` y NO se copia aquí: la copia que había se dejaba
+    # secuestrar por el `GIT_DIR` que git exporta a sus hooks, y dentro de un worktree eso hacía
+    # que este detector escaneara CERO ficheros y dijera «limpio» (medido el 2026-08-20).
+    lista = versionados(repo, "*.py")
+    if lista is not None:
+        return lista
     return [p for p in repo.rglob("*.py") if not any(x in str(p) for x in _EXCLUIR)]
 
 

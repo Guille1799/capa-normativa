@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "capa-normativa"
-version = "0.16.1"
+version = "0.16.2"
 description = "Registro normativo: conocimiento externo que gobierna código, como datos verificables"
 readme = "README.md"
 requires-python = ">=3.10"
