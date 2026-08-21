@@ -79,11 +79,51 @@ def contexto_propio():
 # es el paquete, no un inquilino, así que no tiene registro que emitir. Es justo la forma que
 # este tablero persigue — decidir y dejar el porqué, en vez de dejarlo pendiente en prosa.
 
+def canario_completo():
+    """Los CUATRO detectores del vigilante tienen que estar cubiertos por el canario.
+
+    Hoy `CASOS` solo trae caso rojo para `secretos` y `sintaxis` — los dos que corre el hook
+    pre-commit. `preguntas` y `punteros` estan registrados en DETECTORES y NO tienen ninguno, asi
+    que `canario(DETECTORES)` LANZA en vez de pasar de largo. Eso ya es la decision correcta y
+    esta escrita en vigilante/__init__.py: un detector sin caso rojo es un detector que nadie ha
+    comprobado, y esa distincion no puede ser silenciosa.
+
+    Pero lanzar no es estar cubierto. Mientras falten, el canario solo puede correrse sobre un
+    subconjunto elegido a mano — y un canario que hay que llamar con la lista buena es justo el
+    tipo de guarda que un dia se llama con la lista de ayer.
+
+    EL DANO QUE PREVIENE ESTA MEDIDO: el 2026-08-20 el escaner de secretos recorria CERO ficheros
+    y contestaba «limpio» por un GIT_DIR heredado. Lo cazo el canario. `preguntas` y `punteros`
+    hoy no tienen quien les haga eso.
+
+    Forma EXIT CODE: se ejecuta el canario sobre TODOS los detectores registrados y se pide que
+    no lance. Ni una pregunta sobre el contenido de nada.
+    """
+    import subprocess
+    import sys
+    codigo = (
+        "import sys; sys.path.insert(0, r'" + str(RAIZ / "src") + "');"
+        " from capa_normativa.vigilante import DETECTORES;"
+        " from capa_normativa.vigilante.canario import canario;"
+        " canario(DETECTORES)"
+    )
+    try:
+        r = subprocess.run([sys.executable, "-c", codigo], capture_output=True,
+                           timeout=300, cwd=str(RAIZ))
+    except subprocess.TimeoutExpired:
+        return False, "el canario se cuelga (>5 min) sobre los cuatro detectores"
+    if r.returncode != 0:
+        err = r.stderr.decode("utf-8", "replace").strip().splitlines()
+        return False, (err[-1][:150] if err else "canario(DETECTORES) falla sin mensaje")
+    return True, "los cuatro detectores registrados tienen caso rojo y el canario los ve saltar"
+
+
 SIN_MUTACION = {}
 ARTEFACTOS = {
     "contexto-propio": [(str(DECISION), "decidido: no" + chr(10) + "motivo: stub" + chr(10))],
 }
 COMPROBADORES = {
+    "canario-completo": canario_completo,
     "contexto-propio": contexto_propio,
 }
 
