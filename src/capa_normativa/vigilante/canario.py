@@ -51,6 +51,23 @@ Revisor = Callable[[Path], list]
 CASOS: dict[str, tuple[str, str]] = {
     "secretos": ("credencial.md", "clave = " + "gsk" + "_" + "A" * 24 + "\n"),
     "sintaxis": ("roto.py", "def f(:\n"),
+    # `preguntas` caza «lo escrito que su fuente no sostiene»: el catálogo declara un productor
+    # cuyo fichero (`no_existe.py`) NO está en el repo → PRG001. El catálogo ES su caso rojo,
+    # y `_invocar` se lo pasa como el CLI hace con `--catalogo` (su autoridad vive en el
+    # inquilino, no se puede adivinar). El productor referido no se crea a propósito: que falte
+    # es justo lo que dispara.
+    "preguntas": ("preguntas_pega.yml",
+                  'tdee:\n'
+                  '  autoridad: "daily_plan.tdee_kcal"\n'
+                  '  tope: 1\n'
+                  '  productores:\n'
+                  '    - sitio: "no_existe.py:1"\n'
+                  '      ancla: "total_kcal_day"\n'
+                  '      clase: productor\n'),
+    # `punteros` caza un `§N.M` que no resuelve a ninguna cabecera del corpus: este `.md` cita
+    # `§9.9` y no hay cabecera `§9.9` en ningún sitio → PTR001.
+    "punteros": ("punteros_pega.md",
+                 "Este texto remite a una sección que no existe: ver §9.9 para el detalle.\n"),
 }
 
 
@@ -86,6 +103,19 @@ def repo_de_pega() -> Iterator[Path]:
         yield repo
 
 
+def _invocar(nombre: str, revisor: Revisor, repo: Path) -> list:
+    """Llama a `revisor` sobre `repo` como lo haría su consumidor real.
+
+    Casi todos los detectores son `Callable[[Path], list]` y se llaman con el repo a secas.
+    `preguntas` es la excepción, por la misma razón que en el CLI: su autoridad vive en la
+    persistencia del inquilino, así que hay que declararle un catálogo — aquí ese catálogo ES
+    su fichero de caso rojo, ya escrito y versionado en el repo de pega.
+    """
+    if nombre == "preguntas":
+        return revisor(repo, repo / CASOS["preguntas"][0])
+    return revisor(repo)
+
+
 def _correr(revisores: Mapping[str, Revisor], repo: Path) -> None:
     """Exige que cada revisor cace su caso rojo en `repo`. Lanza `RuntimeError` si no."""
     if not revisores:
@@ -105,7 +135,7 @@ def _correr(revisores: Mapping[str, Revisor], repo: Path) -> None:
             raise RuntimeError(
                 f"no hay caso rojo para `{nombre}`: el canario NO lo cubre. Añádelo a `CASOS` "
                 f"— un detector sin caso rojo es un detector que nadie ha comprobado.")
-        if not revisor(repo):
+        if not _invocar(nombre, revisor, repo):
             raise RuntimeError(f"el canario de `{nombre}` no saltó: el detector no detecta nada")
 
 
@@ -127,7 +157,10 @@ def canario(revisores: Mapping[str, Revisor], repo: Path | None = None) -> None:
 
     _correr(revisores, repo)
 
-    sordos = {nombre: (lambda _ruta: []) for nombre in revisores}
+    # `*_a`: `_invocar` llama a `preguntas` con dos argumentos (repo + catálogo), así que el
+    # sordo tiene que tragarse cualquier aridad — si no, el pase de autocomprobación lanzaría
+    # por `TypeError` en vez de por «el sordo no saltó», y no es lo mismo.
+    sordos = {nombre: (lambda *_a: []) for nombre in revisores}
     try:
         _correr(sordos, repo)
     except RuntimeError:
