@@ -149,7 +149,31 @@ def _verifica() -> int:
     return 1 if malos else 0
 
 
+def _salida_resistente() -> None:
+    """El VEREDICTO no puede depender de si la consola sabe pintar un emoji.
+
+    ⚠️ Medido el 2026-08-21, y costó revertir trabajo correcto. Ralph corrió desde un task de
+    Windows —consola cp1252, no UTF-8— y este script REVENTÓ al imprimir el 🟢 con
+    `UnicodeEncodeError: charmap codec can't encode '🟢'`. El crash dio código de salida
+    distinto de cero, el loop lo leyó como «la aceptación sigue roja» y revirtió un commit que
+    estaba PERFECTO.
+
+    O sea: la aceptación se cumplió, y lo que falló fue IMPRIMIRLA. El instrumento tumbando la
+    medida — el mismo patrón que el `GIT_DIR` en el vigilante y el campo equivocado en el token.
+
+    `errors="replace"` conserva la codificación de la consola y degrada lo impintable a `?`. Se
+    prefiere a forzar UTF-8 porque estos mensajes van llenos de acentos: forzarlo los convertiría
+    a todos en basura, y aquí solo se pierde el color del círculo.
+    """
+    for flujo in (sys.stdout, sys.stderr):
+        try:
+            flujo.reconfigure(errors="replace")
+        except Exception:
+            pass
+
+
 def main(argv: list[str]) -> int:
+    _salida_resistente()
     if argv and argv[0] == "--verifica":
         return _verifica()
     nombres = argv or list(COMPROBADORES)

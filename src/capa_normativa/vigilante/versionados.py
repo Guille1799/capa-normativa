@@ -40,7 +40,13 @@ _GIT_REDIRECTORAS = ("GIT_DIR", "GIT_WORK_TREE", "GIT_INDEX_FILE", "GIT_COMMON_D
                      "GIT_PREFIX", "GIT_NAMESPACE")
 
 
-def _entorno_limpio() -> dict[str, str]:
+def entorno_limpio() -> dict[str, str]:
+    """El entorno sin las variables con las que git redirige el repo.
+
+    Es pública porque la necesita todo el que lance un `git` desde dentro de un hook, no
+    solo la enumeración: el canario monta su repo de pega con `git init`, y con `GIT_DIR`
+    heredado ese `init` inicializaría el gitdir AJENO en vez del suyo.
+    """
     return {k: v for k, v in os.environ.items() if k not in _GIT_REDIRECTORAS}
 
 
@@ -54,7 +60,7 @@ def versionados(repo: Path, patron: str | None = None) -> list[Path] | None:
     orden = ["git", "-C", str(repo), "ls-files"] + ([patron] if patron else [])
     try:
         r = subprocess.run(orden, capture_output=True, text=True, timeout=120,
-                           env=_entorno_limpio())
+                           env=entorno_limpio())
     except (OSError, subprocess.SubprocessError):
         return None
     if r.returncode != 0 or not r.stdout.strip():

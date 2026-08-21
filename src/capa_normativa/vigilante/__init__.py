@@ -45,3 +45,12 @@ DETECTORES = {
     "secretos": revisar_secretos,
     "sintaxis": revisar_sintaxis,
 }
+
+#: ⚠️ El canario cubre HOY solo `secretos` y `sintaxis`, que son los dos que corre el hook
+#: pre-commit. `preguntas` y `punteros` no tienen caso rojo todavía, así que `canario(DETECTORES)`
+#: LANZA en vez de pasar de largo: un detector sin caso rojo es un detector que nadie ha
+#: comprobado, y esa distinción no puede ser silenciosa.
+#:
+#: No se reexporta aquí a propósito — la función se llama igual que su módulo, y `from … import
+#: canario` devolvería una tapando a la otra. Se importa por su ruta:
+#: `from capa_normativa.vigilante.canario import canario`.
