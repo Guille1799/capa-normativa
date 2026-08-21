@@ -46,10 +46,11 @@ DETECTORES = {
     "sintaxis": revisar_sintaxis,
 }
 
-#: ⚠️ El canario cubre HOY solo `secretos` y `sintaxis`, que son los dos que corre el hook
-#: pre-commit. `preguntas` y `punteros` no tienen caso rojo todavía, así que `canario(DETECTORES)`
-#: LANZA en vez de pasar de largo: un detector sin caso rojo es un detector que nadie ha
-#: comprobado, y esa distinción no puede ser silenciosa.
+#: El canario cubre los CUATRO detectores registrados aquí: cada uno tiene su caso rojo en
+#: `canario.py` (`CASOS`), así que `canario(DETECTORES)` los ve saltar a todos en vez de lanzar
+#: por falta de cobertura. Un detector sin caso rojo es un detector que nadie ha comprobado, y
+#: esa distinción no puede ser silenciosa — por eso añadir uno a `DETECTORES` sin añadirle su
+#: caso hace saltar al canario.
 #:
 #: No se reexporta aquí a propósito — la función se llama igual que su módulo, y `from … import
 #: canario` devolvería una tapando a la otra. Se importa por su ruta:
