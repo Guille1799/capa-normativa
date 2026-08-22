@@ -197,6 +197,49 @@ def test_un_formato_desconocido_revienta_claro(tmp_path: Path):
         emitir(_registro(tmp_path, CONSTANTE), "cobol", hoy=HOY)
 
 
+# ── note Y provenance_note NO son alternativas: cuando coexisten, viajan las dos ──
+
+# Una constante `sin_respaldo` (sin evidencia) puede llevar `note` (el matiz de diseño) Y
+# `provenance_note` (de dónde salió el número): el parser los admite juntos. Es la forma de
+# `fat_ffm_band` en el inquilino real. Antes `emit` los trataba como excluyentes y tiraba la
+# procedencia sin dejar rastro: el .ts del frontend recibía una nota que suena a justificación
+# de diseño y NUNCA la frase que dice que ninguna cifra tiene fuente localizable.
+_NOTA = "van JUNTOS porque el suelo NUNCA puede superar al objetivo"
+_PROC = "Ninguna de las dos cifras esta en una fuente localizable"
+CONSTANTE_SIN_RESPALDO = f"""\
+- slug: suelo_grasa_convencion
+  title: "Suelo de grasa por convencion"
+  status: vigente
+  strength: condicional
+  certainty: sin_respaldo
+  unit: "%"
+  expires: "2030-12-31"
+  value: 0.68
+  note: "{_NOTA}"
+  provenance_note: "{_PROC}"
+"""
+
+
+def test_una_constante_sin_respaldo_lleva_note_Y_provenance_en_recoger(tmp_path: Path):
+    cs, _ = recoger(_registro(tmp_path, CONSTANTE_SIN_RESPALDO), hoy=HOY)
+    assert len(cs) == 1
+    c = cs[0]
+    assert c.nota == _NOTA, "se perdió el matiz de la rama (`note`)"
+    assert c.procedencia == _PROC, "se perdió la procedencia (`provenance_note`)"
+
+
+@pytest.mark.parametrize("formato", FORMATOS)
+def test_una_constante_sin_respaldo_emite_note_Y_provenance(tmp_path: Path, formato: str):
+    """Con `note` Y `provenance_note` a la vez, LOS DOS textos salen en los cuatro formatos.
+
+    Hoy sale rojo: `nota=note if note else provenance` elige `note` y descarta la procedencia,
+    así que `_PROC` no aparece en el artefacto generado.
+    """
+    texto = emitir(_registro(tmp_path, CONSTANTE_SIN_RESPALDO), formato, hoy=HOY)
+    assert _NOTA in texto, f"[{formato}] falta la nota de diseño"
+    assert _PROC in texto, f"[{formato}] la procedencia se cayó del artefacto"
+
+
 # ─────────────────── --check: el anti-deriva ───────────────────
 
 def test_check_pasa_cuando_el_fichero_coincide(tmp_path: Path):

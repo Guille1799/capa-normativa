@@ -64,7 +64,8 @@ class Constante(NamedTuple):
     certeza: str
     fuerza: str
     caduca: str | None
-    nota: str | None
+    nota: str | None          # el matiz clínico/de diseño de la rama (`Branch.note`)
+    procedencia: str | None   # de dónde salió el número (`Branch.provenance_note`)
 
 
 def _omision(n: Norm, hoy: date) -> str | None:
@@ -100,7 +101,13 @@ def recoger(registro: NormRegistry, *, hoy: date | None = None
             # que la v0.14.0 cierra: exportar un número con la certeza de su hermana.
             evidencia=tuple(rama.evidence), certeza=rama.certainty, fuerza=n.strength,
             caduca=n.expires.isoformat() if n.expires else None,
-            nota=rama.note if rama.note is not None else rama.provenance_note,
+            # `note` y `provenance_note` NO son alternativas: el parser los admite juntos
+            # (con `certainty=sin_respaldo` no hay evidencia y `note` sigue siendo válida), y
+            # son cosas distintas —el matiz de diseño vs. de dónde salió el número—. Tratarlos
+            # como excluyentes (`note if note else provenance`) tiraba la procedencia cuando
+            # coexistían: el número salía con la nota que suena a justificación y SIN la frase
+            # que dice que no tiene fuente localizable. Cada uno viaja en su propio campo.
+            nota=rama.note, procedencia=rama.provenance_note,
         ))
     return fuera, omitidas
 
@@ -178,7 +185,8 @@ def emitir(registro: NormRegistry, formato: str, *, orden: str = "capa-normativa
             "_regenerar": orden,
             "constantes": {c.slug: {"valor": c.valor, "unidad": c.unidad,
                                     "evidencia": list(c.evidencia), "certeza": c.certeza,
-                                    "fuerza": c.fuerza, "caduca": c.caduca, "nota": c.nota}
+                                    "fuerza": c.fuerza, "caduca": c.caduca, "nota": c.nota,
+                                    "procedencia": c.procedencia}
                            for c in cs},
             "omitidas": omitidas,
         }, ensure_ascii=False, indent=2, sort_keys=False) + "\n"
@@ -186,7 +194,9 @@ def emitir(registro: NormRegistry, formato: str, *, orden: str = "capa-normativa
     if formato == "python":
         ls = [_cabecera("#", orden), '"""Constantes del registro normativo, con su procedencia."""\n']
         for c in cs:
-            ls.append(f"# {_proc(c)}" + (f"\n# {_una_linea(c.nota)}" if c.nota else ""))
+            ls.append(f"# {_proc(c)}"
+                      + (f"\n# {_una_linea(c.nota)}" if c.nota else "")
+                      + (f"\n# {_una_linea(c.procedencia)}" if c.procedencia else ""))
             ls.append(f"{c.slug.upper()} = {_lit_py(c.valor)}\n")
         ls.append("#: {slug: {evidencia, certeza, caduca}} — la procedencia, consultable en runtime")
         ls.append("PROCEDENCIA = " + repr({c.slug: {"evidencia": list(c.evidencia),
@@ -197,7 +207,9 @@ def emitir(registro: NormRegistry, formato: str, *, orden: str = "capa-normativa
     if formato == "typescript":
         ls = [_cabecera("//", orden)]
         for c in cs:
-            ls.append(f"/** {_proc(c)}" + (f" — {_una_linea(c.nota)}" if c.nota else "") + " */")
+            ls.append(f"/** {_proc(c)}"
+                      + (f" — {_una_linea(c.nota)}" if c.nota else "")
+                      + (f" — {_una_linea(c.procedencia)}" if c.procedencia else "") + " */")
             ls.append(f"export const {c.slug.upper()} = "
                       f"{_lit_js(c.valor)} as const;\n")
         ls.append("export const PROCEDENCIA = " + json.dumps(
@@ -207,7 +219,9 @@ def emitir(registro: NormRegistry, formato: str, *, orden: str = "capa-normativa
 
     ls = [_cabecera("#", orden)]                                     # r
     for c in cs:
-        ls.append(f"# {_proc(c)}" + (f" — {_una_linea(c.nota)}" if c.nota else ""))
+        ls.append(f"# {_proc(c)}"
+                  + (f" — {_una_linea(c.nota)}" if c.nota else "")
+                  + (f" — {_una_linea(c.procedencia)}" if c.procedencia else ""))
         ls.append(f"{c.slug.upper()} <- {_lit_r(c.valor)}\n")
     ls.append("# La procedencia, consultable: PROCEDENCIA[['slug']]$evidencia")
     ls.append("PROCEDENCIA <- list(")
