@@ -55,8 +55,17 @@ fi
 
 # Cuenta tareas '- [ ]' bajo el header que contiene SECTION (multi-señal de completion, R6)
 remaining_tasks() {
+  # ⚠️ ABRE SOLO EN NIVEL 2 (^## ), no en cualquier ^#. Lo cazo la auditoria adversarial del
+  # 2026-08-21 y se midio en pw: contaba 36 tareas donde habia 2. El motivo es exquisito — la
+  # regla vieja (/^#/ && index($0, sec)) reabria la seccion en un encabezado de OTRO nivel que
+  # MENCIONA su nombre en prosa:
+  #     ### ⬇️ Drenado de «🟢 PENDIENTE — SEGURO» (movido 2026-07-21 — 191 entradas)
+  # ...y a partir de ahi contaba el ARCHIVO entero. Con COMPLETE atado a este numero, el loop no
+  # podia terminar nunca; y peor, habria empezado a coger tareas drenadas a proposito.
+  # Es la TERCERA vez en un dia que un patron casa una mencion de si mismo (ver el regex de
+  # secciones del CORE y el ^resultado: de un tablero). Anclar el NIVEL no es opcional.
   awk -v sec="$SECTION" '
-    /^#/ && index($0, sec) {ins=1; next}
+    /^## / && index($0, sec) {ins=1; next}
     ins && (/^## / || /^---[[:space:]]*$/) {ins=0}
     ins && /^- \[ \]/ {c++}
     END {print c+0}
