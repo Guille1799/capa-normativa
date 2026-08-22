@@ -298,6 +298,16 @@ class Resolution:
 # Caracteres que delatan un operador inventado (glob, regex, alternancia, negación).
 _OPERATOR_CHARS = set("*?|!~&^$+")
 
+# Caracteres de comparación. Un rango BIEN escrito ya se reconoció arriba (`_interval`),
+# así que si uno de estos llega al final es un operador de comparación MAL escrito
+# —`=>65` (transpuesto), `> = 65` (con hueco), `>=65kg` (con unidad), `>=1e3` (notación
+# que el rango no admite)—, no una igualdad literal. Sin esta guarda esa rama se guarda
+# como el literal `"=>65"`, no matchea NUNCA y cae al comodín en silencio: el mismo modo
+# de fallo que R12 cierra para el rango vacío, en la forma que no llegó a ser rango.
+# Incluye los signos unicode `≥≤≠` porque no contienen ningún ASCII: sin ellos `≥65`
+# pasaría como igualdad literal.
+_CMP_CHARS = set("<>=≥≤≠")
+
 
 def _check_condition(key: str, value: Any, schema: Schema, bad, i: int) -> None:
     """Una condición SOLO puede ser: comodín · igualdad simple · rango numérico, y
@@ -334,6 +344,10 @@ def _check_condition(key: str, value: Any, schema: Schema, bad, i: int) -> None:
             raise bad(f"rama #{i}, '{key}'={s!r}: el rango está VACÍO, así que esa rama "
                       f"no puede matchear nunca y caería al comodín sin avisar")
         return
+    if _CMP_CHARS & set(s):
+        raise bad(f"rama #{i}, '{key}'={s!r}: parece una comparación mal escrita "
+                  f"(un rango bien formado ya se habría reconocido). Escribe '>=65', "
+                  f"'<=100' o '[10,100)'; si de verdad querías igualdad, quita el operador")
     if _OPERATOR_CHARS & set(s):
         raise bad(f"rama #{i}, '{key}'={s!r}: parece un operador inventado. "
                   f"Solo se permite: comodín, igualdad simple o rango numérico")
