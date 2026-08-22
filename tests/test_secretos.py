@@ -86,6 +86,29 @@ def test_escanea_TODO_lo_versionado_no_solo_codigo(tmp_path: Path):
     assert "informe.md" in h[0].fichero
 
 
+def test_ROJO_un_secreto_en_github_workflows_SI_se_caza(tmp_path: Path):
+    """`.git` como subcadena apagaba TODO `.github/`: `".git" in ".github/workflows/ci.yml"` es
+    True, así que la exclusión pensada para el directorio interno de git se tragaba el de
+    configuración de GitHub. El workflow de CI —donde vive una credencial en `env:`— nunca se
+    abría y el escáner decía «limpio» sin haberlo mirado. Medido sobre el propio repo el
+    2026-08-21: `.github/workflows/ci.yml` estaba versionado y quedaba fuera del barrido. La
+    exclusión tiene que ser por COMPONENTE de ruta, no por subcadena."""
+    repo = _repo_git(tmp_path, {
+        ".github/workflows/ci.yml":
+            f"jobs:\n  build:\n    env:\n      GROQ_API_KEY: {FALSO_GROQ}\n"})
+
+    # (b) la mutación entró: el fichero contiene la forma Y git lo conoce.
+    assert FALSO_GROQ in (repo / ".github/workflows/ci.yml").read_text(encoding="utf-8")
+    versionados = subprocess.run(["git", "ls-files"], cwd=repo, capture_output=True,
+                                 text=True).stdout
+    assert ".github/workflows/ci.yml" in versionados, "la mutación no se aplicó: git no lo ve"
+
+    hallazgos = revisar_secretos(repo)
+    assert len(hallazgos) == 1, f"un secreto en .github/workflows no se cazó: {hallazgos}"
+    assert hallazgos[0].codigo == "SEC001"
+    assert ".github/workflows/ci.yml" in hallazgos[0].fichero.replace("\\", "/")
+
+
 def test_varios_patrones_distintos(tmp_path: Path):
     repo = _repo_git(tmp_path, {
         "a.py": f'x = "{FALSO_AWS}"\n',

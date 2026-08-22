@@ -30,7 +30,10 @@ _REFERENCIA = re.compile(
 
 
 #: Al recorrer en profundidad hay que excluir lo que no es documentación del proyecto.
-_EXCLUIR = ("node_modules", ".git", "venv", "site-packages", "__pycache__", ".next", "/dist/")
+#: Comparación por COMPONENTE de ruta (`p.parts`), no por subcadena: `".git" in str(p)` casaba
+#: `.github/` entero (`.git` es subcadena de `.github`), así que los `.md` de `.github/` no
+#: aportaban cabeceras ni se revisaban. Medido el 2026-08-21.
+_EXCLUIR = {"node_modules", ".git", "venv", "site-packages", "__pycache__", ".next", "dist"}
 
 
 def _markdowns(d: Path) -> list[Path]:
@@ -46,7 +49,7 @@ def _markdowns(d: Path) -> list[Path]:
     test copiaba la forma del bug.
     """
     return sorted(p for p in d.rglob("*.md")
-                  if not any(x in "/" + str(p).replace("\\", "/") for x in _EXCLUIR))
+                  if not _EXCLUIR.intersection(p.parts))
 
 
 def _cabeceras(dirs: list[Path]) -> set[str]:
