@@ -36,48 +36,9 @@ CORE = RAIZ / "docs/CN_REFERENCIA_CORE.md"
 DECISION = RAIZ / "docs/decisiones/CONTEXTO_PROPIO.md"
 
 
-def contexto_propio():
-    """¿Tiene capa-normativa cadena de checkpoints PROPIA, o se decide por escrito que no?
+# `contexto_propio()` vivia aqui. Retirada el 2026-08-23 al cumplirse (ver CUMPLIDAS):
+# mientras siguio en el tablero salia VERDE y no obligaba a nada.
 
-    EL DANO ESTA MEDIDO, no es cuestion de orden. Hoy sus sesiones se guardan dentro de
-    `Contexto/mcp_smart_context/` y `Contexto/ponerse_wenorro/`, y eso hace dos cosas:
-
-      · En la medicion del 2026-08-20, las parejas 11-14 de la cadena de `mcp` eran trabajo de
-        capa-normativa archivado bajo mcp. Por eso "el proximo paso no se recogio" quedo
-        ambiguo: el checkpoint siguiente era de OTRO proyecto. Corrompio la unica medicion
-        que tenemos.
-      · El paso B de `/checkpoint` copia ESTADO ACTUAL al CORE del proyecto de la carpeta, asi
-        que el CORE de mcp acaba describiendo estado de capa-normativa.
-
-    Pero montarla no es un `mkdir`: son CINCO piezas (carpeta, entrada en projects_config.yaml,
-    CN_REFERENCIA_CORE.md, SUMMARY.md, reindexado del RAG). Media cableada es peor que ninguna
-    — el drift-check del paso F reportaria stale para siempre.
-
-    Forma DECISION: se monta entera, o se declara por escrito que no y por que.
-    """
-    import re
-    if DECISION.exists():
-        t = DECISION.read_text("utf-8", errors="replace")
-        if re.search(r"^decidido:\s*no\s*$", t, re.M) and re.search(r"^motivo:\s*\S", t, re.M):
-            return True, "declarado por escrito que NO se monta, con motivo"
-    faltan = []
-    if not CONTEXTO.exists():
-        faltan.append("la carpeta Contexto/capa-normativa")
-    if not CORE.exists():
-        faltan.append("docs/CN_REFERENCIA_CORE.md")
-    try:
-        if "capa-normativa" not in CONFIG_RAG.read_text("utf-8", errors="replace"):
-            faltan.append("su entrada en projects_config.yaml")
-    except Exception:
-        faltan.append("no se pudo leer projects_config.yaml")
-    if faltan:
-        return False, "faltan " + str(len(faltan)) + "/3 piezas: " + ", ".join(faltan)
-    return True, "cadena propia montada"
-
-# Nota: `emit --check` NO está cableado al CI de este repo, y eso NO es una promesa abierta
-# sino una decisión ya tomada y escrita con su motivo en `.github/workflows/ci.yml`: este repo
-# es el paquete, no un inquilino, así que no tiene registro que emitir. Es justo la forma que
-# este tablero persigue — decidir y dejar el porqué, en vez de dejarlo pendiente en prosa.
 
 def canario_completo():
     """Los CUATRO detectores del vigilante tienen que estar cubiertos por el canario.
@@ -289,6 +250,20 @@ def _fabrica_inv(nombre, comando, resumen):
     return comprobador
 
 
+#: Promesas RETIRADAS por cumplidas. No viven en COMPROBADORES: una promesa cumplida sale VERDE,
+#: y una promesa verde no obliga a nada — es el defecto que se arreglo aqui mismo el 2026-08-20,
+#: cuando el gate eran 256 tests que ya pasaban antes de empezar. Se conservan para que quien cite
+#: el nombre viejo lea «cumplida el X» y no «desconocida», que es un error y se lee como averia.
+CUMPLIDAS = {
+    "contexto-propio": (
+        "cumplida el 2026-08-23, retirada del tablero ese mismo dia. Pedia que capa-normativa "
+        "tuviera cadena de checkpoints PROPIA en vez de archivar sus sesiones bajo mcp y "
+        "ponerse_wenorro, que fue lo que corrompio la medicion del 2026-08-20. Existen las tres "
+        "piezas: Contexto/capa-normativa, docs/CN_REFERENCIA_CORE.md y su entrada en "
+        "projects_config.yaml. Mientras siguio en el tablero salia VERDE y dejaba --verifica en "
+        "ROJO PERMANENTE para todo lo demas, que es como se deja de correr una verificacion."),
+}
+
 SIN_MUTACION = {
     'inv-capa-normativa-sin-pre-commit': 'no se muta creando un fichero: su aceptacion es un comando que interroga el estado real del sistema. Nacio ROJO y se comprobo EJECUTANDOLO desde este arbol el 2026-08-23, al re-ubicarla desde pw-ralph — alli su arreglo caia fuera del worktree y no habia forma de cerrarla.',
     'bug-git-como-subcadena-apaga': 'no se muta creando un fichero: exige que un TEST NOMBRADO exista y PASE. Un stub vacio sale 4 (sin escribir), no 0 — y el comprobador distingue esos dos rojos. Su ROJO es su estado natural hoy: el defecto lo verifico un esceptico EJECUTANDO el codigo.',
@@ -315,7 +290,6 @@ SIN_MUTACION = {
     'inv-capa-normativa-declarado-en-el': 'no se muta creando un fichero: su aceptacion interroga el estado real del sistema (tareas programadas, logs, config, indices). Nacio ROJO —comprobado ejecutandolo— y lo escribio un esceptico independiente, no quien hara el trabajo.',
 }
 ARTEFACTOS = {
-    "contexto-propio": [(str(DECISION), "decidido: no" + chr(10) + "motivo: stub" + chr(10))],
 }
 COMPROBADORES = {
     'inv-capa-normativa-sin-pre-commit': _fabrica_inv('inv-capa-normativa-sin-pre-commit', *_INV['inv-capa-normativa-sin-pre-commit']),
@@ -341,7 +315,6 @@ COMPROBADORES = {
     "bug-emit-pierde-el-provenance": _fabrica_bug("bug-emit-pierde-el-provenance", *_BUGS["bug-emit-pierde-el-provenance"]),
     "bug-check-sale-con-1": _fabrica_bug("bug-check-sale-con-1", *_BUGS["bug-check-sale-con-1"]),
     "canario-completo": canario_completo,
-    "contexto-propio": contexto_propio,
 }
 
 # ── MUTACIÓN: un comprobador en el que se puede confiar es uno que se ha VISTO cambiar ──
@@ -358,10 +331,12 @@ COMPROBADORES = {
 # ocurra pedirlo.
 
 
-def _verifica() -> int:
+def _verifica(solo: str | None = None) -> int:
     import hashlib
     malos = []
     for nombre, fn in COMPROBADORES.items():
+        if solo is not None and nombre != solo:
+            continue
         if nombre in SIN_MUTACION:
             print("  " + chr(9898) + " " + nombre.ljust(24) + "sin mutar: " + SIN_MUTACION[nombre])
             continue
@@ -432,11 +407,23 @@ def _salida_resistente() -> None:
 def main(argv: list[str]) -> int:
     _salida_resistente()
     if argv and argv[0] == "--verifica":
-        return _verifica()
+        # `--verifica <nombre>` selecciona UNO. Antes el nombre se ignoraba y se corria la
+        # mutacion entera, y eso rompia en silencio a los contratos que lo citan: pedian
+        # verificar SU comprobador y recibian el veredicto de los otros treinta — asi que un
+        # rojo ajeno los dejaba imposibles de aprobar para siempre. Cinco tareas se
+        # bloquearon por esto el 2026-08-22.
+        solo = argv[1] if len(argv) > 1 else None
+        if solo is not None and solo not in COMPROBADORES:
+            print('desconocida: ' + solo, file=sys.stderr)
+            return 2
+        return _verifica(solo)
     nombres = argv or list(COMPROBADORES)
     fallos = 0
     for n in nombres:
         fn = COMPROBADORES.get(n)
+        if fn is None and n in CUMPLIDAS:
+            print("  ✅ " + n + " " + CUMPLIDAS[n])
+            continue
         if fn is None:
             print(f"desconocida: {n}. Conocidas: {', '.join(COMPROBADORES)}", file=sys.stderr)
             return 2
