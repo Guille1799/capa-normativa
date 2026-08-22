@@ -223,6 +223,54 @@ def sondas_miran_su_arbol() -> tuple[bool, str]:
 #: y una promesa verde no obliga a nada — es el defecto que se arreglo aqui mismo el 2026-08-20,
 #: cuando el gate eran 256 tests que ya pasaban antes de empezar. Se conservan para que quien cite
 #: el nombre viejo lea «cumplida el X» y no «desconocida», que es un error y se lee como averia.
+def registro_sin_caducados() -> tuple[bool, str]:
+    """Ninguna entrada de REGISTRO.md puede estar vencida y sin aplicar su propia regla.
+
+    El REGISTRO se dio a si mismo esta norma en su primera linea: «llegada la fecha de CADUCA, o
+    hay SEÑAL DE USO, o la cosa se quita». Una norma que solo esta escrita es una intencion; esto
+    la convierte en un exit code.
+
+    ⚠️ Lo importante de este comprobador es que **se pone rojo el solo**. No hace falta que nadie
+    se acuerde de revisarlo: se apoya en la fecha de hoy, asi que la proxima vez que algo caduque
+    saltara sin que nadie lo toque. Es la diferencia entre una guarda y un recordatorio.
+
+    Y no se puede aprobar escribiendo: solo pasa RETIRANDO lo caducado o renovando su fecha con
+    una señal de uso de verdad, que es exactamente lo que la norma pide.
+    """
+    import datetime
+    import re
+    reg = RAIZ.parent / "REGISTRO.md"
+    if not reg.exists():
+        return False, "no existe " + str(reg) + ": la norma no puede hacerse cumplir sin registro"
+    hoy = datetime.date.today()
+    vencidas = []
+    bloque, titulo = [], None
+    def cerrar(titulo, bloque):
+        if not titulo:
+            return
+        texto = chr(10).join(bloque)
+        m = re.search(r"CADUCA:\s*(\d{4})-(\d{2})-(\d{2})", texto)
+        if not m:
+            return
+        fecha = datetime.date(int(m.group(1)), int(m.group(2)), int(m.group(3)))
+        if fecha >= hoy:
+            return
+        estado = re.search(r"ESTADO:\s*(.+)", texto)
+        dice = (estado.group(1) if estado else "").upper()
+        if "RETIRADO" not in dice:
+            vencidas.append(titulo[:42] + " (caduco " + fecha.isoformat() + ")")
+    for linea in reg.read_text("utf-8", errors="replace").splitlines():
+        if linea.startswith("## "):
+            cerrar(titulo, bloque)
+            titulo, bloque = linea[3:].strip(), []
+        bloque.append(linea)
+    cerrar(titulo, bloque)
+    if vencidas:
+        return False, (str(len(vencidas)) + " entrada(s) vencidas sin retirar: "
+                       + "; ".join(vencidas))[:200]
+    return True, "ninguna entrada de REGISTRO.md esta vencida sin aplicar su regla"
+
+
 CUMPLIDAS = {
     "contexto-propio": (
         "cumplida el 2026-08-23, retirada del tablero ese mismo dia. Pedia que capa-normativa "
@@ -234,6 +282,7 @@ CUMPLIDAS = {
 }
 
 SIN_MUTACION = {
+    "registro-sin-caducados": ("no se muta creando un fichero: su rojo depende de la FECHA de hoy contra las de REGISTRO.md, no de que exista nada. Se pone rojo el solo cuando algo caduca, y solo pasa retirando lo caducado o renovando su fecha con señal de uso real."),
     "sondas-miran-su-arbol": ("no se muta creando un fichero: su rojo no depende de que exista "
                               "nada, sino de lo que TOCAN las demas sondas al ejecutarse. Se "
                               "verifica al reves — apuntando una sonda a un arbol hermano y "
@@ -265,6 +314,7 @@ SIN_MUTACION = {
 ARTEFACTOS = {
 }
 COMPROBADORES = {
+    "registro-sin-caducados": registro_sin_caducados,
     'inv-revista-de-runtimes-quien-corre': _fabrica_inv('inv-revista-de-runtimes-quien-corre', *_INV['inv-revista-de-runtimes-quien-corre']),
     'inv-test-hechos-que-caducan-barre': _fabrica_inv('inv-test-hechos-que-caducan-barre', *_INV['inv-test-hechos-que-caducan-barre']),
     'inv-test-hechos-que-caducan-barre': _fabrica_inv('inv-test-hechos-que-caducan-barre', *_INV['inv-test-hechos-que-caducan-barre']),
