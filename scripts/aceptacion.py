@@ -79,12 +79,44 @@ def contexto_propio():
 # es el paquete, no un inquilino, así que no tiene registro que emitir. Es justo la forma que
 # este tablero persigue — decidir y dejar el porqué, en vez de dejarlo pendiente en prosa.
 
-SIN_MUTACION = {}
+def sondas_miran_su_arbol() -> tuple[bool, str]:
+    """Ninguna sonda de ESTE tablero puede juzgar un worktree hermano.
+
+    Es la guarda que faltaba, y su historia dice por qué hace falta: el 2026-08-22 tres sondas
+    de `ponerse_wenorro` —escritas justamente para cazar fallos de aislamiento— llevaban la ruta
+    al checkout principal ESCRITA A MANO. El agente arreglaba su copia, ellas abrian la de al
+    lado, decian ROJO, y el bucle destruia el trabajo correcto. Sin sintoma: por la manana el
+    registro decia lo mismo que si el agente no hubiera hecho nada.
+
+    ⚠️ Observa en vez de leer el fuente, y ahi esta el valor. Un lint que busque rutas escritas
+    no ve las tres formas que ya han ocurrido en estos repos: `GIT_DIR` secuestrando a los
+    detectores (commit d216e5e), un paquete instalado y viejo tapando al fuente, y una ruta
+    relativa resuelta contra el directorio equivocado. En las tres, el fuente esta limpio.
+
+    Se excluye a si misma, obviamente: ejecutarse bajo su propia vigilancia no termina.
+    """
+    from capa_normativa.vigilante.arbol_propio import revisar_arbol_propio
+    otras = {n: f for n, f in COMPROBADORES.items() if n != "sondas-miran-su-arbol"}
+    hallazgos = revisar_arbol_propio(otras, RAIZ)
+    if hallazgos:
+        return False, (str(len(hallazgos)) + " sonda(s) juzgan otro arbol: "
+                       + ", ".join(h.fichero for h in hallazgos))
+    return True, "las " + str(len(otras)) + " sondas miran su propio arbol"
+
+
+SIN_MUTACION = {
+    "sondas-miran-su-arbol": ("no se muta creando un fichero: su rojo no depende de que exista "
+                              "nada, sino de lo que TOCAN las demas sondas al ejecutarse. Se "
+                              "verifica al reves — apuntando una sonda a un arbol hermano y "
+                              "exigiendo que salte —, y eso lo cubre tests/test_arbol_propio.py, "
+                              "donde cada puerta vigilada tiene su propio caso rojo."),
+}
 ARTEFACTOS = {
     "contexto-propio": [(str(DECISION), "decidido: no" + chr(10) + "motivo: stub" + chr(10))],
 }
 COMPROBADORES = {
     "contexto-propio": contexto_propio,
+    "sondas-miran-su-arbol": sondas_miran_su_arbol,
 }
 
 # ── MUTACIÓN: un comprobador en el que se puede confiar es uno que se ha VISTO cambiar ──
