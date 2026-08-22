@@ -6,3 +6,10 @@ build/
 .pytest_cache/
 .venv/
 .ralph.local.conf
+
+# Registros de las tandas del bucle autonomo. Se CONSERVAN en disco —son la unica cronica de
+# lo que hizo cada noche— pero no se versionan: los genera el arnes, no el proyecto. Sin esto
+# el worktree sale "sucio" en cada tanda y la guarda de limpieza de ralph_diario.sh dispara un
+# `git reset --hard` que ademas no los borra, porque a los ficheros sin seguir no les afecta.
+logs/
+ralph_run_*.log
