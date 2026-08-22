@@ -118,11 +118,85 @@ def canario_completo():
     return True, "los cuatro detectores registrados tienen caso rojo y el canario los ve saltar"
 
 
+#: Los defectos que la caza adversarial del 2026-08-21 encontro y su esceptico verifico. Cada
+#: uno llego YA con su aceptacion: un nodo de pytest que hoy NO EXISTE (pytest sale 4) y que
+#: solo pasara cuando el defecto este cerrado. En 8 de los 28 el esceptico TUMBO la aceptacion
+#: del cazador y escribio una mejor — ese segundo trabajo es la mitad del valor de la tanda.
+_BUGS = {
+    "bug-git-como-subcadena-apaga": ("tests/test_secretos.py::test_ROJO_un_secreto_en_github_workflows_SI_se_caza",
+        "`.git` como subcadena apaga TODO `.github/`: los workflows versionados nunca se escanean"),
+    "bug-versionados-descarta-en-silencio": ("tests/test_versionados.py::test_ROJO_un_nombre_no_ASCII_no_se_pierde",
+        "`versionados()` descarta en silencio los nombres que git CITA (no-ASCII): un fichero real deja de escanearse"),
+    "bug-emit-check-grita-deriva": ("tests/test_emision.py::test_el_check_NO_falla_por_COMO_SE_ESCRIBA_la_ruta",
+        "`emit --check` grita DERIVA por cómo se ESCRIBIÓ la ruta, no por lo que cambió"),
+    "bug-el-pip-install-del": ("tests/test_empaquetado.py::test_el_pip_install_del_README_fija_la_version_PUBLICADA",
+        "El `pip install` del README fija v0.16.1 — la versión SIN el arreglo de «escanea cero y dice limpio»"),
+    "bug-el-barrido-dice-4": ("tests/test_vigilante.py::test_el_barrido_no_CUENTA_los_detectores_que_OMITE",
+        "El barrido dice «4 detector(es)» habiendo corrido 3: omite `preguntas` en silencio"),
+    "bug-init-reparte-un-expires": ("tests/test_arranque.py::test_lo_generado_CARGA_tambien_dentro_de_tres_anios",
+        "`init` reparte un `expires: '2027-12-31'` cableado: a partir de esa fecha genera un registro que NO carga"),
+    "bug-el-usage-del-vigilante": ("tests/test_empaquetado.py::test_el_usage_NOMBRA_un_comando_que_EXISTE",
+        "El `usage:` del vigilante nombra `capa-normativa vigilante`, un comando que no existe"),
+    "bug-una-rama-sin-la": ("tests/test_registry.py::test_rama_sin_when_se_rechaza_como_when_vacio",
+        "Una rama SIN la clave `when` esquiva las tres guardas de solape: con dos, gana la última del fichero"),
+    "bug-un-operador-de-comparacion": ("tests/test_registry.py::test_operador_de_comparacion_mal_escrito_no_carga",
+        "Un operador de comparación mal escrito (`=>65`) se acepta como igualdad literal y crea una rama MUERTA que cae al comodí"),
+    "bug-branch-note-se-parsea": ("tests/test_registry.py::test_resolve_entrega_la_note_de_la_rama_que_contesto",
+        "`Branch.note` se parsea, se valida y se guarda, pero `resolve()` no lo entrega: 60 ramas del inquilino real no llegan a "),
+    "bug-emit-pierde-el-provenance": ("tests/test_emision.py::test_una_constante_sin_respaldo_emite_note_Y_provenance",
+        "`emit` pierde el `provenance_note` cuando la constante también tiene `note`: 3 de las 116 constantes reales salen sin de"),
+    "bug-check-sale-con-1": ("tests/test_emision.py::test_check_no_falla_por_como_se_escribe_la_ruta",
+        "`--check` sale con 1 gritando «DERIVA» por cómo se escribió la ruta en la línea de órdenes, no por deriva real"),
+}
+
+
+def _fabrica_bug(nombre: str, nodo: str, resumen: str):
+    """Fabrica el comprobador de UN defecto: correr su nodo de pytest y leer el exit code.
+
+    No opina sobre el contenido del test. Pregunta por un EXIT CODE, que es la regla.
+
+    ⚠️ Distingue el rojo POR AUSENCIA del rojo POR FALLO, y no es cosmetico: pytest sale 4
+    cuando no encuentra el nodo y 1 cuando el test existe y falla. Los dos son "rojo", pero solo
+    el segundo significa que alguien escribio el test. Si el tablero no los separa, un test mal
+    nombrado se lee como trabajo pendiente para siempre.
+    """
+    def comprobador():
+        import subprocess
+        import sys as _s
+        try:
+            r = subprocess.run([_s.executable, "-m", "pytest", nodo, "-q",
+                                "-p", "no:cacheprovider"],
+                               capture_output=True, timeout=900, cwd=str(RAIZ))
+        except subprocess.TimeoutExpired:
+            return False, "el test se cuelga (>15 min)"
+        if r.returncode == 0:
+            return True, "cerrado: " + resumen
+        if r.returncode == 4:
+            return False, "sin escribir: " + resumen
+        sal = r.stdout.decode("utf-8", "replace").strip().splitlines()
+        ultima = next((l for l in reversed(sal) if l.strip()), "")
+        return False, "el test existe y FALLA (el defecto sigue): " + ultima[:90]
+    comprobador.__name__ = nombre.replace("-", "_")
+    return comprobador
+
+
 SIN_MUTACION = {}
 ARTEFACTOS = {
     "contexto-propio": [(str(DECISION), "decidido: no" + chr(10) + "motivo: stub" + chr(10))],
 }
 COMPROBADORES = {
+    "bug-git-como-subcadena-apaga": _fabrica_bug("bug-git-como-subcadena-apaga", *_BUGS["bug-git-como-subcadena-apaga"]),
+    "bug-versionados-descarta-en-silencio": _fabrica_bug("bug-versionados-descarta-en-silencio", *_BUGS["bug-versionados-descarta-en-silencio"]),
+    "bug-emit-check-grita-deriva": _fabrica_bug("bug-emit-check-grita-deriva", *_BUGS["bug-emit-check-grita-deriva"]),
+    "bug-el-pip-install-del": _fabrica_bug("bug-el-pip-install-del", *_BUGS["bug-el-pip-install-del"]),
+    "bug-el-barrido-dice-4": _fabrica_bug("bug-el-barrido-dice-4", *_BUGS["bug-el-barrido-dice-4"]),
+    "bug-init-reparte-un-expires": _fabrica_bug("bug-init-reparte-un-expires", *_BUGS["bug-init-reparte-un-expires"]),
+    "bug-el-usage-del-vigilante": _fabrica_bug("bug-el-usage-del-vigilante", *_BUGS["bug-el-usage-del-vigilante"]),
+    "bug-una-rama-sin-la": _fabrica_bug("bug-una-rama-sin-la", *_BUGS["bug-una-rama-sin-la"]),
+    "bug-un-operador-de-comparacion": _fabrica_bug("bug-un-operador-de-comparacion", *_BUGS["bug-un-operador-de-comparacion"]),
+    "bug-branch-note-se-parsea": _fabrica_bug("bug-branch-note-se-parsea", *_BUGS["bug-branch-note-se-parsea"]),
+    "bug-emit-pierde-el-provenance": _fabrica_bug("bug-emit-pierde-el-provenance", *_BUGS["bug-emit-pierde-el-provenance"]),
+    "bug-check-sale-con-1": _fabrica_bug("bug-check-sale-con-1", *_BUGS["bug-check-sale-con-1"]),
     "canario-completo": canario_completo,
     "contexto-propio": contexto_propio,
 }
