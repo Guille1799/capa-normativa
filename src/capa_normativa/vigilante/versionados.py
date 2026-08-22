@@ -57,15 +57,21 @@ def versionados(repo: Path, patron: str | None = None) -> list[Path] | None:
     si recorre el disco. Se distingue de la lista vacía a propósito: «no es un repo» y «un repo
     sin ficheros» exigen reacciones distintas.
     """
-    orden = ["git", "-C", str(repo), "ls-files"] + ([patron] if patron else [])
+    # `-z`: nombres separados por NUL y SIN citar. Con el default `core.quotePath=true`, un
+    # `ls-files` normal envuelve los nombres no-ASCII entre comillas y escapa cada byte en octal
+    # (`"docs/se\303\261al.md"`). Ese texto NO es una ruta: `repo / esa_cadena` no existe y la
+    # «defensa 3» lo descartaba callando, dejando de escanear cualquier fichero con ñ/tilde. Con
+    # `-z` git emite el nombre tal cual (bytes UTF-8), así que no hay nada que des-escapar.
+    orden = ["git", "-C", str(repo), "ls-files", "-z"] + ([patron] if patron else [])
     try:
-        r = subprocess.run(orden, capture_output=True, text=True, timeout=120,
+        r = subprocess.run(orden, capture_output=True, timeout=120,
                            env=entorno_limpio())
     except (OSError, subprocess.SubprocessError):
         return None
     if r.returncode != 0 or not r.stdout.strip():
         return None
-    rutas = [repo / linea for linea in r.stdout.splitlines() if linea.strip()]
+    nombres = r.stdout.decode("utf-8", "surrogateescape").split("\0")
+    rutas = [repo / n for n in nombres if n]
     # Cinturón: una lista envenenada da rutas inexistentes. Mejor escanear menos que escanear
     # fantasmas y llamarlo «limpio».
     return [p for p in rutas if p.exists()] or None
