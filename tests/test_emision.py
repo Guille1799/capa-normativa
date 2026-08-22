@@ -341,6 +341,38 @@ def test_el_cli_devuelve_1_con_deriva_y_2_si_no_puede_cargar(tmp_path: Path, cap
     capsys.readouterr()
 
 
+def test_check_no_falla_por_como_se_escribe_la_ruta(tmp_path: Path, monkeypatch, capsys):
+    """El mismo defecto que `test_el_check_NO_falla_por_COMO_SE_ESCRIBA_la_ruta`, pero vivido a
+    través de la CLI real (`main`), que es como llega: el dev genera con la ruta que le
+    autocompletó la shell —`reg/`, con barra final— y el CI comprueba con la que escribió a mano
+    —`reg`, sin barra—. El fichero generado es byte a byte el mismo; lo único que cambia es la
+    barra, que se cuela en la línea `Regenerar:` de la cabecera. Antes eso ponía `--check` en
+    rojo sin que nada hubiera derivado, y un check con falsos rojos se desactiva —lo que la
+    invariante de `comprobar` prohíbe—.
+    """
+    _registro(tmp_path, CONSTANTE)                 # deja el registro en tmp_path/reg
+    monkeypatch.chdir(tmp_path)                     # para poder escribir la ruta de varias formas
+
+    # 1) genera con la ruta CON barra final (la del autocompletado)
+    assert main(["reg/", "--formato", "typescript", "--salida", "norms.ts"]) == 0
+    assert (tmp_path / "norms.ts").exists(), "no escribió el fichero"
+
+    # 2) comprueba con OTRA ortografía de la misma ruta: la única diferencia es cómo se tecleó
+    for registro in ("reg", "./reg", str(tmp_path / "reg")):
+        assert main([registro, "--formato", "typescript", "--salida", "norms.ts",
+                     "--check"]) == 0, (
+            f"--check ({registro}) gritó DERIVA por la ortografía de la ruta, no por deriva real")
+
+    # Control positivo: una deriva DE VERDAD (el valor cambió) sigue devolviendo 1, aun con
+    # la ortografía distinta —el arreglo no puede haber apagado el check de verdad—.
+    (tmp_path / "norms.ts").write_text(
+        (tmp_path / "norms.ts").read_text(encoding="utf-8").replace("5.0", "9.9"),
+        encoding="utf-8")
+    assert main(["reg", "--formato", "typescript", "--salida", "norms.ts", "--check"]) == 1, \
+        "dejó de ver la deriva real"
+    capsys.readouterr()
+
+
 # ─────────────────── iteración pública del registro ───────────────────
 
 def test_el_registro_se_puede_RECORRER_sin_tocar_lo_privado(tmp_path: Path):
