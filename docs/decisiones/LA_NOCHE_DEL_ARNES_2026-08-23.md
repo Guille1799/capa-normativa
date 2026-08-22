@@ -81,3 +81,22 @@ correcto que lo esté**: todo lo suyo es de una de esas dos clases.
 usen hace falta fusionar, y fusionar es decisión de G. Medido hoy sobre los cuatro tableros:
 **cn-ralph 5 sondas mal apuntadas · mcp-ralph 4 · pw-ralph 0 · eu-ralph 0** — los dos ceros son los
 árboles cuyas sondas ya se arreglaron, o sea el antes y el después de la misma medida.
+
+## Dos que quedan rotos, y por qué no los toqué
+
+Después de sacar la prosa del campo del comando, dos siguen creando ficheros basura al ejecutarse:
+
+| comprobador | basura que deja |
+|---|---|
+| `inv-ess-variable-checker-su-unica` (eu) | `'+$x.Value)` |
+| `inv-decision-recall-y-session-restorer` (eu/mcp) | ``1` `` |
+
+No es prosa: son comandos **PowerShell con el entrecomillado mal anidado** —`powershell -Command
+"…$($x.Value)…"` dentro de una cadena de Python dentro de una cadena de shell—, y el trozo que se
+escapa acaba como nombre de fichero. Que dejen basura es lo de menos: significa que **el comando no
+mide lo que su autor creía**, así que su veredicto no vale ni en rojo ni en verde.
+
+No los reescribí porque arreglar comillas anidadas de PowerShell a ojo, de madrugada y sin poder
+preguntar, es exactamente cómo se mete el siguiente fallo de esta familia. Y porque los dos están
+además en el grupo de *fuera del repo*, que espera decisión. `bin/contratar.py` ya los clasifica
+como `comando-roto` por el backtick, así que no se colarán en una cola por descuido.
