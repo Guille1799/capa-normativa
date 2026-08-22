@@ -21,7 +21,8 @@ LIMPIO, HALLAZGOS, ERROR = 0, 1, 2
 
 def _parser() -> argparse.ArgumentParser:
     p = argparse.ArgumentParser(
-        prog="capa-normativa vigilante",
+        prog="capa-normativa-vigilante",  # con GUION: es el nombre real en [project.scripts].
+        # Con ESPACIO nombraba un comando que no existe — copiar el `usage:` daba «command not found».
         description="Chequeos deterministas sobre un repo. Sin red, sin LLM, sin dependencias.",
     )
     p.add_argument("ruta", help="repo (para sintaxis) o directorio de .md (para punteros)")

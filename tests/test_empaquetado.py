@@ -41,6 +41,16 @@ def _version_publicada() -> str:
     return m.group(1)
 
 
+def _scripts_declarados() -> set[str]:
+    """Los ejecutables que el paquete instala, leídos de `[project.scripts]` de pyproject.toml.
+    Se leen, no se repiten aquí: son la única fuente de qué comandos existen de verdad, y el bug
+    nació justo de escribir el nombre a mano en un segundo sitio que nadie comparaba con este."""
+    txt = (RAIZ / "pyproject.toml").read_text("utf-8")
+    bloque = re.search(r'(?ms)^\[project\.scripts\]\s*(.*?)^\[', txt)
+    assert bloque, "no se pudo leer [project.scripts] de pyproject.toml"
+    return set(re.findall(r'(?m)^([\w-]+)\s*=', bloque.group(1)))
+
+
 def _fuentes() -> list[pathlib.Path]:
     fuera = []
     for base in ("src", "tests"):
@@ -120,3 +130,24 @@ def test_el_pip_install_del_README_fija_la_version_PUBLICADA():
         f"el `pip install` del README fija {malos}, pero el paquete publica la v{version} "
         f"(`pyproject.toml` → `version`). Quien siga el README se lleva un tag anterior que se "
         f"comporta distinto sin avisar. El pin y la versión declarada tienen que coincidir.")
+
+
+def test_el_usage_NOMBRA_un_comando_que_EXISTE():
+    """La primera línea de `--help` es `usage: <prog> …`, y esa `<prog>` es la interfaz que un
+    agente sin contexto copia para reintentar cuando se equivoca de argumentos. Si nombra un
+    comando que no está en `[project.scripts]`, copiarlo da «command not found»: convierte un error
+    recuperable (falta un argumento) en uno que parece de instalación.
+
+    El `prog` estaba escrito a mano con ESPACIO (`capa-normativa vigilante`), como si hubiera un
+    dispatcher raíz con subcomandos; pero el empaquetado fue por cuatro scripts con GUION
+    (`capa-normativa-vigilante`). Los dos sitios —el `prog` del parser y `[project.scripts]`—
+    nunca se comparaban, así que divergieron sin ruido. Este test es esa comparación.
+    """
+    from capa_normativa.vigilante.cli import _parser
+    prog = _parser().prog
+    scripts = _scripts_declarados()
+    assert prog in scripts, (
+        f"el `usage:` del vigilante nombra {prog!r}, que no es un comando instalado. Los "
+        f"ejecutables reales son {sorted(scripts)}. Copiar la línea de uso daría «command not "
+        f"found»: el consumidor declarado es un agente sin contexto, y para él el `usage:` ES "
+        f"la interfaz.")
