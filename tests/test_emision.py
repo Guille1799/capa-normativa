@@ -235,6 +235,34 @@ def test_check_dice_que_falta_el_fichero_en_vez_de_reventar(tmp_path: Path):
     assert motivo and "no existe" in motivo
 
 
+def test_el_check_NO_falla_por_COMO_SE_ESCRIBA_la_ruta(tmp_path: Path):
+    """`--check` tiene que fallar por DERIVA REAL, no por la ortografía de la ruta.
+
+    `orden` (el comando de regeneración) se compone interpolando los argv tal cual y se estampa en
+    la cabecera del fichero generado, y `comprobar` comparaba el texto ENTERO. Así que `reg` vs
+    `./reg` —o `out/n.py` en Windows vs `out\\n.py` en el CI Linux— ponía el check en rojo sin que
+    nada hubiera derivado: el fichero es byte a byte el mismo salvo un `./`. Un check con falsos
+    rojos se desactiva, que es justo lo que la invariante de `comprobar` prohíbe.
+    """
+    r = _registro(tmp_path, CONSTANTE)
+    escrito = "capa-normativa-emit reg --formato F --salida out/n"
+    comprobado = "capa-normativa-emit ./reg --formato F --salida ./out/n"
+    assert escrito != comprobado, "el caso no distingue nada"
+
+    for formato in FORMATOS:
+        f = tmp_path / f"salida_{formato}"
+        f.write_text(emitir(r, formato, orden=escrito, hoy=HOY), encoding="utf-8")
+        # La ÚNICA diferencia entre generar y comprobar es cómo se escribió la ruta.
+        motivo = comprobar(r, formato, f, orden=comprobado, hoy=HOY)
+        assert motivo is None, (
+            f"[{formato}] --check gritó DERIVA por la ortografía de la ruta, no por deriva:\n{motivo}")
+
+    # Control positivo: la deriva DE VERDAD (el valor cambió) sigue saltando, con orden distinta.
+    f = tmp_path / "salida_json"
+    f.write_text(emitir(r, "json", orden=escrito, hoy=HOY).replace("5.0", "9.9"), encoding="utf-8")
+    assert comprobar(r, "json", f, orden=comprobado, hoy=HOY), "dejó de ver la deriva real"
+
+
 def test_el_check_NO_falla_por_finales_de_linea(tmp_path: Path):
     """Un check que falla por CRLF vs LF se desactiva el primer día. Se aprendió midiendo: un
     `settings.json` dio «70 líneas de diferencia» que eran 35 líneas × 2 finales distintos."""
