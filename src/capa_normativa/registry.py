@@ -535,9 +535,16 @@ def _parse_norm(raw: dict, known_evidence: dict[str, dict], today: date,
         # R16d no la ve (filtra con `if b.when`), así que DOS de ellas cargaban y ganaba la
         # última del fichero — el bug que R16d existe para cerrar, en la forma que esta
         # versión vuelve canónica. Verificado en vivo antes de cerrarlo (55.0 y 99.0 → 99.0).
-        if "when" in b and not b["when"]:
-            raise bad(f"rama #{i} con `when` vacío: no discrimina nada y dos así se pisan en "
-                      f"silencio. Si es una constante, quita `branches` y pon `value` en la norma")
+        #
+        # Y OMITIR `when` produce el MISMO `Branch.when == {}` sin pasar por `"when" in b`, así
+        # que esquivaba esta guarda y las otras dos (R16d filtra `if b.when`, `concretas` con
+        # `not all(...sobre vacío)` = False): dos ramas sin `when` cargaban y ganaba la última.
+        # Se comprueba el `when` EFECTIVO (ausente o vacío es lo mismo), salvo en la forma
+        # constante —cuya rama sintética (arriba) no lleva `when` a propósito y es legítima.
+        if not constante and not b.get("when"):
+            raise bad(f"rama #{i} con `when` vacío (o sin `when`): no discrimina nada y dos así "
+                      f"se pisan en silencio. Si es una constante, quita `branches` y pon "
+                      f"`value` en la norma")
         # La certeza EFECTIVA de la rama: la suya si la declara, y si no la de la norma.
         # `is not None` y no `or`: con `or`, una certeza que fuera cadena vacía —o cualquier
         # valor falsy que un día entre en la escala— se fundiría con "no la declara".

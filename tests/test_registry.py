@@ -1012,6 +1012,30 @@ def test_dos_ramas_con_when_VACIO_ya_no_se_pisan_en_silencio(tmp_path):
                          {"when": {}, "value": 99.0, "evidence": ["EV-001"]}])
 
 
+def test_rama_sin_when_se_rechaza_como_when_vacio(tmp_path):
+    """🔴 Bug VIVO hasta hoy: una rama que OMITE la clave `when` (no `when: {}`, la clave
+    AUSENTE) produce el mismo `Branch.when == {}`, pero esquivaba la guarda —que exigía la
+    clave PRESENTE y vacía— y también R16d (`if b.when`) y `concretas`. Con DOS así,
+    `resolve()` devolvía 99.0: ganaba la última del fichero, el ORDEN decidía el valor. Es
+    exactamente lo que la guarda de `when: {}` existe para impedir, en la forma que no miraba.
+
+    Ahora se comprueba el `when` EFECTIVO: ausente o vacío es lo mismo. La única rama sin
+    `when` legítima es la SINTÉTICA de la forma constante, y esa está exenta por `constante`."""
+    # DOS ramas sin la clave `when`: antes cargaban y ganaba 99.0; ahora se rechazan.
+    with pytest.raises(NormError, match="`when` vacío"):
+        _const(tmp_path, evidence=None,
+               branches=[{"value": 55.0, "evidence": ["EV-001"]},
+                         {"value": 99.0, "evidence": ["EV-001"]}])
+    # UNA sola rama sin `when` tampoco: es una constante escrita como rama, y serviría
+    # marcada is_fallback=True en una norma que no tiene ni una rama comodín.
+    with pytest.raises(NormError, match="`when` vacío"):
+        _const(tmp_path, evidence=None,
+               branches=[{"value": 55.0, "evidence": ["EV-001"]}])
+    # La forma constante legítima (rama sintética sin `when`) SIGUE cargando: no es un
+    # falso positivo de la guarda nueva.
+    assert _const(tmp_path, value=55.0).resolve("cte").value == 55.0
+
+
 def test_requires_sigue_siendo_imposible_en_una_constante(tmp_path):
     """No hace falta tocar nada: R7 ya exige que lo declarado en `requires` sea una
     dimensión por la que alguna rama ramifique. Sin ramas, no hay ninguna. El caso feo
