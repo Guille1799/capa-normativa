@@ -68,6 +68,18 @@ def test_dato_requerido_ausente_no_se_adivina():
     assert r.value is None and r.missing == ("size",)
 
 
+def test_resolve_entrega_la_note_de_la_rama_que_contesto():
+    """`Branch.note` se parsea, se valida y el mensaje de error dirige a usarlo — pero
+    hasta v0.16.3 `resolve` no lo entregaba: para las normas que ramifican, era un campo
+    que se escribía y se descartaba. La rama `{kind: unknown}` de `threshold_by_kind`
+    lleva `note: "el más conservador"`; el consumidor tiene que poder leerla."""
+    r = reg().resolve("threshold_by_kind", kind="zzz")
+    assert r.is_fallback is True
+    assert r.note == "el más conservador"
+    # Control: una rama SIN note no inventa una — la entrega como None.
+    assert reg().resolve("threshold_by_kind", kind="alpha").note is None
+
+
 # ── estados ilegales: no se construyen ──────────────────────────────────
 
 def test_ilegal_vinculante_con_certeza_debil(tmp_path):
@@ -1010,6 +1022,94 @@ def test_dos_ramas_con_when_VACIO_ya_no_se_pisan_en_silencio(tmp_path):
         _const(tmp_path, evidence=None,
                branches=[{"when": {}, "value": 55.0, "evidence": ["EV-001"]},
                          {"when": {}, "value": 99.0, "evidence": ["EV-001"]}])
+
+
+def test_rama_sin_when_se_rechaza_como_when_vacio(tmp_path):
+    """🔴 Bug VIVO hasta hoy: una rama que OMITE la clave `when` (no `when: {}`, la clave
+    AUSENTE) produce el mismo `Branch.when == {}`, pero esquivaba la guarda —que exigía la
+    clave PRESENTE y vacía— y también R16d (`if b.when`) y `concretas`. Con DOS así,
+    `resolve()` devolvía 99.0: ganaba la última del fichero, el ORDEN decidía el valor. Es
+    exactamente lo que la guarda de `when: {}` existe para impedir, en la forma que no miraba.
+
+    Ahora se comprueba el `when` EFECTIVO: ausente o vacío es lo mismo. La única rama sin
+    `when` legítima es la SINTÉTICA de la forma constante, y esa está exenta por `constante`."""
+    # DOS ramas sin la clave `when`: antes cargaban y ganaba 99.0; ahora se rechazan.
+    with pytest.raises(NormError, match="`when` vacío"):
+        _const(tmp_path, evidence=None,
+               branches=[{"value": 55.0, "evidence": ["EV-001"]},
+                         {"value": 99.0, "evidence": ["EV-001"]}])
+    # UNA sola rama sin `when` tampoco: es una constante escrita como rama, y serviría
+    # marcada is_fallback=True en una norma que no tiene ni una rama comodín.
+    with pytest.raises(NormError, match="`when` vacío"):
+        _const(tmp_path, evidence=None,
+               branches=[{"value": 55.0, "evidence": ["EV-001"]}])
+    # La forma constante legítima (rama sintética sin `when`) SIGUE cargando: no es un
+    # falso positivo de la guarda nueva.
+    assert _const(tmp_path, value=55.0).resolve("cte").value == 55.0
+
+
+def _dosis_por_edad(tmp_path, spec, con_comodin=True):
+    """Registro autónomo con schema `[edad, sexo]` y una norma que ramifica por edad.
+
+    El fixture del repo declara otras dimensiones (`kind`, `size`…), así que este bug
+    —que vive en cómo se parsea la SPEC de un `when`— necesita su propio schema."""
+    import yaml as _yaml
+    schema = {
+        "certainty_scale": ["alta", "moderada", "baja", "muy_baja", "sin_respaldo"],
+        "weak_from": "baja",
+        "unsupported_level": "sin_respaldo",
+        "wildcards": ["unknown", "any"],
+        "subject_dimensions": ["edad", "sexo"],
+    }
+    branches = [{"when": {"edad": spec}, "value": 10.0, "evidence": ["EV-001"]}]
+    if con_comodin:
+        branches.append({"when": {"edad": "any"}, "value": 40.0, "evidence": ["EV-001"]})
+    norm = {"slug": "dosis", "title": "dosis por edad", "status": "vigente",
+            "strength": "condicional", "certainty": "baja", "unit": "mg",
+            "semantics": "umbral", "expires": "2027-12-31", "branches": branches}
+    (tmp_path / "schema.yaml").write_text(_yaml.safe_dump(schema, allow_unicode=True), "utf-8")
+    (tmp_path / "norms.yaml").write_text(_yaml.safe_dump([norm], allow_unicode=True), "utf-8")
+    return NormRegistry.load(norms_path=tmp_path / "norms.yaml",
+                             evidence_path=FIX / "evidence.yaml",
+                             schema_path=tmp_path / "schema.yaml", today=HOY)
+
+
+@pytest.mark.parametrize("spec", ["=>65", "> = 65", "≥65", ">=65kg", ">=1e3", "<>65"])
+def test_operador_de_comparacion_mal_escrito_no_carga(tmp_path, spec):
+    """🔴 Bug VIVO hasta hoy: un operador de comparación MAL escrito (`=>65`, una errata de
+    un carácter) no cae en «operador inventado» —`_OPERATOR_CHARS` no incluía `<>=`— sino
+    en «igualdad simple», y se guarda como el literal `"=>65"`. Esa rama no matchea NUNCA:
+    `_range_match("70", "=>65")` es None, `"70" != "=>65"` y cae al comodín en silencio,
+    devolviendo el valor del sujeto desconocido. Es el modo de fallo que R12 declara
+    inaceptable, en la forma que no llegó a ser rango.
+
+    Los signos unicode `≥65` no contienen ningún ASCII: añadir `<>=` no basta, por eso la
+    guarda mira también `≥≤≠`."""
+    with pytest.raises(NormError, match="comparación mal escrita"):
+        _dosis_por_edad(tmp_path, spec)
+
+
+@pytest.mark.parametrize("spec", [">=65", ">= 65"])
+def test_comparacion_bien_escrita_discrimina(tmp_path, spec):
+    """Control positivo: el arreglo no puede tragarse un rango legítimo. Con `>=65` la rama
+    específica gana y NO es fallback — que es justo lo que el bug rompía silenciosamente."""
+    res = _dosis_por_edad(tmp_path, spec).resolve("dosis", edad="70")
+    assert res.value == 10.0 and res.is_fallback is False
+
+
+@pytest.mark.parametrize("spec", ["<=100", "[10,100)", "65", "mujer", "(0,1]"])
+def test_specs_validas_siguen_cargando(tmp_path, spec):
+    """La guarda no puede volverse un falso positivo: rangos válidos, intervalos e
+    igualdades literales (numéricas o de texto) siguen construyéndose sin queja."""
+    assert _dosis_por_edad(tmp_path, spec) is not None
+
+
+@pytest.mark.parametrize("spec", ["any", "unknown"])
+def test_un_comodin_como_unica_rama_carga_y_es_fallback(tmp_path, spec):
+    """El comodín como ÚNICA rama (sin una segunda rama comodín, que R16d rechazaría):
+    carga y responde marcada `is_fallback=True`."""
+    res = _dosis_por_edad(tmp_path, spec, con_comodin=False).resolve("dosis", edad="70")
+    assert res.is_fallback is True
 
 
 def test_requires_sigue_siendo_imposible_en_una_constante(tmp_path):

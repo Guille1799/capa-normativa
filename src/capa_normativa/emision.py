@@ -41,6 +41,7 @@ tenga que decir lo mismo — el criterio con el que se cerró la decisión de ar
 from __future__ import annotations
 
 import json
+import re
 from datetime import date
 from pathlib import Path
 from typing import Any, NamedTuple
@@ -217,20 +218,40 @@ def emitir(registro: NormRegistry, formato: str, *, orden: str = "capa-normativa
     return "\n".join(ls)
 
 
+#: La línea del comando de regeneración, en los cuatro formatos: comentario `# Regenerar:  …`
+#: (python/r), `// Regenerar:  …` (typescript) y el campo `"_regenerar": …` (json).
+_MARCA_ORDEN = re.compile(r'^(?:(?:#|//) Regenerar:  |\s*"_regenerar": ).*\n', re.M)
+
+
+def _sin_orden(texto: str) -> str:
+    """Quita la línea del comando de regeneración antes de comparar.
+
+    Esa línea se compone interpolando los argv tal cual (`emisión.main` → `orden`), así que
+    depende de **cómo se escribió la ruta** en la línea de órdenes —`reg` vs `./reg`, `/` vs `\\`,
+    relativa vs absoluta—, no del contenido del registro. Compararla ponía `--check` en rojo por
+    una diferencia que NO es deriva real (el fichero es byte a byte el mismo salvo un `./`), y un
+    check con falsos rojos se desactiva: es justo lo que la invariante de `comprobar` prohíbe.
+    """
+    return _MARCA_ORDEN.sub("", texto)
+
+
 def comprobar(registro: NormRegistry, formato: str, fichero: Path | str, *,
               orden: str = "capa-normativa-emit …", hoy: date | None = None) -> str | None:
     """`None` si el fichero coincide con lo que se emitiría; si no, el motivo.
 
-    Compara **normalizando los finales de línea**: un repo con `core.autocrlf` haría fallar el
-    check por CRLF vs LF, y un check que falla por algo que no es una deriva real se desactiva.
-    Se aprendió midiendo: un `settings.json` dio «70 líneas de diferencia» que eran 35 × 2.
+    Compara **normalizando los finales de línea** e **ignorando la línea de regeneración**: un
+    check que falla por algo que no es una deriva real se desactiva. Los CRLF vs LF (un repo con
+    `core.autocrlf`) y la ortografía de la ruta con la que se invocó (`reg` vs `./reg`) son
+    diferencias de forma, no de contenido. Lo primero se aprendió midiendo —un `settings.json` dio
+    «70 líneas de diferencia» que eran 35 × 2—; lo segundo, que el comando de regeneración
+    empotrado en la cabecera arrastraba los argv literales al artefacto comparado.
     """
     p = Path(fichero)
     if not p.exists():
         return f"no existe `{p}`: hay que generarlo"
-    esperado = emitir(registro, formato, orden=orden, hoy=hoy)
-    actual = p.read_text(encoding="utf-8-sig", errors="replace")
-    if actual.replace("\r\n", "\n") != esperado.replace("\r\n", "\n"):
+    esperado = _sin_orden(emitir(registro, formato, orden=orden, hoy=hoy).replace("\r\n", "\n"))
+    actual = _sin_orden(p.read_text(encoding="utf-8-sig", errors="replace").replace("\r\n", "\n"))
+    if actual != esperado:
         return (f"`{p}` NO coincide con el registro. Alguien editó el fichero generado, o el "
                 f"registro cambió y no se regeneró. Ejecuta: {orden}")
     return None

@@ -95,6 +95,41 @@ def test_un_repo_de_verdad_SI_se_enumera(tmp_path, monkeypatch):
     assert lista and [p.name for p in lista] == ["a.py"]
 
 
+def test_ROJO_un_nombre_no_ASCII_no_se_pierde(tmp_path):
+    """Un fichero versionado con ñ/tilde NO puede desaparecer del barrido en silencio.
+
+    Con `core.quotePath` en su default (true), `git ls-files` devuelve los nombres no-ASCII
+    entre comillas y con los bytes escapados en octal (`"se\\303\\261al.md"`). Esa cadena no es
+    una ruta: `repo / cadena` no existe, y la «defensa 3» la tiraba sin decir nada. Resultado:
+    ni `secretos` ni `sintaxis` miraban ese fichero, y ningún hallazgo, warning ni contador lo
+    mencionaba — la forma exacta del incidente que este módulo existe para no repetir.
+
+    El repo de pega versiona DOS ficheros a propósito: `señal.md` (con una credencial dentro) y
+    `otro.md` plano. Sin el arreglo `versionados()` devuelve 1 en vez de 2, y el escáner de
+    secretos 0 hallazgos en vez de 1. NO se toca `core.quotePath`: el default es lo que expone
+    el bug.
+    """
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    for orden in (["init", "-q"], ["config", "user.email", "t@t"], ["config", "user.name", "t"]):
+        subprocess.run(["git", "-C", str(repo), *orden], capture_output=True)
+    (repo / "señal.md").write_text("clave = " + "gsk" + "_" + "A" * 32 + "\n",
+                                        encoding="utf-8")
+    (repo / "otro.md").write_text("nada que ver\n", encoding="utf-8")
+    subprocess.run(["git", "-C", str(repo), "add", "-A"], capture_output=True)
+    subprocess.run(["git", "-C", str(repo), "commit", "-qm", "x"], capture_output=True)
+
+    lista = versionados(repo)
+    assert lista is not None and len(lista) == 2, (
+        "un nombre con ñ se perdió: git lo CITÓ (comillas + octal) y el filtro `p.exists()` lo "
+        f"descartó callando — se enumeraron {0 if lista is None else len(lista)} de 2 ficheros")
+
+    hallazgos = revisar_secretos(repo)
+    assert len(hallazgos) == 1, (
+        "el escáner de secretos respondió con 0 hallazgos sobre un repo cuyo único fichero con "
+        "credencial tiene ñ en el nombre: nunca lo abrió")
+
+
 def test_NO_hay_dos_enumeraciones(tmp_path):
     """El bug estaba DUPLICADO en los dos detectores, idéntico. Dos copias de lo mismo divergen
     —o, como aquí, se equivocan a la vez y hay que arreglarlo dos veces."""

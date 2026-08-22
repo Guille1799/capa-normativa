@@ -21,7 +21,8 @@ LIMPIO, HALLAZGOS, ERROR = 0, 1, 2
 
 def _parser() -> argparse.ArgumentParser:
     p = argparse.ArgumentParser(
-        prog="capa-normativa vigilante",
+        prog="capa-normativa-vigilante",  # con GUION: es el nombre real en [project.scripts].
+        # Con ESPACIO nombraba un comando que no existe — copiar el `usage:` daba «command not found».
         description="Chequeos deterministas sobre un repo. Sin red, sin LLM, sin dependencias.",
     )
     p.add_argument("ruta", help="repo (para sintaxis) o directorio de .md (para punteros)")
@@ -45,6 +46,8 @@ def main(argv: list[str] | None = None) -> int:
 
     elegidos = args.detector or sorted(DETECTORES)
     hallazgos: list[Hallazgo] = []
+    corridos: list[str] = []          # los que REALMENTE se ejecutaron
+    omitidos: list[str] = []          # los que se saltaron, con motivo, para no contarlos
     for nombre in elegidos:
         fn = DETECTORES[nombre]
         try:
@@ -54,6 +57,7 @@ def main(argv: list[str] | None = None) -> int:
                         print("error: --detector preguntas exige --catalogo <yaml>",
                               file=sys.stderr)
                         return ERROR
+                    omitidos.append(nombre)
                     continue                                # en el barrido «todos», se omite
                 hallazgos.extend(fn(ruta, args.catalogo))
             elif nombre == "punteros":
@@ -64,15 +68,22 @@ def main(argv: list[str] | None = None) -> int:
             print(f"error: el detector {nombre!r} no pudo ejecutarse: "
                   f"{type(e).__name__}: {e}", file=sys.stderr)
             return ERROR
+        corridos.append(nombre)                             # llegó aquí => sí corrió
 
     if args.json:
         print(json.dumps([asdict(h) for h in hallazgos], ensure_ascii=False, indent=2))
-    elif hallazgos:
-        for h in hallazgos:
-            print(h)
-        print(f"\n{len(hallazgos)} hallazgo(s) en {len(elegidos)} detector(es).")
     else:
-        print(f"limpio: {len(elegidos)} detector(es), 0 hallazgos.")
+        if hallazgos:
+            for h in hallazgos:
+                print(h)
+            print(f"\n{len(hallazgos)} hallazgo(s) en {len(corridos)} detector(es).")
+        else:
+            print(f"limpio: {len(corridos)} detector(es), 0 hallazgos.")
+        # El recuento cuenta lo que corrió; los omitidos se declaran aparte para que
+        # «lo miré y está limpio» no incluya a un detector que ni se ejecutó.
+        for nombre in omitidos:
+            print(f"omitido: {nombre} (sin --catalogo no puede ejecutarse; "
+                  f"córrelo con --detector {nombre} --catalogo <yaml> o ignóralo).")
 
     return HALLAZGOS if hallazgos else LIMPIO
 

@@ -6,6 +6,8 @@ problema es suyo o del ejemplo. Todo lo demás de este módulo es secundario fre
 """
 from __future__ import annotations
 
+from datetime import date
+
 import pytest
 
 from capa_normativa import NormRegistry
@@ -21,6 +23,32 @@ def test_lo_generado_CARGA_tal_cual(tmp_path):
     generar(tmp_path)
     reg = NormRegistry.load(tmp_path)
     assert len(reg) == 2, "las dos formas (constante y ramificada) tienen que estar"
+
+
+def test_lo_generado_CARGA_tambien_dentro_de_tres_anios(tmp_path):
+    """La caducidad del ejemplo NO puede estar cableada. Con el literal `2027-12-31` que traía,
+    a partir de esa fecha `init` generaba un registro que `load()` RECHAZA (`R2`): el adoptante
+    recibía el error en su primer minuto, dentro de un fichero que le acababa de dar el paquete.
+
+    Se fija la invariante con una fecha del FUTURO, no con la del sistema: lo generado hoy tiene
+    que seguir cargando dentro de tres años. Antes del arreglo esto es ROJO (`load` lanza
+    `NormError: norma vigente CADUCADA …`); después, verde.
+    """
+    generar(tmp_path)
+
+    hoy = date.today()
+    try:
+        dentro_de_tres = hoy.replace(year=hoy.year + 3)
+    except ValueError:  # 29-feb: el 29 no existe en el año+3, se usa el 28
+        dentro_de_tres = hoy.replace(year=hoy.year + 3, day=28)
+
+    # Carga: es la propiedad que hace el generador «útil o inútil».
+    reg = NormRegistry.load(tmp_path, today=dentro_de_tres)
+    assert len(reg) == 2, "lo generado tiene que seguir cargando dentro de tres años"
+
+    # Y `validate` —lo primero que `init` le dice al adoptante que ejecute— no puede dar rojo.
+    inf = validar(tmp_path, hoy=dentro_de_tres)
+    assert inf.ok, f"lo generado no pasa `validate` dentro de tres años: {inf.errores}"
 
 
 def test_lo_generado_PASA_validate(tmp_path):

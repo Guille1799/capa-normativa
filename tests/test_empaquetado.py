@@ -32,6 +32,25 @@ def _minimo_declarado() -> tuple[int, int]:
     return int(m.group(1)), int(m.group(2))
 
 
+def _version_publicada() -> str:
+    """La versión que el paquete DECLARA. Se LEE de `pyproject.toml`: el mismo número que
+    `tests/test_registry.py` ata a `__init__.__version__`, así que basta una fuente aquí."""
+    txt = (RAIZ / "pyproject.toml").read_text("utf-8")
+    m = re.search(r'(?m)^\s*version\s*=\s*"([^"]+)"', txt)
+    assert m, "no se pudo leer `version` de pyproject.toml"
+    return m.group(1)
+
+
+def _scripts_declarados() -> set[str]:
+    """Los ejecutables que el paquete instala, leídos de `[project.scripts]` de pyproject.toml.
+    Se leen, no se repiten aquí: son la única fuente de qué comandos existen de verdad, y el bug
+    nació justo de escribir el nombre a mano en un segundo sitio que nadie comparaba con este."""
+    txt = (RAIZ / "pyproject.toml").read_text("utf-8")
+    bloque = re.search(r'(?ms)^\[project\.scripts\]\s*(.*?)^\[', txt)
+    assert bloque, "no se pudo leer [project.scripts] de pyproject.toml"
+    return set(re.findall(r'(?m)^([\w-]+)\s*=', bloque.group(1)))
+
+
 def _fuentes() -> list[pathlib.Path]:
     fuera = []
     for base in ("src", "tests"):
@@ -88,3 +107,47 @@ def test_el_CI_prueba_la_version_MINIMA_y_la_del_inquilino():
     assert "capa-normativa-vigilante" in txt, (
         "el CI dejó de aplicarse los detectores a SÍ MISMO. Un paquete que vende detectores y no "
         "se los aplica es difícil de defender")
+
+
+def test_el_pip_install_del_README_fija_la_version_PUBLICADA():
+    """El comando `pip install …@vX.Y.Z` del README es lo que ejecuta un adoptante nuevo. Si el
+    tag que fija no es la versión que el paquete DECLARA, se lleva código anterior que se comporta
+    distinto sin avisar — el caso literal que este repo persigue (`v0.16.1` escaneaba cero y decía
+    «limpio»). El pin está escrito a mano en prosa, sin nada que lo ate al número real; este test
+    es esa atadura, y lee la versión de `pyproject.toml` en vez de repetirla aquí.
+
+    Es reincidente: `v0.10.0` ya se coló igual una semana antes.
+    """
+    version = _version_publicada()
+    readme = (RAIZ / "README.md").read_text("utf-8")
+
+    pins = re.findall(r'pip install\s+git\+\S+@v([^\s`]+)', readme)
+    assert pins, (
+        "no hay ningún `pip install git+…@vX.Y.Z` en el README: ¿se movió el comando de "
+        "instalación? Si no hay pin, nadie puede seguir la instalación que el README promete.")
+    malos = [p for p in pins if p != version]
+    assert not malos, (
+        f"el `pip install` del README fija {malos}, pero el paquete publica la v{version} "
+        f"(`pyproject.toml` → `version`). Quien siga el README se lleva un tag anterior que se "
+        f"comporta distinto sin avisar. El pin y la versión declarada tienen que coincidir.")
+
+
+def test_el_usage_NOMBRA_un_comando_que_EXISTE():
+    """La primera línea de `--help` es `usage: <prog> …`, y esa `<prog>` es la interfaz que un
+    agente sin contexto copia para reintentar cuando se equivoca de argumentos. Si nombra un
+    comando que no está en `[project.scripts]`, copiarlo da «command not found»: convierte un error
+    recuperable (falta un argumento) en uno que parece de instalación.
+
+    El `prog` estaba escrito a mano con ESPACIO (`capa-normativa vigilante`), como si hubiera un
+    dispatcher raíz con subcomandos; pero el empaquetado fue por cuatro scripts con GUION
+    (`capa-normativa-vigilante`). Los dos sitios —el `prog` del parser y `[project.scripts]`—
+    nunca se comparaban, así que divergieron sin ruido. Este test es esa comparación.
+    """
+    from capa_normativa.vigilante.cli import _parser
+    prog = _parser().prog
+    scripts = _scripts_declarados()
+    assert prog in scripts, (
+        f"el `usage:` del vigilante nombra {prog!r}, que no es un comando instalado. Los "
+        f"ejecutables reales son {sorted(scripts)}. Copiar la línea de uso daría «command not "
+        f"found»: el consumidor declarado es un agente sin contexto, y para él el `usage:` ES "
+        f"la interfaz.")

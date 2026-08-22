@@ -68,7 +68,11 @@ PATRONES: dict[str, re.Pattern[str]] = {
 }
 
 _SUPRESION = re.compile(r"#\s*(?:nosec|noqa)\b")
-_EXCLUIR = ("venv", "site-packages", "__pycache__", "node_modules", ".git")
+#: Directorios que no son código del repo. La comparación es por COMPONENTE de ruta
+#: (`p.parts`), no por subcadena: `".git" in str(p)` casaba `.github/` entero —`.git` es
+#: subcadena de `.github`— y dejaba fuera del barrido los workflows de CI versionados, que es
+#: justo donde vive una credencial en `env:`. Medido el 2026-08-21 sobre el propio repo.
+_EXCLUIR = {"venv", "site-packages", "__pycache__", "node_modules", ".git"}
 _BINARIO = {".png", ".jpg", ".jpeg", ".gif", ".pdf", ".zip", ".gz", ".ico", ".woff",
             ".woff2", ".ttf", ".pyc", ".so", ".dll", ".xlsx", ".db", ".sqlite", ".lance"}
 
@@ -94,7 +98,7 @@ def revisar_secretos(repo: Path | str) -> list[Hallazgo]:
     hallazgos: list[Hallazgo] = []
     for p in _ficheros_versionados(repo):
         s = str(p)
-        if any(x in s for x in _EXCLUIR) or p.suffix.lower() in _BINARIO:
+        if _EXCLUIR.intersection(p.parts) or p.suffix.lower() in _BINARIO:
             continue
         try:
             texto = p.read_text(encoding="utf-8-sig", errors="replace")

@@ -284,6 +284,11 @@ class Resolution:
     missing: tuple[str, ...] = ()   # datos del sujeto que faltan (declarados, no adivinados)
     # De dónde salió ESTE número cuando no lo sostiene nadie. `None` si hay evidencia.
     provenance_note: str | None = None
+    # El matiz clínico de LA RAMA que contestó (`Branch.note`). Se parsea, se valida y el
+    # propio mensaje de error de `_parse_norm` dirige al autor a usarlo — pero hasta v0.16.3
+    # `resolve` no lo entregaba: para las normas que ramifican, `note` era un campo que se
+    # escribía y se descartaba, y el consumidor tenía que re-cablear el matiz en su código.
+    note: str | None = None
 
     def __str__(self) -> str:
         via = " (rama por defecto)" if self.is_fallback else ""
@@ -297,6 +302,16 @@ class Resolution:
 
 # Caracteres que delatan un operador inventado (glob, regex, alternancia, negación).
 _OPERATOR_CHARS = set("*?|!~&^$+")
+
+# Caracteres de comparación. Un rango BIEN escrito ya se reconoció arriba (`_interval`),
+# así que si uno de estos llega al final es un operador de comparación MAL escrito
+# —`=>65` (transpuesto), `> = 65` (con hueco), `>=65kg` (con unidad), `>=1e3` (notación
+# que el rango no admite)—, no una igualdad literal. Sin esta guarda esa rama se guarda
+# como el literal `"=>65"`, no matchea NUNCA y cae al comodín en silencio: el mismo modo
+# de fallo que R12 cierra para el rango vacío, en la forma que no llegó a ser rango.
+# Incluye los signos unicode `≥≤≠` porque no contienen ningún ASCII: sin ellos `≥65`
+# pasaría como igualdad literal.
+_CMP_CHARS = set("<>=≥≤≠")
 
 
 def _check_condition(key: str, value: Any, schema: Schema, bad, i: int) -> None:
@@ -334,6 +349,10 @@ def _check_condition(key: str, value: Any, schema: Schema, bad, i: int) -> None:
             raise bad(f"rama #{i}, '{key}'={s!r}: el rango está VACÍO, así que esa rama "
                       f"no puede matchear nunca y caería al comodín sin avisar")
         return
+    if _CMP_CHARS & set(s):
+        raise bad(f"rama #{i}, '{key}'={s!r}: parece una comparación mal escrita "
+                  f"(un rango bien formado ya se habría reconocido). Escribe '>=65', "
+                  f"'<=100' o '[10,100)'; si de verdad querías igualdad, quita el operador")
     if _OPERATOR_CHARS & set(s):
         raise bad(f"rama #{i}, '{key}'={s!r}: parece un operador inventado. "
                   f"Solo se permite: comodín, igualdad simple o rango numérico")
@@ -535,9 +554,16 @@ def _parse_norm(raw: dict, known_evidence: dict[str, dict], today: date,
         # R16d no la ve (filtra con `if b.when`), así que DOS de ellas cargaban y ganaba la
         # última del fichero — el bug que R16d existe para cerrar, en la forma que esta
         # versión vuelve canónica. Verificado en vivo antes de cerrarlo (55.0 y 99.0 → 99.0).
-        if "when" in b and not b["when"]:
-            raise bad(f"rama #{i} con `when` vacío: no discrimina nada y dos así se pisan en "
-                      f"silencio. Si es una constante, quita `branches` y pon `value` en la norma")
+        #
+        # Y OMITIR `when` produce el MISMO `Branch.when == {}` sin pasar por `"when" in b`, así
+        # que esquivaba esta guarda y las otras dos (R16d filtra `if b.when`, `concretas` con
+        # `not all(...sobre vacío)` = False): dos ramas sin `when` cargaban y ganaba la última.
+        # Se comprueba el `when` EFECTIVO (ausente o vacío es lo mismo), salvo en la forma
+        # constante —cuya rama sintética (arriba) no lleva `when` a propósito y es legítima.
+        if not constante and not b.get("when"):
+            raise bad(f"rama #{i} con `when` vacío (o sin `when`): no discrimina nada y dos así "
+                      f"se pisan en silencio. Si es una constante, quita `branches` y pon "
+                      f"`value` en la norma")
         # La certeza EFECTIVA de la rama: la suya si la declara, y si no la de la norma.
         # `is not None` y no `or`: con `or`, una certeza que fuera cadena vacía —o cualquier
         # valor falsy que un día entre en la escala— se fundiría con "no la declara".
@@ -973,4 +999,4 @@ class NormRegistry:
                           semantics=norm.semantics, matched=dict(b.when), evidence=b.evidence,
                           strength=norm.strength, certainty=b.certainty,
                           is_fallback=is_fallback, missing=missing,
-                          provenance_note=b.provenance_note)
+                          provenance_note=b.provenance_note, note=b.note)

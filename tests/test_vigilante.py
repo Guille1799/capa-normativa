@@ -244,3 +244,41 @@ def test_no_baja_a_node_modules_ni_a_venv(tmp_path: Path):
     _corpus(tmp_path / "node_modules" / "pkg", "ajeno.md", "Ver §9.9.\n")
     _corpus(tmp_path / "venv" / "lib", "ajeno2.md", "Ver §8.8.\n")
     assert revisar_punteros(tmp_path) == [], "no debe auditar dependencias ajenas"
+
+
+def test_el_barrido_no_CUENTA_los_detectores_que_OMITE(tmp_path: Path, monkeypatch, capsys):
+    """BUG-EL-BARRIDO-DICE-4 — el barrido «todos» omite `preguntas` sin --catalogo, pero el
+    recuento contaba `len(elegidos)` (4), no los que corrieron (3): declaraba una cobertura que
+    no tuvo, y sin decir una palabra de la omisión. Es la misma mentira que v0.16.2 cerró («no
+    falla: miente»), un nivel más arriba, en el punto de entrada.
+
+    (b) la mutación entró: se envuelve cada detector con un contador, así que `llamados` mide
+        las ejecuciones REALES, no lo que el mensaje afirma. (c) comportamiento: el entero
+        impreso tiene que ser el número de detectores que de verdad corrieron.
+    """
+    import re
+
+    from capa_normativa.vigilante import cli
+
+    llamados: list[str] = []
+
+    def _envolver(nombre, fn):
+        def envoltura(*a, **k):
+            llamados.append(nombre)
+            return fn(*a, **k)
+        return envoltura
+
+    envueltos = {n: _envolver(n, f) for n, f in cli.DETECTORES.items()}
+    monkeypatch.setattr(cli, "DETECTORES", envueltos)
+
+    assert cli.main([str(tmp_path)]) == LIMPIO
+    out = capsys.readouterr().out
+
+    m = re.search(r"(\d+)\s+detector\(es\)", out)
+    assert m, f"no se imprimió el recuento de detectores: {out!r}"
+    entero = int(m.group(1))
+    assert entero == len(llamados), (
+        f"el recuento dice {entero} detectores pero corrieron {len(llamados)}: {llamados}")
+
+    # La omisión de `preguntas` no puede ser silenciosa: el consumidor lee este texto.
+    assert "preguntas" in out, f"no se declara la omisión de preguntas: {out!r}"

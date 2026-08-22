@@ -14,7 +14,10 @@ from pathlib import Path
 from .versionados import versionados
 from .hallazgo import Hallazgo
 
-_EXCLUIR = ("venv", "site-packages", "__pycache__", "node_modules", ".git", "_archive")
+# Comparación por COMPONENTE de ruta (`p.parts`), no por subcadena: `".git" in str(p)` casaba
+# `.github/` entero (`.git` es subcadena de `.github`), así que un `.py` bajo `.github/scripts/`
+# —versionado— nunca se parseaba. Medido el 2026-08-21.
+_EXCLUIR = {"venv", "site-packages", "__pycache__", "node_modules", ".git", "_archive"}
 
 
 def _ficheros_py(repo: Path) -> list[Path]:
@@ -29,7 +32,7 @@ def _ficheros_py(repo: Path) -> list[Path]:
     lista = versionados(repo, "*.py")
     if lista is not None:
         return lista
-    return [p for p in repo.rglob("*.py") if not any(x in str(p) for x in _EXCLUIR)]
+    return [p for p in repo.rglob("*.py") if not _EXCLUIR.intersection(p.parts)]
 
 
 def revisar_sintaxis(repo: Path | str) -> list[Hallazgo]:
@@ -37,7 +40,7 @@ def revisar_sintaxis(repo: Path | str) -> list[Hallazgo]:
     repo = Path(repo)
     hallazgos: list[Hallazgo] = []
     for p in _ficheros_py(repo):
-        if any(x in str(p) for x in _EXCLUIR):
+        if _EXCLUIR.intersection(p.parts):
             continue
         try:
             # `utf-8-sig`, NO `utf-8`. Con `utf-8` el BOM sobrevive a la lectura, `ast` lo

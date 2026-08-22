@@ -30,11 +30,31 @@ from __future__ import annotations
 
 import argparse
 import sys
+from datetime import date
 from pathlib import Path
 
 LIMPIO, PROBLEMAS, ERROR = 0, 1, 2
 
 FICHEROS = ("schema.yaml", "evidence.yaml", "norms.yaml")
+
+# El molde lleva este token donde va la caducidad del ejemplo; `generar` lo sustituye por una fecha
+# CALCULADA en el momento de escribir (ver `_expires_ejemplo`). No se puede usar `str.format` porque
+# el molde de `norms.yaml` tiene llaves literales (`{grupo: any}`), así que se sustituye por texto.
+# Es un valor a propósito INVÁLIDO como fecha: si la sustitución fallara, el YAML no cargaría —
+# ruidoso — en vez de escribir un `expires` erróneo en silencio.
+_EXPIRES_TOKEN = "__EXPIRES_EJEMPLO__"
+
+
+def _expires_ejemplo(hoy: date | None = None) -> str:
+    """Fecha de caducidad del ejemplo, ANCLADA a la generación en vez de cableada.
+
+    Un literal envejece solo: el `2027-12-31` que traía antes hacía que, a partir de esa fecha,
+    `init` generara un registro que `load()` RECHAZA (`R2`, registry.py:464) — el adoptante recibe
+    un error en su primer minuto, dentro de un fichero que le acaba de dar el paquete. Se calcula
+    a ~3-4 años vista (31-dic de `año+3`) para que lo generado cargue el día que se genera, siempre.
+    """
+    hoy = hoy or date.today()
+    return date(hoy.year + 3, 12, 31).isoformat()
 
 SCHEMA = """\
 # ═══ ESQUEMA — lo que ENCIENDE Y APAGA las reglas del registro ════════════════
@@ -134,7 +154,7 @@ NORMAS = """\
   semantics: umbral            # vocabulario LIBRE y tuyo (umbral, suelo, techo, dosis, factor…).
                                # No lo lee el código: lo leen las personas y los detectores que
                                # comparan el nombre de una constante con lo que la norma dice ser.
-  expires: "2027-12-31"        # ⚠️ OBLIGATORIA si la certeza es débil, y con motivo: lo frágil
+  expires: "__EXPIRES_EJEMPLO__"  # ⚠️ OBLIGATORIA si la certeza es débil, y con motivo: lo frágil
                                # tiene que volver a mirarse. Cuando esta fecha pase, `load()`
                                # LANZARÁ y tu aplicación no arrancará — usa
                                # `capa-normativa-validate --avisa-en 90` para enterarte ANTES.
@@ -166,7 +186,7 @@ NORMAS = """\
              de «no lo sé»"
 
   semantics: umbral
-  expires: "2027-12-31"
+  expires: "__EXPIRES_EJEMPLO__"
 """
 
 CONTENIDO = {"schema.yaml": SCHEMA, "evidence.yaml": EVIDENCIA, "norms.yaml": NORMAS}
@@ -187,9 +207,10 @@ def generar(destino: Path | str, *, forzar: bool = False) -> list[Path]:
                 f"ya existen en {d}: {', '.join(ya)}. No se ha tocado NADA — pisar el registro de "
                 f"alguien es el único fallo de esta herramienta que no se deshace. Usa otro "
                 f"directorio, o `--forzar` si de verdad quieres sobreescribir.")
+    fecha = _expires_ejemplo()
     escritos = []
     for f in FICHEROS:
-        (d / f).write_text(CONTENIDO[f], encoding="utf-8")
+        (d / f).write_text(CONTENIDO[f].replace(_EXPIRES_TOKEN, fecha), encoding="utf-8")
         escritos.append(d / f)
     return escritos
 
