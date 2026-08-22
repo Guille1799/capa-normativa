@@ -191,6 +191,7 @@ def _fabrica_bug(nombre: str, nodo: str, resumen: str):
 # EJECUTANDOLO que los 17 nacen ROJOS. Un comprobador verde el dia que se escribe no obliga a
 # nada; los que salian 0 se descartaron en vez de encolarse.
 _INV = {
+    'inv-capa-normativa-sin-pre-commit': ('python scripts/aceptacion.py pre-commit-enchufado', 'arreglar: capa-normativa sin pre-commit — el repo que fabrica el vigilante es el único sin él'),
     'inv-revista-de-runtimes-quien-corre': ("cd C:/Users/Guille/proyectos/capa-normativa && python scripts/aceptacion.py revista-de-runtimes   (exit 0). HOY sale 2: 'desconocida: revista-de-runtimes. Conocidas: bug-git-como-subcadena-apaga, ...'. Rojo dos veces: no existe el comprobador, y aunque se escriba honesto sigue rojo mientras los cuatro interpretes declarados no cuadren con el manifiesto (hoy 0.16.2 / 0.7.0 / 0.16.1 / ausente). Ni un touch ni un .py vacio lo aprueban —el nombre tiene que estar en COMPROBADORES— y un stub que devuelva True lo caza la propia mutacion del tablero (`python scripts/aceptacion.py --verifica` marca 'no estaba ROJO de partida').",
         'construir: Revista de runtimes «quien-corre-que» — manifiesto interprete->paquete->version ejecutable'),
     'inv-test-hechos-que-caducan-barre': ('`C:/Users/Guille/proyectos/mcp_smart_context/venv/Scripts/python.exe -B -m pytest "tests/test_hechos_que_caducan.py::test_ninguna_afirmacion_sobre_un_DIRECTORIO_esta_caducada" -q -p no:cacheprovider` (exit 0), desde mcp_smart_context. Es la mas dura de las seis, porque nace roja por dos motivos independientes: hoy pytest sale 4 (el nodo no existe), y en cuanto se escriba de verdad saldra 1 hasta que se corrija promesa_gate.py:61 — el directorio Contexto/capa-normativa EXISTE, asi que el defecto que el nodo tiene que cazar esta ahi ahora mismo. Escribir el test no lo aprueba; solo lo aprueba arreglar el hecho.',
@@ -261,6 +262,7 @@ def _fabrica_inv(nombre, comando, resumen):
 
 
 SIN_MUTACION = {
+    'inv-capa-normativa-sin-pre-commit': 'no se muta creando un fichero: su aceptacion es un comando que interroga el estado real del sistema. Nacio ROJO y se comprobo EJECUTANDOLO desde este arbol el 2026-08-23, al re-ubicarla desde pw-ralph — alli su arreglo caia fuera del worktree y no habia forma de cerrarla.',
     'bug-git-como-subcadena-apaga': 'no se muta creando un fichero: exige que un TEST NOMBRADO exista y PASE. Un stub vacio sale 4 (sin escribir), no 0 — y el comprobador distingue esos dos rojos. Su ROJO es su estado natural hoy: el defecto lo verifico un esceptico EJECUTANDO el codigo.',
     'bug-versionados-descarta-en-silencio': 'no se muta creando un fichero: exige que un TEST NOMBRADO exista y PASE. Un stub vacio sale 4 (sin escribir), no 0 — y el comprobador distingue esos dos rojos. Su ROJO es su estado natural hoy: el defecto lo verifico un esceptico EJECUTANDO el codigo.',
     'bug-emit-check-grita-deriva': 'no se muta creando un fichero: exige que un TEST NOMBRADO exista y PASE. Un stub vacio sale 4 (sin escribir), no 0 — y el comprobador distingue esos dos rojos. Su ROJO es su estado natural hoy: el defecto lo verifico un esceptico EJECUTANDO el codigo.',
@@ -288,6 +290,7 @@ ARTEFACTOS = {
     "contexto-propio": [(str(DECISION), "decidido: no" + chr(10) + "motivo: stub" + chr(10))],
 }
 COMPROBADORES = {
+    'inv-capa-normativa-sin-pre-commit': _fabrica_inv('inv-capa-normativa-sin-pre-commit', *_INV['inv-capa-normativa-sin-pre-commit']),
     'inv-revista-de-runtimes-quien-corre': _fabrica_inv('inv-revista-de-runtimes-quien-corre', *_INV['inv-revista-de-runtimes-quien-corre']),
     'inv-test-hechos-que-caducan-barre': _fabrica_inv('inv-test-hechos-que-caducan-barre', *_INV['inv-test-hechos-que-caducan-barre']),
     'inv-test-hechos-que-caducan-barre': _fabrica_inv('inv-test-hechos-que-caducan-barre', *_INV['inv-test-hechos-que-caducan-barre']),
