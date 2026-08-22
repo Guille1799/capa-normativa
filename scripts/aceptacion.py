@@ -213,6 +213,10 @@ _INV = {
 }
 
 
+_EJECUTABLES = ("python", "py", "powershell", "pwsh", "cmd", "git", "test",
+                "node", "npm", "grep", "findstr", "where")
+
+
 def _solo_el_comando(bruto: str) -> str:
     """El comando de dentro de las comillas de markdown, si las lleva.
 
@@ -230,12 +234,36 @@ def _solo_el_comando(bruto: str) -> str:
     escapes es justo como se meten estos fallos. La prosa se queda donde esta, documentando.
     """
     t = str(bruto).strip()
-    if not t.startswith('`'):
+    if not t:
         return t
-    # Se corta en la SIGUIENTE comilla, no en la ultima: detras viene la explicacion, que suele
-    # traer mas comillas, y cortar por la ultima se tragaria la prosa entera.
-    fin = t.find('`', 1)
-    return t[1:fin].strip() if fin > 1 else t
+    # 1) Entrecomillado de markdown desde el principio: el comando es lo de dentro.
+    if t.startswith('`'):
+        j = t.find('`', 1)
+        if j > 1:
+            return t[1:j].strip()
+    # 2) Si YA empieza por algo ejecutable, es un comando: solo se le quita la explicacion de
+    #    detras. Aqui NO se buscan comillas, y el motivo se midio: una version que cogia el
+    #    primer tramo entrecomillado de CUALQUIER sitio secuestro un comando legitimo que
+    #    llevaba comillas mas adelante y lo dejo en "_dir_muerto". Un verde se volvio rojo.
+    primero = t.split()[0].strip('"\'').replace('\\', "/")
+    base = primero.rsplit("/", 1)[-1].lower().split(".")[0]
+    parece_comando = "/" in primero or base in _EJECUTABLES
+    if not parece_comando:
+        # 3) Empieza por prosa: el comando estara entrecomillado en medio.
+        i = t.find('`')
+        if i >= 0:
+            j = t.find('`', i + 1)
+            if j > i + 1:
+                return t[i + 1:j].strip()
+    # 4) Cortar donde arranca la explicacion. NO es cosmetico: la prosa entra al shell y cmd.exe
+    #    lee sus "->", "<fecha>" y ">=" como REDIRECCIONES, creando ficheros basura en la raiz
+    #    ("1", "3", "rojo", "el") en cada pasada. Y ademas significa que el comando no hacia lo
+    #    que su autor creia.
+    for sep in ("   (", "  (", "  —", " — "):
+        k = t.find(sep)
+        if k > 0:
+            return t[:k].strip()
+    return t
 
 
 def _fabrica_inv(nombre, comando, resumen):
