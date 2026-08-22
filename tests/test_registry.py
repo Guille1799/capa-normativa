@@ -68,6 +68,18 @@ def test_dato_requerido_ausente_no_se_adivina():
     assert r.value is None and r.missing == ("size",)
 
 
+def test_resolve_entrega_la_note_de_la_rama_que_contesto():
+    """`Branch.note` se parsea, se valida y el mensaje de error dirige a usarlo — pero
+    hasta v0.16.3 `resolve` no lo entregaba: para las normas que ramifican, era un campo
+    que se escribía y se descartaba. La rama `{kind: unknown}` de `threshold_by_kind`
+    lleva `note: "el más conservador"`; el consumidor tiene que poder leerla."""
+    r = reg().resolve("threshold_by_kind", kind="zzz")
+    assert r.is_fallback is True
+    assert r.note == "el más conservador"
+    # Control: una rama SIN note no inventa una — la entrega como None.
+    assert reg().resolve("threshold_by_kind", kind="alpha").note is None
+
+
 # ── estados ilegales: no se construyen ──────────────────────────────────
 
 def test_ilegal_vinculante_con_certeza_debil(tmp_path):

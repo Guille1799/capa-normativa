@@ -284,6 +284,11 @@ class Resolution:
     missing: tuple[str, ...] = ()   # datos del sujeto que faltan (declarados, no adivinados)
     # De dónde salió ESTE número cuando no lo sostiene nadie. `None` si hay evidencia.
     provenance_note: str | None = None
+    # El matiz clínico de LA RAMA que contestó (`Branch.note`). Se parsea, se valida y el
+    # propio mensaje de error de `_parse_norm` dirige al autor a usarlo — pero hasta v0.16.3
+    # `resolve` no lo entregaba: para las normas que ramifican, `note` era un campo que se
+    # escribía y se descartaba, y el consumidor tenía que re-cablear el matiz en su código.
+    note: str | None = None
 
     def __str__(self) -> str:
         via = " (rama por defecto)" if self.is_fallback else ""
@@ -994,4 +999,4 @@ class NormRegistry:
                           semantics=norm.semantics, matched=dict(b.when), evidence=b.evidence,
                           strength=norm.strength, certainty=b.certainty,
                           is_fallback=is_fallback, missing=missing,
-                          provenance_note=b.provenance_note)
+                          provenance_note=b.provenance_note, note=b.note)
