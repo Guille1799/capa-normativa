@@ -152,7 +152,12 @@ def _fabrica_bug(nombre: str, nodo: str, resumen: str):
 # EJECUTANDOLO que los 17 nacen ROJOS. Un comprobador verde el dia que se escribe no obliga a
 # nada; los que salian 0 se descartaron en vez de encolarse.
 _INV = {
-    'inv-revista-de-runtimes-quien-corre': ("cd C:/Users/Guille/proyectos/capa-normativa && python scripts/aceptacion.py revista-de-runtimes   (exit 0). HOY sale 2: 'desconocida: revista-de-runtimes. Conocidas: bug-git-como-subcadena-apaga, ...'. Rojo dos veces: no existe el comprobador, y aunque se escriba honesto sigue rojo mientras los cuatro interpretes declarados no cuadren con el manifiesto (hoy 0.16.2 / 0.7.0 / 0.16.1 / ausente). Ni un touch ni un .py vacio lo aprueban —el nombre tiene que estar en COMPROBADORES— y un stub que devuelva True lo caza la propia mutacion del tablero (`python scripts/aceptacion.py --verifica` marca 'no estaba ROJO de partida').",
+    # Comando reescrito el 2026-08-23. El anterior hacia `cd <ruta absoluta al arbol
+    # principal> && ... && ! ...`: dos fallos a la vez. La ruta absoluta hacia que desde un
+    # worktree se juzgara el arbol de al lado, y el `!` lo expande cmd.exe y rompe el
+    # comando antes de medir nada. Las dos mitades de la comprobacion viven ahora dentro
+    # de `revista_runtimes.py --autoprueba`, que no depende de la sintaxis del shell.
+    'inv-revista-de-runtimes-quien-corre': ('python scripts/aceptacion.py revista-de-runtimes',
         'construir: Revista de runtimes «quien-corre-que» — manifiesto interprete->paquete->version ejecutable'),
     'inv-test-hechos-que-caducan-barre': ('`C:/Users/Guille/proyectos/mcp_smart_context/venv/Scripts/python.exe -B -m pytest "tests/test_hechos_que_caducan.py::test_ninguna_afirmacion_sobre_un_DIRECTORIO_esta_caducada" -q -p no:cacheprovider` (exit 0), desde mcp_smart_context. Es la mas dura de las seis, porque nace roja por dos motivos independientes: hoy pytest sale 4 (el nodo no existe), y en cuanto se escriba de verdad saldra 1 hasta que se corrija promesa_gate.py:61 — el directorio Contexto/capa-normativa EXISTE, asi que el defecto que el nodo tiene que cazar esta ahi ahora mismo. Escribir el test no lo aprueba; solo lo aprueba arreglar el hecho.',
         'exprimir: test_hechos_que_caducan — barre rutas y versiones, pero no las afirmaciones sobre DIRECTORIOS'),
@@ -276,6 +281,38 @@ def registro_sin_caducados() -> tuple[bool, str]:
     return True, "ninguna entrada de REGISTRO.md esta vencida sin aplicar su regla"
 
 
+def revista_de_runtimes() -> tuple[bool, str]:
+    """Quien corre que version de `capa_normativa`, y si alguien lo ha declarado.
+
+    Delega en `proyectos/.claude/hooks/revista_runtimes.py --autoprueba`, que hace DOS cosas: el
+    check y la prueba de que el check sabe fallar (le inyecta una deriva y exige enterarse). Un
+    comprobador que nunca se ha visto fallar no esta verificado, esta sin estrenar.
+
+    ⚠️ La aceptacion original pedia `check && ! check --inyecta-deriva`. Ese `!` lo expande
+    cmd.exe y rompe el comando antes de medir nada, asi que las dos mitades viven ahora dentro de
+    `--autoprueba`: un comprobador no puede depender de la sintaxis del shell.
+
+    Nace ROJO y no por capricho: hoy hay cuatro interpretes divergentes y medidos —el venv de
+    mcp_smart_context resuelve 0.7.0 con el fuente en 0.16.2, el de eu no tiene el paquete— y
+    ninguno esta declarado. Solo pasa arreglando la divergencia o DECLARANDOLA con su motivo, que
+    es lo unico que distingue «esto esta pensado» de «esto se pudrio».
+    """
+    import subprocess
+    import sys
+    guion = RAIZ.parent / ".claude" / "hooks" / "revista_runtimes.py"
+    if not guion.exists():
+        return False, "no existe .claude/hooks/revista_runtimes.py: nadie mide quien corre que"
+    try:
+        r = subprocess.run([sys.executable, str(guion), "--autoprueba"],
+                           capture_output=True, timeout=600, cwd=str(RAIZ.parent))
+    except subprocess.TimeoutExpired:
+        return False, "la revista se cuelga (>10 min)"
+    salida = (r.stdout + r.stderr).decode("utf-8", "replace").strip().splitlines()
+    if r.returncode != 0:
+        return False, (salida[-1] if salida else "la revista falla sin mensaje")[:170]
+    return True, "los interpretes cuadran con el manifiesto, y la revista sabe detectar una deriva"
+
+
 CUMPLIDAS = {
     "contexto-propio": (
         "cumplida el 2026-08-23, retirada del tablero ese mismo dia. Pedia que capa-normativa "
@@ -287,6 +324,7 @@ CUMPLIDAS = {
 }
 
 SIN_MUTACION = {
+    "revista-de-runtimes": ("no se muta creando un fichero: su rojo sale de INTERROGAR a cada interprete del sistema por la version que resuelve. Y su propia `--autoprueba` ya hace la verificacion por mutacion: inyecta una deriva y exige que el check se entere."),
     "registro-sin-caducados": ("no se muta creando un fichero: su rojo depende de la FECHA de hoy contra las de REGISTRO.md, no de que exista nada. Se pone rojo el solo cuando algo caduca, y solo pasa retirando lo caducado o renovando su fecha con señal de uso real."),
     "sondas-miran-su-arbol": ("no se muta creando un fichero: su rojo no depende de que exista "
                               "nada, sino de lo que TOCAN las demas sondas al ejecutarse. Se "
@@ -319,6 +357,7 @@ SIN_MUTACION = {
 ARTEFACTOS = {
 }
 COMPROBADORES = {
+    "revista-de-runtimes": revista_de_runtimes,
     "registro-sin-caducados": registro_sin_caducados,
     'inv-revista-de-runtimes-quien-corre': _fabrica_inv('inv-revista-de-runtimes-quien-corre', *_INV['inv-revista-de-runtimes-quien-corre']),
     'inv-test-hechos-que-caducan-barre': _fabrica_inv('inv-test-hechos-que-caducan-barre', *_INV['inv-test-hechos-que-caducan-barre']),
