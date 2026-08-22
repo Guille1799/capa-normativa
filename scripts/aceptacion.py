@@ -174,8 +174,6 @@ _INV = {
 }
 
 
-_EJECUTABLES = ("python", "py", "powershell", "pwsh", "cmd", "git", "test",
-                "node", "npm", "grep", "findstr", "where")
 
 
 def _solo_el_comando(bruto: str) -> str:
@@ -195,36 +193,26 @@ def _solo_el_comando(bruto: str) -> str:
     escapes es justo como se meten estos fallos. La prosa se queda donde esta, documentando.
     """
     t = str(bruto).strip()
-    if not t:
+    # SOLO se desnuda lo que empieza por comilla de markdown. Nada mas.
+    #
+    # Hubo una version que ademas cortaba la prosa de detras y buscaba comillas en medio, para
+    # que la prosa dejara de entrar al shell (sus "->" y ">=" se leen como REDIRECCIONES y crean
+    # ficheros basura). Ganaba eso y costaba algo mucho peor: **produjo un falso VERDE**.
+    # `inv-revista-de-runtimes` empieza por `cd`, no reconocio esa palabra como ejecutable, se
+    # fue a buscar comillas y cogio un `--verifica` que la prosa solo CITABA. La tarea paso a
+    # verde sin que nadie hubiera hecho nada.
+    #
+    # Adivinar que trozo de una cadena es el comando produce falsos verdes, y un falso verde es
+    # justo lo que este arnes existe para impedir. Ensuciar el repo es cosmetico; aprobar trabajo
+    # que no se ha hecho, no. Asi que se prefiere la version que NO PUEDE equivocarse en esa
+    # direccion, aunque deje la basura. La solucion de verdad no es adivinar mejor: es separar
+    # comando y prosa en la propia tabla `_INV`, y eso es trabajo de contrato, no de heuristica.
+    if not t.startswith('`'):
         return t
-    # 1) Entrecomillado de markdown desde el principio: el comando es lo de dentro.
-    if t.startswith('`'):
-        j = t.find('`', 1)
-        if j > 1:
-            return t[1:j].strip()
-    # 2) Si YA empieza por algo ejecutable, es un comando: solo se le quita la explicacion de
-    #    detras. Aqui NO se buscan comillas, y el motivo se midio: una version que cogia el
-    #    primer tramo entrecomillado de CUALQUIER sitio secuestro un comando legitimo que
-    #    llevaba comillas mas adelante y lo dejo en "_dir_muerto". Un verde se volvio rojo.
-    primero = t.split()[0].strip('"\'').replace('\\', "/")
-    base = primero.rsplit("/", 1)[-1].lower().split(".")[0]
-    parece_comando = "/" in primero or base in _EJECUTABLES
-    if not parece_comando:
-        # 3) Empieza por prosa: el comando estara entrecomillado en medio.
-        i = t.find('`')
-        if i >= 0:
-            j = t.find('`', i + 1)
-            if j > i + 1:
-                return t[i + 1:j].strip()
-    # 4) Cortar donde arranca la explicacion. NO es cosmetico: la prosa entra al shell y cmd.exe
-    #    lee sus "->", "<fecha>" y ">=" como REDIRECCIONES, creando ficheros basura en la raiz
-    #    ("1", "3", "rojo", "el") en cada pasada. Y ademas significa que el comando no hacia lo
-    #    que su autor creia.
-    for sep in ("   (", "  (", "  —", " — "):
-        k = t.find(sep)
-        if k > 0:
-            return t[:k].strip()
-    return t
+    # Se corta en la SIGUIENTE comilla, no en la ultima: detras viene la explicacion, que suele
+    # traer mas comillas, y cortar por la ultima se tragaria la prosa entera.
+    fin = t.find('`', 1)
+    return t[1:fin].strip() if fin > 1 else t
 
 
 def _fabrica_inv(nombre, comando, resumen):
