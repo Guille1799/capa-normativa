@@ -162,7 +162,12 @@ _INV = {
         'arreglar: capa-normativa es el unico repo sin pre-commit — y es el que ALOJA al vigilante'),
     'inv-audit-settings-source-sh-no': ('Si se retira: `python -c "import json,os,sys; t=json.dumps(json.load(open(r\'C:/Users/Guille/.claude/settings.json\',encoding=\'utf-8\'))); sys.exit(1 if (\'audit_settings_source\' in t or os.path.exists(r\'C:/Users/Guille/.claude/hooks/audit_settings_source.sh\')) else 0)"` — hoy ROJO por las dos mitades (registrado Y presente en disco); solo pasa desregistrandolo y borrandolo. Si en vez de retirarlo se quiere conservar la capacidad, entonces la aceptacion es un CANARIO, no un diff: `python C:/Users/Guille/proyectos/capa-normativa/scripts/aceptacion.py --verifica canario-settings`, que copia el settings.json vigente a un sandbox de %TEMP%, le INYECTA un hook de laboratorio que el snapshot revisado no contiene, corre el guardian contra esa copia y EXIGE exit != 0 o el aviso por stderr. Hoy ROJO porque el guardian pregunta por la autoria y no por el contenido, asi que ante un settings envenenado se calla. Un diff contra el snapshot NO vale como aceptacion: hoy los dos ficheros son identicos y nacería verde.',
         'retirar: audit_settings_source.sh — no puede avisar nunca, por dos motivos independientes'),
-    'inv-autohealth-monitor-py-con-guion': ("En vez de un `test ! -f` suelto (que arregla este caso y ninguno mas), un barredor de caducidades que hace cumplir la regla que el REGISTRO ya se dio a si mismo: `python C:/Users/Guille/proyectos/capa-normativa/scripts/aceptacion.py --verifica registro-sin-caducados`. Contrato: parsea REGISTRO.md, y por cada entrada con `CADUCA: <fecha>` anterior a hoy exige que su `ESTADO:` sea RETIRADO **y** que el artefacto que nombra ya no exista en disco. Hoy sale ROJO citando 'autohealth-monitor.py (con guion)': CADUCA 2026-08-19, ESTADO 'pendiente de decision', y el fichero sigue en ~/.claude/hooks. No se puede aprobar creando ficheros — solo borrando el fichero Y marcando la entrada—, y como se apoya en la fecha, se pone rojo el solo la proxima vez que caduque algo, sin que nadie tenga que acordarse.",
+    # Comando reescrito el 2026-08-23. El anterior era PROSA con el comando citado dentro,
+    # asi que el shell nunca lo ejecutaba y el tablero traducia ese fallo a «pendiente».
+    # Y citaba `--verifica <nombre>`, que sobre un comprobador no-mutable sale 0 SIEMPRE:
+    # habria sido una aceptacion verde para siempre. Se comprobo caducando una entrada a
+    # proposito — el comprobador se ponia rojo y `--verifica` seguia diciendo 0.
+    'inv-autohealth-monitor-py-con-guion': ('python scripts/aceptacion.py registro-sin-caducados',
         'retirar: autohealth-monitor.py (con guion) — fichero de hook que no registra nadie'),
     'inv-registro-md-session-start-sh': ("`python C:/Users/Guille/proyectos/scripts/aceptacion.py censo-de-guardianes` — hoy ROJA porque C:/Users/Guille/proyectos/scripts/ NO EXISTE (verificado: Test-Path = False), y un fichero vacío tampoco la aprueba: el tablero contesta `desconocida: censo-de-guardianes` y sale 2. Solo pasa cuando el comprobador ENUMERE los guardianes de sus fuentes vivas (entradas de hook de ~/.claude/settings.json, repos con pre-commit, `Get-ScheduledTask` de TaskPath '\\', ficheros aceptacion.py) y exija una cabecera '## ' en REGISTRO.md por cada uno — hoy 14 contra 29.",
         'exprimir: REGISTRO.md + session_start.sh — el censo que existe pero no censa a los guardianes'),
@@ -438,6 +443,16 @@ def main(argv: list[str]) -> int:
         solo = argv[1] if len(argv) > 1 else None
         if solo is not None and solo not in COMPROBADORES:
             print('desconocida: ' + solo, file=sys.stderr)
+            return 2
+        if solo is not None and solo in SIN_MUTACION:
+            # Pedir verificacion POR MUTACION de algo declarado NO MUTABLE es una contradiccion,
+            # y contestarla con 0 es peor que un error: tres contratos citaban
+            # `--verifica <nombre>` como su ACEPTACION y habrian salido VERDES para siempre
+            # —comprobado el 2026-08-23 caducando una entrada a proposito: el comprobador se
+            # ponia rojo y `--verifica` seguia diciendo 0—. Se grita en vez de mentir.
+            print("no se puede verificar por mutacion: " + solo + " esta declarado en "
+                  "SIN_MUTACION. Para leer su veredicto usa `aceptacion.py " + solo + "`.",
+                  file=sys.stderr)
             return 2
         return _verifica(solo)
     nombres = argv or list(COMPROBADORES)
