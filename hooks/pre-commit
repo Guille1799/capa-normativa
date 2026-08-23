@@ -1,0 +1,15 @@
+#!/bin/sh
+# capa-normativa vigilante — guardián determinista compartido por TODOS los proyectos.
+# Unificado el 2026-08-17: hasta hoy había tres situaciones distintas (este shim con UN
+# detector en 2 repos, el CLI con dos en JobHunter, y NADA en eu_observatory y Contexto).
+# El script vive en UN sitio: tocarlo actualiza los cinco.
+#   detectores: secretos + sintaxis   ·   `punteros` fuera a propósito (deuda previa medida)
+#   salidas:    0 limpio · 1 hallazgos · 2 NO pudo ejecutarse (bloquea igual, a propósito)
+export LANG=C.UTF-8
+SCRIPT="C:/Users/Guille/proyectos/.claude/hooks/vigilante_pre_commit.py"
+if [ ! -f "$SCRIPT" ]; then
+    echo "pre-commit: falta $SCRIPT — el vigilante NO se ha ejecutado." >&2
+    exit 1
+fi
+python "$SCRIPT" --pre-commit
+exit $?
