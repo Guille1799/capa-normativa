@@ -134,6 +134,34 @@ def test_un_informe_que_cubre_menos_de_siete_tableros_es_ROJO():
     assert m.main() == 1
 
 
+def test_la_tarea_EN_MARCHA_no_se_pone_roja_a_si_misma():
+    """La trampa de auto-referencia, cazada ejecutandola de verdad desde el Programador.
+
+    El tablero de `capa-normativa` es UNO de los siete que corre la ronda, asi que este
+    comprobador se ejecuta SIEMPRE con su propia tarea en marcha — y mientras corre, Windows pone
+    `LastTaskResult = 267009` (SCHED_S_TASK_RUNNING), que no es 0. Sin tratarlo, la ronda se ponia
+    roja a si misma en cada informe que escribia.
+
+    Leyendo el codigo no se ve. Aparecio al disparar la tarea: 21 verdes / 5 rojos donde la misma
+    pasada a mano daba 23 / 3.
+    """
+    m = _chk()
+    m.tareas = lambda: [_tarea("ronda_de_tableros.cmd", resultado=m._EJECUTANDOSE)]
+    m.informe_de_la_ronda = _informe_sano
+    assert m.main() == 0
+
+
+def test_una_tarea_COLGADA_tres_dias_sigue_siendo_ROJA():
+    """El agujero que abriria aceptar «en marcha» sin mas: una tarea que lleva tres dias corriendo
+    esta rota, no viva. La caza el `arranque`, que sale de su `LastRunTime`."""
+    m = _chk()
+    hace_tres_dias = (dt.datetime.now() - dt.timedelta(days=3)).isoformat(timespec="seconds")
+    m.tareas = lambda: [_tarea("ronda_de_tableros.cmd", resultado=m._EJECUTANDOSE,
+                               cuando=hace_tres_dias)]
+    m.informe_de_la_ronda = _informe_sano
+    assert m.main() == 1
+
+
 def test_la_tarea_de_la_RONDA_tambien_cuenta_como_disparador():
     """La promesa no ata a una implementacion: vale una tarea que encadene `aceptacion.py` y vale
     una que lance la ronda. Lo que no vale es que no haya ninguna."""
