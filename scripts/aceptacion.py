@@ -223,6 +223,19 @@ def sondas_miran_su_arbol() -> tuple[bool, str]:
 
     Se excluye a si misma, obviamente: ejecutarse bajo su propia vigilancia no termina.
     """
+    # El FUENTE manda sobre lo instalado, y no es precaucion teorica: sin esta linea el
+    # comprobador reventaba con ModuleNotFoundError porque `capa_normativa` resolvia al paquete
+    # INSTALADO, que no tiene `arbol_propio`. Anoche paso desapercibido porque se corrio con
+    # PYTHONPATH=src a mano; el bucle no hace eso.
+    #
+    # Es exactamente el fallo numero 2 del docstring de este modulo —un paquete instalado y viejo
+    # tapando al fuente— cometido por la guarda escrita para cazarlo.
+    import sys
+    fuente = str(RAIZ / "src")
+    if fuente not in sys.path:
+        sys.path.insert(0, fuente)
+    for mod in [k for k in list(sys.modules) if k.startswith("capa_normativa")]:
+        del sys.modules[mod]
     from capa_normativa.vigilante.arbol_propio import revisar_arbol_propio
     otras = {n: f for n, f in COMPROBADORES.items() if n != "sondas-miran-su-arbol"}
     hallazgos = revisar_arbol_propio(otras, RAIZ)
