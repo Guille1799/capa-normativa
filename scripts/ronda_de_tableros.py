@@ -666,6 +666,54 @@ def _md(informe: dict) -> str:
     return chr(10).join(L)
 
 
+def aviso_para_la_sesion(informe: dict) -> str:
+    """Lo que hay que decirle a G al abrir su próxima sesión. Vacío si no hay nada que hacer.
+
+    ## Por qué existe (2026-08-23, y sale de una respuesta suya)
+
+    Le pregunté qué haría si a las 22:40 le saltara un globo avisando de dos rojos nuevos.
+    Contestó: **«lo miro mañana»**. Dos cosas se siguen de ahí, y la segunda no era obvia:
+
+      · la ronda de las 08:30 está bien puesta, porque coincide con cuando mira;
+      · pero **un globo dura diez segundos**. Si no está delante a las 08:35, el aviso muere y la
+        información se queda en un informe que tiene que acordarse de abrir — que es justo la
+        dependencia que este encargo existía para quitar.
+
+    Así que el aviso se cuelga también de `session_start.sh`, que ya avisa igual de las entradas
+    vencidas del REGISTRO y que él lee cada mañana sin acordarse de nada.
+
+    ⚠️ **Devuelve vacío cuando no hay nada que hacer, y eso es la mitad del diseño.** Un aviso que
+    aparece todos los días se convierte en parte del decorado en una semana; entonces el día que
+    diga algo, tampoco se lee. El silencio es lo que hace que hablar signifique algo.
+
+    Y el que formatea es la ronda, no el hook: el hook corre en CADA arranque de sesión, así que se
+    queda tonto —imprimir un fichero— en vez de aprender a leer JSON.
+    """
+    lineas = []
+    nuevos = informe.get("nuevos_rojos") or {}
+    if nuevos:
+        cuantos = sum(len(v) for v in nuevos.values())
+        lineas.append("TABLEROS: " + str(cuantos) + " rojo(s) NUEVO(S) — "
+                      + "; ".join(k + ": " + ", ".join(v) for k, v in sorted(nuevos.items())))
+    rotos = [t.get("nombre") for t in informe.get("tableros", []) if t.get("estado") != "ok"]
+    sin_vigilar = list(informe.get("huerfanos") or []) + list(informe.get("ausentes") or [])
+    if rotos or sin_vigilar:
+        lineas.append("TABLEROS: la ronda no pudo mirarlo todo — sin leer: "
+                      + (", ".join(str(x) for x in rotos) or "ninguno")
+                      + " | sin vigilar: " + (", ".join(sin_vigilar) or "ninguno"))
+    inestables = informe.get("inestables") or {}
+    if inestables:
+        cuantos = sum(len(v) for v in inestables.values())
+        lineas.append("TABLEROS: " + str(cuantos) + " comprobador(es) cambian de color segun la "
+                      "carga (" + "; ".join(k + ": " + ", ".join(v)
+                                            for k, v in sorted(inestables.items()))
+                      + ") — no es un rojo, es un comprobador roto")
+    if not lineas:
+        return ""
+    lineas.append("   detalle: " + str(CARPETA_RONDAS / "ULTIMA.md"))
+    return chr(10).join(lineas) + chr(10)
+
+
 def _rotar(carpeta: Path, cuantos: int = 30) -> None:
     viejos = sorted(carpeta.glob("ronda-*.md"))[:-cuantos]
     for v in viejos:
@@ -883,6 +931,9 @@ def main(argv: list[str]) -> int:
         (carpeta / "ULTIMA.md").write_text(cuerpo, encoding="utf-8")
         (carpeta / "ultima.json").write_text(
             json.dumps(informe, ensure_ascii=False, indent=1), encoding="utf-8")
+        # Se escribe SIEMPRE, aunque sea vacio: asi el fichero de ayer no se queda diciendo lo de
+        # ayer. Un aviso que no se apaga al resolverse ensena a ignorar los avisos.
+        (carpeta / "AVISO.txt").write_text(aviso_para_la_sesion(informe), encoding="utf-8")
         _rotar(carpeta)
     except OSError as e:
         _di("RONDA SIN INFORME: no se pudo escribir en " + str(carpeta) + " — " + str(e))
