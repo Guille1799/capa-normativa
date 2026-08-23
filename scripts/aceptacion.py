@@ -36,6 +36,46 @@ CORE = RAIZ / "docs/CN_REFERENCIA_CORE.md"
 DECISION = RAIZ / "docs/decisiones/CONTEXTO_PROPIO.md"
 
 
+def _carpeta_de_proyectos() -> Path:
+    """La carpeta que CONTIENE los repos —`.../proyectos`—, se corra desde donde se corra.
+
+    Aqui habia tres `RAIZ.parent`, y solo eran verdad desde el checkout principal. Desde un
+    worktree —`capa-normativa/.claude/worktrees/<x>`— `RAIZ.parent` es `.../worktrees`, donde no
+    hay ni `REGISTRO.md` ni `.claude/hooks/`, asi que las dos sondas que la usaban caian por su
+    rama de «no existe el fichero».
+
+    ⚠️ Medido el 2026-08-23: la MISMA sonda, el MISMO commit, VERDE desde el checkout principal
+    y ROJA desde el worktree de al lado. Ese rojo no hablaba de la promesa, hablaba de DONDE SE
+    CORRIO — la misma familia que el `GIT_DIR` que secuestro a los detectores y que el `-1/-1`
+    de `--verifica`: el instrumento tumbando la medida. Y es el peor sabor de ese fallo, porque
+    el bucle autonomo lee el rojo como «el trabajo no vale» y deshace trabajo correcto.
+
+    Se le pregunta a GIT por `--git-common-dir`, que desde CUALQUIER worktree apunta al `.git`
+    del checkout principal: su padre es el repo y el padre de ese es la carpeta de proyectos. Se
+    pregunta en vez de escribir la ruta porque una ruta a mano es justo lo que caza
+    `sondas_miran_su_arbol()`, y porque deducirla del nombre de la carpeta ya fallo antes
+    (`cn-ralph` y `capa-normativa` son el mismo repo y no se parecen en nada).
+
+    Si git no contesta quedan dos redes, en este orden: la FORMA del propio worktree, que es el
+    caso que se rompia; y `RAIZ.parent`, que es lo que habia — asi el camino de emergencia no
+    puede dejar esto peor de como estaba.
+    """
+    import subprocess
+    try:
+        r = subprocess.run(["git", "-C", str(RAIZ), "rev-parse",
+                            "--path-format=absolute", "--git-common-dir"],
+                           capture_output=True, text=True, timeout=60)
+        if r.returncode == 0 and r.stdout.strip():
+            # <proyectos>/<repo>/.git → el padre es el repo, el abuelo la carpeta de proyectos
+            return Path(r.stdout.strip()).parent.parent
+    except Exception:
+        pass
+    padre, abuelo = RAIZ.parent, RAIZ.parent.parent
+    if padre.name == "worktrees" and abuelo.name == ".claude":
+        return abuelo.parent.parent          # <proyectos>/<repo>/.claude/worktrees/<x>
+    return padre
+
+
 # `contexto_propio()` vivia aqui. Retirada el 2026-08-23 al cumplirse (ver CUMPLIDAS):
 # mientras siguio en el tablero salia VERDE y no obligaba a nada.
 
@@ -252,7 +292,7 @@ def registro_sin_caducados() -> tuple[bool, str]:
     """
     import datetime
     import re
-    reg = RAIZ.parent / "REGISTRO.md"
+    reg = _carpeta_de_proyectos() / "REGISTRO.md"
     if not reg.exists():
         return False, "no existe " + str(reg) + ": la norma no puede hacerse cumplir sin registro"
     hoy = datetime.date.today()
@@ -302,12 +342,16 @@ def revista_de_runtimes() -> tuple[bool, str]:
     """
     import subprocess
     import sys
-    guion = RAIZ.parent / ".claude" / "hooks" / "revista_runtimes.py"
+    proyectos = _carpeta_de_proyectos()
+    guion = proyectos / ".claude" / "hooks" / "revista_runtimes.py"
     if not guion.exists():
-        return False, "no existe .claude/hooks/revista_runtimes.py: nadie mide quien corre que"
+        # La ruta ENTERA, no el trozo relativo. Cuando esta sonda salio roja desde un worktree,
+        # el mensaje decia `.claude/hooks/revista_runtimes.py` y sonaba a que faltaba el guion;
+        # lo que fallaba era la carpeta desde la que se miraba, y eso no se veia.
+        return False, "no existe " + str(guion) + ": nadie mide quien corre que"
     try:
         r = subprocess.run([sys.executable, str(guion), "--autoprueba"],
-                           capture_output=True, timeout=600, cwd=str(RAIZ.parent))
+                           capture_output=True, timeout=600, cwd=str(proyectos))
     except subprocess.TimeoutExpired:
         return False, "la revista se cuelga (>10 min)"
     salida = (r.stdout + r.stderr).decode("utf-8", "replace").strip().splitlines()
