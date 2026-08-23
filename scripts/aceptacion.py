@@ -186,6 +186,27 @@ _INV = {
 }
 
 
+def _solo_el_comando(bruto: str) -> str:
+    """El comando de dentro de las comillas de markdown, si las lleva.
+
+    Medido el 2026-08-23: nueve aceptaciones estaban escritas como `python x.py` seguido de
+    la explicacion. El shell recibe eso tal cual y cmd.exe contesta que `python no se reconoce;
+    el tablero lee el exit != 0 y lo traduce a «pendiente». O sea que decia que faltaba trabajo
+    cuando el comando NO HABIA LLEGADO A ARRANCAR, y la tarea era incerrable.
+
+    SOLO se desnuda lo que empieza por comilla. Hubo una version que ademas recortaba la prosa
+    de detras y buscaba comillas en medio: produjo TRES falsos verdes, porque adivinar que trozo
+    de una cadena es el comando falla justo hacia el lado que este arnes existe para impedir.
+    """
+    t = str(bruto).strip()
+    if not t.startswith('`'):
+        return t
+    # Se corta en la SIGUIENTE comilla, no en la ultima: detras viene la explicacion, que suele
+    # traer mas comillas, y cortar por la ultima se tragaria la prosa entera.
+    fin = t.find('`', 1)
+    return t[1:fin].strip() if fin > 1 else t
+
+
 def _fabrica_inv(nombre, comando, resumen):
     """Corre el comando de aceptacion del inventario y lee su EXIT CODE.
 
@@ -193,6 +214,8 @@ def _fabrica_inv(nombre, comando, resumen):
     esceptico que verifico el hallazgo, no quien va a hacer el trabajo — esa separacion es lo
     que impide aprobar ablandando la prueba.
     """
+    comando = _solo_el_comando(comando)
+
     def comprobador():
         import subprocess
         try:
