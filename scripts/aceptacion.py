@@ -152,7 +152,7 @@ def _fabrica_bug(nombre: str, nodo: str, resumen: str):
 # EJECUTANDOLO que los 17 nacen ROJOS. Un comprobador verde el dia que se escribe no obliga a
 # nada; los que salian 0 se descartaron en vez de encolarse.
 _INV = {
-    'inv-capa-normativa-sin-pre-commit': ('python scripts/aceptacion.py pre-commit-enchufado', 'arreglar: capa-normativa sin pre-commit — el repo que fabrica el vigilante es el único sin él'),
+    'inv-capa-normativa-sin-pre-commit': ('python scripts/aceptacion.py guardia-de-commit', 'arreglar: capa-normativa sin pre-commit — el repo que fabrica el vigilante es el único sin él'),
     # Comando reescrito el 2026-08-23. El anterior hacia `cd <ruta absoluta al arbol
     # principal> && ... && ! ...`: dos fallos a la vez. La ruta absoluta hacia que desde un
     # worktree se juzgara el arbol de al lado, y el `!` lo expande cmd.exe y rompe el
