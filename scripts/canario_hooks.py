@@ -34,6 +34,8 @@ from __future__ import annotations
 import json
 import subprocess
 import sys
+import tempfile
+from contextlib import contextmanager
 from pathlib import Path
 
 SETTINGS = Path("C:/Users/Guille/.claude/settings.json")
@@ -47,10 +49,88 @@ _MALFORMADAS = {
     "json-sin-campos": b"{}",
 }
 
-#: Carga que cada hook DEBE rechazar, y como se sabe que la rechazo.
-#: Vacio a proposito: declararlo es el trabajo que este canario existe para obligar. Formato:
+#: Hooks que NO bloquean nada: informan, registran o inyectan contexto, y salen 0 siempre. No se
+#: les puede pedir una carga envenenada porque no hay entrada que deban RECHAZAR — pedirsela seria
+#: inventarles una semantica que no tienen.
+#:
+#: Medido el 2026-08-23 contando sus salidas: de los diez registrados, solo CUATRO tienen alguna
+#: distinta de cero. `audit_settings_source.sh` lo dice en su propia cabecera: «exit 0 siempre
+#: (warning, no bloqueo)».
+#:
+#: Se declaran con motivo, como `SIN_MUTACION`, en vez de silenciarse: una exencion escrita se
+#: revisa, una implicita se hereda. Y si alguno pasa a bloquear algun dia, hay que sacarlo de aqui.
+SOLO_INFORMAN = {
+    "audit_settings_source.sh": "avisa de settings.json tocado por otro autor; sale 0 siempre",
+    "session_start.sh": "imprime contexto de arranque; no veta nada",
+    "inject_context.py": "inyecta contexto en el prompt; no veta nada",
+    "save_state.py": "guarda el estado en PreCompact y SessionEnd; no veta nada",
+    "prompt_router.py": "inyecta directivas [AUTO] en el prompt; sus 8 salidas son todas 0",
+    # Contado a mano tras un falso positivo del propio conteo: su UNICA salida es `sys.exit(0)`,
+    # en la linea 125. El grep inicial le vio una "bloqueante" que no existe.
+    "autohealth_monitor.py": "avisa de la salud del indice en PostToolUse; su unica salida es 0",
+}
+
+#: Carga que cada GUARDIAN debe rechazar, y como se sabe que la rechazo. Formato:
 #:     "<nombre del hook>": (b"<carga>", "<que se espera: 'exit!=0' o un texto que deba salir>")
-CASOS_ENVENENADOS: dict[str, tuple[bytes, str]] = {}
+#: Cada caso es un CONTEXTO que monta su escenario envenenado en un temporal y devuelve la carga.
+#: Tiene que ser un contexto y no una cadena fija porque el veneno de estos tres no vive en el
+#: payload, vive en el ESTADO al que el payload apunta: un transcript con lenguaje de decision, un
+#: checkpoint con una cita muerta, un repo con un secreto. Se monta, se dispara y se tira.
+
+
+@contextmanager
+def _veneno_doc_decision():
+    """Lenguaje de decision reciente + ningun doc tocado -> el gate DEBE bloquear."""
+    with tempfile.TemporaryDirectory() as t:
+        tmp = Path(t)
+        tr = tmp / "transcript.jsonl"
+        tr.write_text(json.dumps({"message": {"role": "user",
+                                              "content": "decidimos que a partir de ahora usamos X"}})
+                      + chr(10), encoding="utf-8")
+        repo = tmp / "repo"
+        repo.mkdir()
+        subprocess.run(["git", "-C", str(repo), "init", "-q"], capture_output=True, timeout=60)
+        yield json.dumps({"transcript_path": str(tr), "cwd": str(repo)}).encode()
+
+
+@contextmanager
+def _veneno_promesa():
+    """Un checkpoint escrito en la sesion que cita un comprobador inexistente -> DEBE bloquear."""
+    with tempfile.TemporaryDirectory() as t:
+        tmp = Path(t)
+        ck = tmp / "Contexto" / "mcp_smart_context" / "2026-01-01_00-00_canario.md"
+        ck.parent.mkdir(parents=True)
+        ck.write_text("## PRÓXIMO PASO EXACTO" + chr(10)
+                      + "1. `aceptacion.py comprobador-que-no-existe-jamas`" + chr(10),
+                      encoding="utf-8")
+        tr = tmp / "transcript.jsonl"
+        tr.write_text(json.dumps({"type": "assistant", "message": {"content": [
+            {"type": "tool_use", "name": "Write", "input": {"file_path": str(ck)}}]}})
+            + chr(10), encoding="utf-8")
+        yield json.dumps({"transcript_path": str(tr)}).encode()
+
+
+@contextmanager
+def _veneno_vigilante():
+    """Un repo versionado con un secreto conocido -> el vigilante DEBE bloquear el cierre.
+
+    Reusa `repo_de_pega` del propio canario del vigilante, que ya monta un repo efimero con un
+    caso rojo por detector y es independiente del CWD. Escribir otro seria tener dos definiciones
+    de «entrada envenenada» que pueden divergir.
+    """
+    import sys as _s
+    _s.path.insert(0, str(Path(__file__).resolve().parent.parent / "src"))
+    from capa_normativa.vigilante.canario import repo_de_pega
+    with repo_de_pega() as repo:
+        yield json.dumps({"cwd": str(repo)}).encode()
+
+
+#: Carga que cada GUARDIAN debe rechazar, y como se sabe que la rechazo.
+CASOS_ENVENENADOS = {
+    "doc_decision_gate.py": (_veneno_doc_decision, "exit!=0"),
+    "promesa_gate.py": (_veneno_promesa, "exit!=0"),
+    "vigilante_pre_commit.py": (_veneno_vigilante, "exit!=0"),
+}
 
 
 def hooks_registrados() -> list[tuple[str, str]]:
@@ -121,7 +201,8 @@ def sin_caso() -> list[str]:
     caso rojo es un guardian que nadie ha comprobado.
     """
     return sorted({_nombre(cmd) for _, cmd in hooks_registrados()
-                   if _nombre(cmd) not in CASOS_ENVENENADOS})
+                   if _nombre(cmd) not in CASOS_ENVENENADOS
+                   and _nombre(cmd) not in SOLO_INFORMAN})
 
 
 def envenenados() -> list[str]:
@@ -132,11 +213,15 @@ def envenenados() -> list[str]:
         caso = CASOS_ENVENENADOS.get(n)
         if not caso:
             continue
-        carga, espera = caso
+        montar, espera = caso
         try:
-            r = subprocess.run(cmd, shell=True, input=carga, capture_output=True, timeout=300)
+            with montar() as carga:
+                r = subprocess.run(cmd, shell=True, input=carga, capture_output=True, timeout=300)
         except subprocess.TimeoutExpired:
             problemas.append(n + ": se cuelga con su carga envenenada")
+            continue
+        except Exception as e:
+            problemas.append(n + ": no se pudo montar su escenario (" + type(e).__name__ + ")")
             continue
         salida = (r.stdout + r.stderr).decode("utf-8", "replace")
         grito = (r.returncode != 0) if espera == "exit!=0" else (espera in salida)
