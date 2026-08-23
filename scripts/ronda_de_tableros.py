@@ -413,6 +413,40 @@ def firma(tableros: list[dict], huerfanos: list[str], ausentes: list[str]) -> st
                                 "ausentes:" + ",".join(sorted(ausentes))])
 
 
+#: Lo que de verdad cabe en un globo de Windows antes de que lo corte. Se deja corto a propósito:
+#: el globo desaparece solo, así que lo que no quepa hay que ir a buscarlo al informe igualmente.
+_CABE_EN_EL_GLOBO = 3
+
+
+def cuerpo_del_aviso(nuevos: dict, carpeta: Path) -> str:
+    """El texto del globo cuando hay rojos nuevos. Corto, accionable, y siempre con la ruta.
+
+    ⚠️ Escrito el 2026-08-23 después de preguntarle a G si había visto alguna vez un globo del
+    healthcheck. Sí los había visto, y su recuerdo fue literalmente **«ponía fallo sin más»**.
+
+    Eso es la avería que importa, y no es el canal: el globo llega, y lo que no sirve es lo que
+    lleva dentro. Un aviso que no dice QUÉ ni DÓNDE MIRAR no se puede accionar, así que se ignora
+    — y entonces da igual que el canal funcione.
+
+    Dos reglas, las dos sacadas de ese «fallo sin más»:
+
+      · con pocos rojos nuevos se dicen POR SU NOMBRE, que es lo accionable;
+      · con muchos no se intenta caber —se cortaría a mitad de palabra— y se dan la cuenta y los
+        tableros, que es lo que orienta.
+
+    Y en los dos casos va la ruta del informe, porque el globo se va solo de la pantalla y el
+    informe no.
+    """
+    cuantos = sum(len(v) for v in nuevos.values())
+    donde = str(carpeta / "ULTIMA.md")
+    if cuantos <= _CABE_EN_EL_GLOBO:
+        detalle = "; ".join(k + ": " + ", ".join(v) for k, v in sorted(nuevos.items()))
+    else:
+        detalle = (str(cuantos) + " en " + str(len(nuevos)) + " tablero(s): "
+                   + ", ".join(sorted(nuevos)))
+    return detalle + " -- detalle en " + donde
+
+
 def _toast(titulo: str, mensaje: str) -> bool:
     """Globo de Windows, igual que el healthcheck. Devuelve si se pudo lanzar."""
     limpio = mensaje.replace("'", "").replace(chr(10), " - ")[:230]
@@ -462,25 +496,24 @@ def avisar(tableros: list[dict], nuevos: dict, resueltos: dict, huerfanos: list[
         return "omitido: " + motivo
     rotos = [t for t in tableros if t["estado"] != "ok"]
     total_rojos = sum(len(t.get("rojos", [])) for t in tableros)
+    donde = " -- detalle en " + str(carpeta / "ULTIMA.md")
     if nuevos:
         cuantos = sum(len(v) for v in nuevos.values())
         titulo = "Tableros de aceptacion - " + str(cuantos) + " ROJO(S) NUEVO(S)"
-        cuerpo = "; ".join(k + ": " + ", ".join(v) for k, v in sorted(nuevos.items()))
+        cuerpo = cuerpo_del_aviso(nuevos, carpeta)
     elif rotos or huerfanos or ausentes:
-        titulo = "Tableros de aceptacion - la ronda tiene un problema"
-        cuerpo = ("tableros caidos/ilegibles: " + ", ".join(t["nombre"] for t in rotos)
-                  + " | huerfanos: " + (", ".join(huerfanos) or "ninguno")
-                  + " | ausentes: " + (", ".join(ausentes) or "ninguno"))
+        titulo = "Tableros de aceptacion - la ronda NO pudo mirarlo todo"
+        cuerpo = ("no se pudieron leer: " + (", ".join(t["nombre"] for t in rotos) or "ninguno")
+                  + " | sin vigilar: " + (", ".join(huerfanos + ausentes) or "ninguno") + donde)
     elif resueltos and total_rojos == 0:
         titulo = "Tableros de aceptacion - TODO VERDE"
-        cuerpo = "se cerro el ultimo rojo: " + "; ".join(
-            k + ": " + ", ".join(v) for k, v in sorted(resueltos.items()))
+        cuerpo = "se cerro el ultimo rojo" + donde
     else:
         mal = [t["nombre"] for t in tableros if (t.get("verifica") or {}).get("exit") not in (0,)]
         titulo = "Tableros de aceptacion - cambio de estado"
-        cuerpo = (str(total_rojos) + " rojo(s) en total; se cerraron "
+        cuerpo = (str(total_rojos) + " rojo(s) en total, se cerraron "
                   + str(sum(len(v) for v in resueltos.values()))
-                  + ("" if not mal else "; --verifica falla en " + ", ".join(mal)))
+                  + ("" if not mal else "; --verifica falla en " + ", ".join(mal)) + donde)
     lanzado = _toast(titulo, cuerpo)
     try:
         estado_f.parent.mkdir(parents=True, exist_ok=True)

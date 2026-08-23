@@ -347,6 +347,30 @@ def test_se_avisa_la_primera_vez():
     assert toca
 
 
+def test_con_pocos_rojos_el_globo_los_dice_por_su_nombre():
+    """Lo accionable es el nombre. Un aviso que no dice QUÉ no se puede accionar."""
+    texto = RONDA.cuerpo_del_aviso({"eu-ralph": ["poblacion-por-seccion"]}, Path("C:/x"))
+    assert "poblacion-por-seccion" in texto
+    assert "ULTIMA.md" in texto
+
+
+def test_con_muchos_rojos_el_globo_NO_intenta_caber():
+    """Con 58 rojos la lista se cortaría a mitad de palabra y el aviso quedaría en «fallo sin más»
+    —que es literalmente lo que G recordaba de los globos del healthcheck—. Se dan la cuenta y los
+    tableros, y el detalle se va a buscar al informe."""
+    muchos = {"t" + str(i): ["r1", "r2", "r3"] for i in range(7)}
+    texto = RONDA.cuerpo_del_aviso(muchos, Path("C:/x"))
+    assert texto.startswith("21 en 7 tablero(s): ")
+    assert "ULTIMA.md" in texto
+    assert len(texto) < 230, "no cabe en un globo de Windows: " + texto
+
+
+def test_el_globo_SIEMPRE_dice_donde_esta_el_detalle():
+    """El globo desaparece solo; el informe no. Sin la ruta, el aviso muere con el globo."""
+    for caso in ({"a": ["x"]}, {"t" + str(i): ["r1", "r2", "r3"] for i in range(7)}):
+        assert "ULTIMA.md" in RONDA.cuerpo_del_aviso(caso, Path("C:/x"))
+
+
 def test_la_firma_lleva_los_NOMBRES_y_no_el_numero_de_rojos():
     """Tres rojos que se cambian por otros tres distintos son un cambio de estado, y contarlos
     no lo vería."""
