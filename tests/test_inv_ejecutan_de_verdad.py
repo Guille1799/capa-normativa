@@ -189,3 +189,47 @@ _PROSA_TOLERADA = {
         "rota de fabrica y se deja asi A PROPOSITO: lo que la tarea pide es RETIRAR un hook de "
         "SEGURIDAD (CVE-2025-59536), y arreglar su comando la volveria accionable por el robot.",
 }
+
+
+# --- «una aceptacion no se señala a si misma por una ruta que solo es verdad en un arbol» -----
+#
+# Tercer sabor de SONDAS_ATADAS_A_OTRO_ARBOL (2026-08-22 y 2026-08-23). Dos entradas de `_INV`
+# llevaban escrita la ruta absoluta a `.../capa-normativa/scripts/aceptacion.py`, o sea al
+# CHECKOUT PRINCIPAL. Un agente encerrado en su worktree arreglaba su copia y la aceptacion
+# seguia preguntando en la del vecino: ROJA PARA SIEMPRE, y la tarea incerrable — el mismo
+# fallo sin sintoma que `sondas-miran-su-arbol` existe para cazar, dentro del propio arnes.
+#
+# La regla es la mas estrecha que cierra el caso: **dentro del repo, relativa** (el comando ya
+# corre con `cwd=RAIZ`, asi que sigue a quien lo ejecuta); **fuera del repo, absoluta esta
+# bien** y es lo normal — `~/.claude/settings.json`, el venv de `mcp_smart_context`. No se
+# prohiben las rutas absolutas: se prohibe nombrar por ruta un arbol que ya se tiene debajo.
+#
+# Se mira el campo CRUDO y no `_solo_el_comando(...)`: una entrada cuya prosa lleva la ruta
+# dentro tampoco vale, aunque hoy no llegue a ejecutarse. El dia que se arregle su formato la
+# ruta se ejecutaria, y entonces el fallo llegaria disfrazado de mejora.
+#
+# ⚠️ Lo que este test NO cubre: en una maquina donde el repo viva en otro sitio, una ruta
+# caducada no caeria «dentro del repo» y pasaria. El backstop de verdad es
+# `sondas-miran-su-arbol`, que OBSERVA lo que se toca en vez de leer el fuente; esto es la red
+# barata que lo caza en el sitio donde se escribe.
+
+#: Una ruta absoluta de Windows en cualquier punto de la cadena, tambien dentro de un `python -c`.
+_RUTA_ABSOLUTA = re.compile(r"[A-Za-z]:/[^\s'\"`;,)]+")
+
+
+def test_ninguna_aceptacion_nombra_un_arbol_por_su_ruta_absoluta():
+    repo = TB._checkout_principal()
+    malas = []
+    for nombre in INV:
+        crudo = str(TB._INV[nombre][0]).replace(chr(92), "/")
+        for trozo in _RUTA_ABSOLUTA.findall(crudo):
+            try:
+                Path(trozo).relative_to(repo)
+            except ValueError:
+                continue        # fuera del repo: absoluta es correcta
+            malas.append(nombre + " -> " + trozo)
+    assert not malas, (
+        "estas aceptaciones nombran un arbol de este repo por su ruta absoluta, asi que desde "
+        "cualquier worktree preguntan por la copia del vecino y se quedan rojas hiciera nadie lo "
+        "que hiciera: " + "; ".join(malas) + ". Se arregla poniendola relativa: el comando ya "
+        "corre con `cwd=RAIZ`.")

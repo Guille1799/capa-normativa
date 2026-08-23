@@ -1,4 +1,12 @@
-"""Las dos sondas que miran FUERA del repo tienen que encontrar su fichero desde un worktree.
+"""Una sonda tiene que dar el MISMO veredicto se corra desde el checkout principal o desde un worktree.
+
+Dos formas distintas del mismo fallo, cada una en su bloque:
+
+  1. **`RAIZ.parent`** (2026-08-23, abajo del todo esta la segunda) — las dos sondas que miran
+     FUERA del repo buscaban su fichero en la carpeta equivocada. Es lo que documenta el resto
+     de esta cabecera.
+  2. **`core.hooksPath`** — configuracion COMPARTIDA por todos los worktrees, con la ruta
+     absoluta a UNO de ellos dentro. Ver el bloque de comentarios de mitad de fichero.
 
 `registro_sin_caducados()` abre `REGISTRO.md` y `revista_de_runtimes()` ejecuta
 `.claude/hooks/revista_runtimes.py`. Los dos ficheros viven en la carpeta que CONTIENE los
@@ -131,4 +139,120 @@ def test_desde_el_checkout_PRINCIPAL_sigue_saliendo_lo_mismo(mundo, monkeypatch)
     monkeypatch.setattr(m, "RAIZ", repo)
     ok, motivo = m.registro_sin_caducados()
     assert "no existe" not in motivo, motivo
+    assert ok, motivo
+
+
+# --- La segunda forma: la CONFIG del repo nombra UN arbol, y los worktrees son N --------------
+#
+# Medido el 2026-08-23, misma familia y distinto disfraz. `core.hooksPath` no vive en el
+# worktree: vive en el `.git` COMUN, asi que los N arboles leen el mismo valor. Y ese valor es
+# hoy la ruta absoluta al checkout principal, o sea que una sonda que lo use tal cual no falla a
+# veces — solo puede acertar en 1 arbol de N, por construccion.
+#
+# Ademas ni siquiera daba un rojo: `RAIZ / <absoluta>` se traga el prefijo (regla de `pathlib`),
+# y el `hook.relative_to(RAIZ)` de la sonda LANZABA `ValueError`. Comprobado con los valores
+# reales de hoy: desde un worktree `guardia_de_commit()` no medía nada, reventaba.
+
+
+def _hook(arbol: Path, cuerpo: str) -> None:
+    """Un `hooks/pre-commit` versionado en ese arbol, con el cuerpo que se le diga.
+
+    `--no-verify` porque el `core.hooksPath` del mundo ya apunta a esta misma carpeta: sin el, un
+    hook que grita bloquea el commit que lo versiona. Aqui solo se esta poniendo el fichero en el
+    arbol; quien tiene que ejecutarlo es la sonda, y lo hace contra su propio repo de pega.
+    """
+    carpeta = arbol / "hooks"
+    carpeta.mkdir(parents=True, exist_ok=True)
+    (carpeta / "pre-commit").write_text("#!/bin/sh" + chr(10) + cuerpo + chr(10),
+                                        encoding="utf-8")
+    _git("-C", str(arbol), "add", "-A")
+    _git("-C", str(arbol), "-c", "user.email=t@local", "-c", "user.name=t",
+         "commit", "-qm", "hook", "--no-verify")
+
+
+@pytest.fixture
+def mundo_con_hooks(mundo):
+    """`mundo`, y ademas `core.hooksPath` apuntando en ABSOLUTO al checkout principal.
+
+    No es un caso rebuscado: es literalmente lo que contesta `git config --get core.hooksPath`
+    en capa-normativa hoy. Una config compartida por todos los worktrees no tiene otra forma de
+    nombrar una carpeta concreta que una ruta absoluta, y esa ruta es de UN arbol.
+    """
+    proyectos, arbol = mundo
+    repo = proyectos / "repo-de-pega"
+    _git("-C", str(repo), "config", "core.hooksPath", str(repo / "hooks"))
+    return repo, arbol
+
+
+def test_una_ruta_del_checkout_principal_se_reancla_al_arbol_propio(mundo_con_hooks, monkeypatch):
+    """El reanclaje, y al lado lo que hacia el codigo anterior con el mismo dato."""
+    repo, arbol = mundo_con_hooks
+    m = _tablero()
+    monkeypatch.setattr(m, "RAIZ", arbol)
+    assert m._en_el_arbol_propio(str(repo / "hooks")) == arbol / "hooks"
+    # Lo de antes, en una linea: `pathlib` deja que la absoluta se coma el prefijo entero, asi
+    # que `RAIZ /` no aislaba nada. No es un descuido de quien lo escribio, es la regla.
+    assert arbol / str(repo / "hooks") == repo / "hooks"
+    # Y una relativa cuelga del arbol propio, que es lo que ya se esperaba de ella.
+    assert m._en_el_arbol_propio("hooks") == arbol / "hooks"
+
+
+def test_una_carpeta_de_hooks_de_VERDAD_fuera_del_repo_se_respeta(mundo, tmp_path, monkeypatch):
+    """El reanclaje no puede pasarse de listo: fuera del repo, la ruta es una decision, no un fallo.
+
+    Sin esta mitad, «arreglar la punteria» degeneraria en «traerse todo a casa», y una carpeta de
+    hooks compartida por varios repos —que es una configuracion legitima— se resolveria a un
+    sitio inventado dentro del arbol.
+    """
+    _, arbol = mundo
+    m = _tablero()
+    monkeypatch.setattr(m, "RAIZ", arbol)
+    fuera = tmp_path / "hooks-de-la-empresa"
+    assert m._en_el_arbol_propio(str(fuera)) == fuera
+
+
+def test_la_guardia_de_commit_juzga_el_pre_commit_de_SU_arbol(mundo_con_hooks, monkeypatch):
+    """Las tres condiciones, sobre el arbol propio, con un hook DISTINTO en cada arbol.
+
+    El del checkout principal deja pasar cualquier commit y el del worktree grita. Asi el
+    veredicto distingue cual de los dos se examino, en vez de depender de leer una ruta en un
+    mensaje — que es lo que un arreglo cosmetico dejaria pasar.
+    """
+    repo, arbol = mundo_con_hooks
+    _hook(repo, "exit 0")           # el del vecino: permisivo
+    _hook(arbol, "exit 1")          # el propio: grita
+    m = _tablero()
+    monkeypatch.setattr(m, "RAIZ", arbol)
+    ok, motivo = m.guardia_de_commit()
+    assert ok, motivo
+
+
+def test_el_rojo_de_la_guardia_dice_DONDE_ha_buscado(mundo_con_hooks, monkeypatch):
+    """Con el hook solo en el vecino, la sonda tiene que salir ROJA y decir en que arbol miro.
+
+    Es la mitad legible del arreglo. El mensaje anterior repetia el valor de `core.hooksPath` y
+    sonaba a «falta el hook» cuando lo que pasaba era «estas mirando otro sitio»; son dos rojos
+    con arreglos opuestos, y sin la ruta entera no se distinguen leyendolos.
+    """
+    repo, arbol = mundo_con_hooks
+    _hook(repo, "exit 1")
+    m = _tablero()
+    monkeypatch.setattr(m, "RAIZ", arbol)
+    ok, motivo = m.guardia_de_commit()
+    assert not ok, motivo
+    assert str(arbol / "hooks") in motivo, motivo
+
+
+def test_la_guardia_de_commit_desde_el_checkout_PRINCIPAL_sigue_igual(mundo_con_hooks, monkeypatch):
+    """El control. Un arreglo que rompiera el caso que HOY funciona no seria un arreglo.
+
+    Aqui `RAIZ` es el checkout principal, o sea el unico arbol donde `core.hooksPath` ya acertaba
+    por casualidad. El reanclaje tiene que ser la identidad en ese caso.
+    """
+    repo, _ = mundo_con_hooks
+    _hook(repo, "exit 1")
+    m = _tablero()
+    monkeypatch.setattr(m, "RAIZ", repo)
+    assert m._en_el_arbol_propio(str(repo / "hooks")) == repo / "hooks"
+    ok, motivo = m.guardia_de_commit()
     assert ok, motivo

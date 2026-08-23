@@ -141,3 +141,112 @@ checkout principal, que ya funcionaba y tenía que seguir funcionando).
 | `mcp_smart_context` | 0 | limpio |
 | `ponerse_wenorro/backend` | 2 | **NO es el mismo defecto.** Ahí `RAIZ` es `backend/`, así que `RAIZ.parent` significa «la raíz de MI repo» (comprobado: hay `.git` en las tres), y se usa como `git -C`. Eso es relativo al propio árbol y es correcto en cualquier worktree. No se toca. |
 | `pw-ralph/backend` | 2 | igual que el anterior. No se toca. |
+
+---
+
+# La tercera forma: la CONFIG del repo nombra UN árbol, y los worktrees son N
+
+**2026-08-23.** Las tres sondas que quedaban después del arreglo anterior. Y aquí la decisión de
+reparto que pedía la sección primera —*¿apuntar al árbol propio, o declararla en `permitidos`?*—
+sale **la misma para las tres: apuntar al árbol propio.** El motivo se dice abajo.
+
+## Qué pasa
+
+| sonda | de dónde sale la ruta al árbol vecino |
+|---|---|
+| `guardia-de-commit` | `git config --get core.hooksPath` → `C:/Users/Guille/proyectos/capa-normativa/hooks`, absoluta |
+| `inv-audit-settings-source-sh-no` | la ruta escrita a mano dentro de su campo de aceptación |
+| `inv-canario-py-aceptacion-py-verifica` | ídem, y ésta **sí llegaba a ejecutarse** |
+
+Las dos últimas son la sección primera otra vez, en dos entradas que se le escaparon. La primera
+es nueva y es la interesante.
+
+## Por qué `core.hooksPath` no se puede usar tal cual, nunca
+
+`core.hooksPath` **no vive en el worktree**: vive en el `.git` común, así que los N árboles leen
+el mismo valor. Y un valor único sólo puede nombrar una carpeta, o sea **un** árbol. Entonces una
+sonda que lo use literalmente no es que se equivoque a veces:
+
+> puede acertar en **1 árbol de N**, y falla en los otros N−1 por construcción.
+
+Hoy N = 8 en este repo. Y desde los otros siete el fallo llegaba con la firma exacta que este
+documento persigue: el agente añade su `hooks/pre-commit` en su copia, la sonda abre la del
+vecino, no lo encuentra, dice ROJO, y el bucle deshace trabajo correcto.
+
+### Y ni siquiera daba un rojo: reventaba
+
+`RAIZ / <ruta absoluta>` **se traga el prefijo entero** — es la regla de `pathlib`, no un
+descuido de quien lo escribió. Así que `hook` acababa siendo el del checkout principal, y el
+`hook.relative_to(RAIZ)` de dos líneas más abajo lanzaba `ValueError`. Medido con los valores
+reales de hoy:
+
+```
+RAIZ         C:\...\capa-normativa\.claude\worktrees\gracious-hellman-a92dc2
+RAIZ / ruta  C:\...\capa-normativa\hooks\pre-commit          ← el árbol de al lado
+relative_to  ValueError: ... is not in the subpath of ...
+```
+
+El tablero convierte esa excepción en `el comprobador falló: ValueError`, o sea otro rojo más.
+Desde un worktree esta sonda **no medía nada**.
+
+## Por qué NINGUNA de las tres va a `permitidos`
+
+`permitidos` es para las sondas que miran fuera **a propósito** —un auditor cruzado del estilo
+«todos los repos tienen su pre-commit»—. Ninguna de éstas lo es:
+
+- `guardia-de-commit` juzga *el pre-commit de este repo*, y el árbol donde corre **es** este repo.
+  Además es la sonda que un agente autónomo puede tener que arreglar: mandarla a mirar fuera es
+  exactamente construir el rojo inarreglable.
+- las dos `inv-*` invocan **este mismo tablero**. Correr el del vecino no tiene caso de uso.
+
+La regla, por si vuelve a aparecer: *si la sonda juzga algo que quien la ejecuta podría arreglar,
+tiene que mirar el árbol de quien la ejecuta.* `permitidos` es para lo que se audita, no para lo
+que se arregla.
+
+## El arreglo
+
+`_en_el_arbol_propio(ruta)` **reancla**: si la ruta cuelga del checkout principal, se le quita
+ese prefijo y se cuelga de `RAIZ`. Comparte con `_carpeta_de_proyectos()` la única pregunta a git
+(`_checkout_principal()`, vía `--git-common-dir`), para que no haya dos sitios contestando lo
+mismo.
+
+Y tiene una segunda mitad que no es decorativa: **si la ruta NO cuelga del checkout principal, se
+respeta tal cual.** Una carpeta de hooks compartida por varios repos es una configuración
+legítima, y reanclarla sería inventarse un sitio. Sin esa mitad, «arreglar la puntería»
+degeneraría en «traérselo todo a casa».
+
+Las dos `inv-*` pasan a ruta relativa: su comando ya corre con `cwd=RAIZ`, así que la relativa
+sigue a quien lo ejecuta, que es justo lo que se quiere.
+
+## Aceptación
+
+**La medida de arriba, con la sonda de verdad y desde este worktree:**
+
+```
+antes    🔴 sondas-miran-su-arbol  5 sonda(s) juzgan otro arbol: guardia-de-commit,
+            inv-audit-settings-source-sh-no, inv-canario-py-aceptacion-py-verifica,
+            registro-sin-caducados, revista-de-runtimes
+después  🟢 sondas-miran-su-arbol  las 25 sondas miran su propio arbol        (exit 0, 33 s)
+```
+
+*(las dos últimas del «antes» son las de la sección anterior: su arreglo vivía en una rama sin
+integrar, y la aceptación pedida —exit 0— era inalcanzable sin traerlo. Se integró.)*
+
+Y tres tests, verificados por mutación deshaciendo cada arreglo por separado:
+
+| test | mutación que lo tumba |
+|---|---|
+| `test_la_guardia_de_commit_juzga_el_pre_commit_de_SU_arbol` | volver a `RAIZ / ruta` → `ValueError` |
+| `test_el_rojo_de_la_guardia_dice_DONDE_ha_buscado` | ídem |
+| `test_una_carpeta_de_hooks_de_VERDAD_fuera_del_repo_se_respeta` | reanclar también lo de fuera |
+| `test_ninguna_aceptacion_nombra_un_arbol_por_su_ruta_absoluta` | devolver la absoluta a un `_INV` |
+
+El de los dos hooks distintos —permisivo en el vecino, gritón en el propio— no lee ninguna ruta:
+distingue **cuál de los dos se ejecutó** por el veredicto. Un arreglo cosmético que sólo cambiara
+el mensaje no lo pasa.
+
+El último vive en `tests/test_inv_ejecutan_de_verdad.py`, con la familia de invariantes de `_INV`,
+y es el que generaliza: prohíbe que **cualquier** aceptación nombre por ruta absoluta un árbol de
+este repo. Dentro del repo, relativa; fuera, absoluta está bien. No caza la ruta escrita en una
+máquina donde el repo viva en otro sitio — para eso está `sondas-miran-su-arbol`, que observa lo
+que se toca en vez de leer el fuente.

@@ -36,6 +36,42 @@ CORE = RAIZ / "docs/CN_REFERENCIA_CORE.md"
 DECISION = RAIZ / "docs/decisiones/CONTEXTO_PROPIO.md"
 
 
+def _checkout_principal() -> Path:
+    """El arbol donde vive el `.git` de verdad. Desde el propio checkout principal, `RAIZ`.
+
+    Vive aparte porque hace falta para DOS cosas opuestas:
+
+      · SUBIR a la carpeta que contiene los repos (`_carpeta_de_proyectos`), donde estan los
+        ficheros que no son de ningun arbol en particular;
+      · BAJAR de vuelta al arbol propio una ruta de configuracion que nombra al principal
+        (`_en_el_arbol_propio`), que es justo lo contrario.
+
+    Se le pregunta a GIT por `--git-common-dir`, que desde CUALQUIER worktree apunta al `.git`
+    del checkout principal, y su padre es ese checkout. Se pregunta en vez de escribir la ruta
+    porque una ruta a mano es justo lo que caza `sondas_miran_su_arbol()`, y porque deducirla
+    del nombre de la carpeta ya fallo antes (`cn-ralph` y `capa-normativa` son el mismo repo y
+    no se parecen en nada).
+
+    Si git no contesta quedan dos redes, en este orden: la FORMA del propio worktree
+    —`<repo>/.claude/worktrees/<x>`—, que es el caso que se rompia; y `RAIZ` a secas, o sea
+    suponer que no hay worktree, que es lo que habia antes de todo esto. El camino de
+    emergencia no puede dejar esto peor de como estaba.
+    """
+    import subprocess
+    try:
+        r = subprocess.run(["git", "-C", str(RAIZ), "rev-parse",
+                            "--path-format=absolute", "--git-common-dir"],
+                           capture_output=True, text=True, timeout=60)
+        if r.returncode == 0 and r.stdout.strip():
+            return Path(r.stdout.strip()).parent          # <repo>/.git → <repo>
+    except Exception:
+        pass
+    padre, abuelo = RAIZ.parent, RAIZ.parent.parent
+    if padre.name == "worktrees" and abuelo.name == ".claude":
+        return abuelo.parent                              # <repo>/.claude/worktrees/<x> → <repo>
+    return RAIZ
+
+
 def _carpeta_de_proyectos() -> Path:
     """La carpeta que CONTIENE los repos —`.../proyectos`—, se corra desde donde se corra.
 
@@ -50,30 +86,42 @@ def _carpeta_de_proyectos() -> Path:
     de `--verifica`: el instrumento tumbando la medida. Y es el peor sabor de ese fallo, porque
     el bucle autonomo lee el rojo como «el trabajo no vale» y deshace trabajo correcto.
 
-    Se le pregunta a GIT por `--git-common-dir`, que desde CUALQUIER worktree apunta al `.git`
-    del checkout principal: su padre es el repo y el padre de ese es la carpeta de proyectos. Se
-    pregunta en vez de escribir la ruta porque una ruta a mano es justo lo que caza
-    `sondas_miran_su_arbol()`, y porque deducirla del nombre de la carpeta ya fallo antes
-    (`cn-ralph` y `capa-normativa` son el mismo repo y no se parecen en nada).
-
-    Si git no contesta quedan dos redes, en este orden: la FORMA del propio worktree, que es el
-    caso que se rompia; y `RAIZ.parent`, que es lo que habia — asi el camino de emergencia no
-    puede dejar esto peor de como estaba.
+    El padre del checkout principal, que es quien sabe donde esta ese checkout desde cualquier
+    arbol. Cuando `_checkout_principal()` cae en su ultima red y devuelve `RAIZ`, esto devuelve
+    `RAIZ.parent`: exactamente lo que habia antes, ni mejor ni peor.
     """
-    import subprocess
+    return _checkout_principal().parent
+
+
+def _en_el_arbol_propio(ruta: str) -> Path:
+    """Baja al arbol que se esta juzgando una ruta de configuracion que nombra a otro.
+
+    ⚠️ `core.hooksPath` es configuracion COMPARTIDA: vive en el `.git` comun, asi que los N
+    worktrees leen el mismo valor, y hoy ese valor es la ruta ABSOLUTA al checkout principal
+    (`C:/Users/Guille/proyectos/capa-normativa/hooks`). Una sonda que la use tal cual no es que
+    se equivoque a veces: solo puede acertar en 1 de los N arboles, por construccion.
+
+    Y ahi esta el fallo de `SONDAS_ATADAS_A_OTRO_ARBOL` en su forma mas silenciosa. El agente
+    añade su `hooks/pre-commit` en su copia, la sonda abre la del vecino, no lo encuentra, dice
+    ROJO, y el bucle deshace trabajo correcto.
+
+    Antes esto ni siquiera producia un rojo legible: `RAIZ / ruta` se traga la absoluta entera
+    —esa es la regla de `pathlib`, no un descuido de quien la escribio—, y entonces el
+    `hook.relative_to(RAIZ)` de `guardia_de_commit` LANZABA `ValueError` porque el hook ya no
+    colgaba de `RAIZ`. Medido el 2026-08-23: desde un worktree esa sonda no medía nada, reventaba.
+
+    Se reancla. Si la ruta cuelga del checkout principal se le quita ese prefijo y se cuelga de
+    `RAIZ`; una ruta relativa se cuelga de `RAIZ` directamente. Y si NO cuelga del principal
+    —una carpeta de hooks de verdad fuera del repo— se respeta tal cual: eso es una decision de
+    quien configuro el repo, no un error de punteria, y reanclarla seria inventarse un sitio.
+    """
+    p = Path(ruta)
+    if not p.is_absolute():
+        return RAIZ / p
     try:
-        r = subprocess.run(["git", "-C", str(RAIZ), "rev-parse",
-                            "--path-format=absolute", "--git-common-dir"],
-                           capture_output=True, text=True, timeout=60)
-        if r.returncode == 0 and r.stdout.strip():
-            # <proyectos>/<repo>/.git → el padre es el repo, el abuelo la carpeta de proyectos
-            return Path(r.stdout.strip()).parent.parent
-    except Exception:
-        pass
-    padre, abuelo = RAIZ.parent, RAIZ.parent.parent
-    if padre.name == "worktrees" and abuelo.name == ".claude":
-        return abuelo.parent.parent          # <proyectos>/<repo>/.claude/worktrees/<x>
-    return padre
+        return RAIZ / p.relative_to(_checkout_principal())
+    except ValueError:
+        return p
 
 
 # `contexto_propio()` vivia aqui. Retirada el 2026-08-23 al cumplirse (ver CUMPLIDAS):
@@ -172,7 +220,14 @@ _INV = {
     # y ademas por ruta absoluta al arbol principal. La forma directa dice la verdad.
     'inv-capa-normativa-es-el-unico': ('python scripts/aceptacion.py guardia-de-commit',
         'arreglar: capa-normativa es el unico repo sin pre-commit — y es el que ALOJA al vigilante'),
-    'inv-audit-settings-source-sh-no': ('Si se retira: `python -c "import json,os,sys; t=json.dumps(json.load(open(r\'C:/Users/Guille/.claude/settings.json\',encoding=\'utf-8\'))); sys.exit(1 if (\'audit_settings_source\' in t or os.path.exists(r\'C:/Users/Guille/.claude/hooks/audit_settings_source.sh\')) else 0)"` — hoy ROJO por las dos mitades (registrado Y presente en disco); solo pasa desregistrandolo y borrandolo. Si en vez de retirarlo se quiere conservar la capacidad, entonces la aceptacion es un CANARIO, no un diff: `python C:/Users/Guille/proyectos/capa-normativa/scripts/aceptacion.py --verifica canario-settings`, que copia el settings.json vigente a un sandbox de %TEMP%, le INYECTA un hook de laboratorio que el snapshot revisado no contiene, corre el guardian contra esa copia y EXIGE exit != 0 o el aviso por stderr. Hoy ROJO porque el guardian pregunta por la autoria y no por el contenido, asi que ante un settings envenenado se calla. Un diff contra el snapshot NO vale como aceptacion: hoy los dos ficheros son identicos y nacería verde.',
+    # Ruta reanclada el 2026-08-23: la variante CANARIO citaba
+    # `python C:/Users/Guille/proyectos/capa-normativa/scripts/aceptacion.py --verifica ...`, o
+    # sea el tablero DEL CHECKOUT PRINCIPAL. Desde un worktree eso es un arbol hermano, y
+    # `sondas-miran-su-arbol` la acusaba por ello aunque el comando ni llegue a ejecutarse hoy
+    # (la cadena empieza por prosa, asi que `_solo_el_comando` la deja entera): la acusacion es
+    # correcta igual, porque el dia que se ejecute apuntara fuera. Relativa resuelve contra
+    # `cwd=RAIZ`, que es el arbol que se esta juzgando.
+    'inv-audit-settings-source-sh-no': ('Si se retira: `python -c"import json,os,sys; t=json.dumps(json.load(open(r\'C:/Users/Guille/.claude/settings.json\',encoding=\'utf-8\'))); sys.exit(1 if (\'audit_settings_source\' in t or os.path.exists(r\'C:/Users/Guille/.claude/hooks/audit_settings_source.sh\')) else 0)"` — hoy ROJO por las dos mitades (registrado Y presente en disco); solo pasa desregistrandolo y borrandolo. Si en vez de retirarlo se quiere conservar la capacidad, entonces la aceptacion es un CANARIO, no un diff: `python scripts/aceptacion.py --verifica canario-settings`, que copia el settings.json vigente a un sandbox de %TEMP%, le INYECTA un hook de laboratorio que el snapshot revisado no contiene, corre el guardian contra esa copia y EXIGE exit != 0 o el aviso por stderr. Hoy ROJO porque el guardian pregunta por la autoria y no por el contenido, asi que ante un settings envenenado se calla. Un diff contra el snapshot NO vale como aceptacion: hoy los dos ficheros son identicos y nacería verde.',
         'retirar: audit_settings_source.sh — no puede avisar nunca, por dos motivos independientes'),
     # Comando reescrito el 2026-08-23. El anterior era PROSA con el comando citado dentro,
     # asi que el shell nunca lo ejecutaba y el tablero traducia ese fallo a «pendiente».
@@ -183,7 +238,12 @@ _INV = {
         'retirar: autohealth-monitor.py (con guion) — fichero de hook que no registra nadie'),
     'inv-registro-md-session-start-sh': ("`python C:/Users/Guille/proyectos/scripts/aceptacion.py censo-de-guardianes` — hoy ROJA porque C:/Users/Guille/proyectos/scripts/ NO EXISTE (verificado: Test-Path = False), y un fichero vacío tampoco la aprueba: el tablero contesta `desconocida: censo-de-guardianes` y sale 2. Solo pasa cuando el comprobador ENUMERE los guardianes de sus fuentes vivas (entradas de hook de ~/.claude/settings.json, repos con pre-commit, `Get-ScheduledTask` de TaskPath '\\', ficheros aceptacion.py) y exija una cabecera '## ' en REGISTRO.md por cada uno — hoy 14 contra 29.",
         'exprimir: REGISTRO.md + session_start.sh — el censo que existe pero no censa a los guardianes'),
-    'inv-canario-py-aceptacion-py-verifica': ('`python C:/Users/Guille/proyectos/capa-normativa/scripts/aceptacion.py canario-de-los-hooks` — hoy ROJA: el nombre no existe en COMPROBADORES, el tablero imprime `desconocida:` y sale 2. Solo pasa cuando exista un comprobador que, para CADA una de las 10 entradas de hook de ~/.claude/settings.json, le entregue por stdin una carga envenenada conocida y exija que el hook grite (exit≠0 o mensaje de bloqueo), y que LANCE — no que salte en silencio — ante cualquier hook sin caso, replicando el contrato de CASOS. Un stub que devuelva True no la aprueba: `python scripts/aceptacion.py --verifica` la tumba con «no estaba ROJO de partida». Acción gemela y verificable: `canario-completo` debe desaparecer del tablero (hoy sale 0, medido).',
+    # Ruta reanclada el 2026-08-23. Esta si se ejecutaba: la cadena empieza por comilla, asi que
+    # `_solo_el_comando` la desnudaba y corria de verdad
+    # `python C:/Users/Guille/proyectos/capa-normativa/scripts/aceptacion.py ...` — el tablero del
+    # arbol de al lado. Un agente encerrado en su worktree añadia ahi `canario-de-los-hooks` y
+    # esta aceptacion seguia roja para siempre, porque preguntaba en la copia que el no podia tocar.
+    'inv-canario-py-aceptacion-py-verifica': ('`python scripts/aceptacion.py canario-de-los-hooks` — hoy ROJA: el nombre no existe en COMPROBADORES, el tablero imprime `desconocida:` y sale 2. Solo pasa cuando exista un comprobador que, para CADA una de las 10 entradas de hook de ~/.claude/settings.json, le entregue por stdin una carga envenenada conocida y exija que el hook grite (exit≠0 o mensaje de bloqueo), y que LANCE — no que salte en silencio — ante cualquier hook sin caso, replicando el contrato de CASOS. Un stub que devuelva True no la aprueba: `python scripts/aceptacion.py --verifica` la tumba con «no estaba ROJO de partida». Acción gemela y verificable: `canario-completo` debe desaparecer del tablero (hoy sale 0, medido).',
         'exprimir: canario.py + aceptacion.py --verifica — la prueba por mutación existe y cubre 4 detectores de ~29 guardianes'),
     'inv-capa-normativa-declarado-en-el': ('`python scripts/aceptaciones/proyectos_habilitados_indexados.py` — mide el INDICE en vez de contar lineas de log. La anterior contaba lineas «Watching:» del context_watcher_master y exigia tantas como proyectos habilitados; medido el 2026-08-23, ese proxy se habia despegado de la cosa: el proceso del watcher NO corre y su ultimo log es del 18-ago, quien mantiene el indice hoy es la tarea ContextWatcher-Reindex (corrio a las 14:00, exit 0), el almacen vectorial se escribio a las 17:18 de hoy, y capa_normativa SI esta indexado (61 documentos; una busqueda real devuelve fragmentos de su PROGRESS y su PENDIENTES). Unas lineas de log se pueden emitir sin indexar nada; esto no.',
         'arreglar: capa_normativa declarado en el YAML pero fuera del vigilante'),
@@ -404,6 +464,12 @@ def guardia_de_commit() -> tuple[bool, str]:
     Y se pregunta a git por la ruta EFECTIVA (`rev-parse --git-path hooks`) en vez de mirar
     `.git/hooks` a ciegas: asi se colo el shim fantasma de eu, un pre-commit que git ignoraba y
     que aun asi mentia a quien lo leyera.
+
+    ⚠️ Lo que dice `core.hooksPath` se REANCLA al arbol propio (`_en_el_arbol_propio`), y no es
+    cosmetico: esa config es comun a todos los worktrees y hoy vale la ruta absoluta al checkout
+    principal, asi que desde cualquier worktree esta sonda juzgaba el `pre-commit` DEL VECINO —y
+    reventaba con `ValueError` al pedir su ruta relativa—. Las tres condiciones se comprueban
+    sobre el arbol que se esta juzgando, que es el unico que quien corre aqui puede arreglar.
     """
     import subprocess
     import sys
@@ -416,9 +482,13 @@ def guardia_de_commit() -> tuple[bool, str]:
     if not ruta:
         return False, ("core.hooksPath sin definir: el pre-commit solo vive en .git/hooks, que no "
                        "viaja en un clon ni se revisa en un diff")
-    hook = (RAIZ / ruta / "pre-commit")
+    hook = _en_el_arbol_propio(ruta) / "pre-commit"
     if not hook.exists():
-        return False, "core.hooksPath apunta a " + ruta + " y ahi no hay pre-commit"
+        # Las DOS rutas: la que dice la config y donde se ha buscado de verdad. Cuando no
+        # coinciden —desde un worktree nunca coinciden— la que importa es la segunda, y sin
+        # imprimirla este rojo se lee como «falta el hook» en vez de «mira otro sitio».
+        return False, ("core.hooksPath apunta a " + ruta + " y en el arbol propio ("
+                       + str(hook.parent) + ") no hay pre-commit")
     if git("ls-files", "--error-unmatch", "--", str(hook.relative_to(RAIZ)).replace(chr(92), "/")).returncode != 0:
         return False, ("existe " + ruta + "/pre-commit pero NO esta versionado: sin red de revert "
                        "y sin revisarse en ningun diff")
