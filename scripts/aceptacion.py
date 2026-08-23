@@ -247,6 +247,7 @@ _INV = {
         'exprimir: canario.py + aceptacion.py --verifica — la prueba por mutación existe y cubre 4 detectores de ~29 guardianes'),
     'inv-capa-normativa-declarado-en-el': ('`python scripts/aceptaciones/proyectos_habilitados_indexados.py` — mide el INDICE en vez de contar lineas de log. La anterior contaba lineas «Watching:» del context_watcher_master y exigia tantas como proyectos habilitados; medido el 2026-08-23, ese proxy se habia despegado de la cosa: el proceso del watcher NO corre y su ultimo log es del 18-ago, quien mantiene el indice hoy es la tarea ContextWatcher-Reindex (corrio a las 14:00, exit 0), el almacen vectorial se escribio a las 17:18 de hoy, y capa_normativa SI esta indexado (61 documentos; una busqueda real devuelve fragmentos de su PROGRESS y su PENDIENTES). Unas lineas de log se pueden emitir sin indexar nada; esto no.',
         'arreglar: capa_normativa declarado en el YAML pero fuera del vigilante'),
+    'inv-capa-normativa-sin-pre-commit': ('python scripts/aceptacion.py guardia-de-commit', 'arreglar: capa-normativa sin pre-commit — el repo que fabrica el vigilante es el único sin él'),
 }
 
 
@@ -589,6 +590,7 @@ SIN_MUTACION = {
     'inv-registro-md-session-start-sh': 'no se muta creando un fichero: su aceptacion interroga el estado real del sistema (tareas programadas, logs, config, indices). Nacio ROJO —comprobado ejecutandolo— y lo escribio un esceptico independiente, no quien hara el trabajo.',
     'inv-canario-py-aceptacion-py-verifica': 'no se muta creando un fichero: su aceptacion interroga el estado real del sistema (tareas programadas, logs, config, indices). Nacio ROJO —comprobado ejecutandolo— y lo escribio un esceptico independiente, no quien hara el trabajo.',
     'inv-capa-normativa-declarado-en-el': 'no se muta creando un fichero: su aceptacion interroga el estado real del sistema (tareas programadas, logs, config, indices). Nacio ROJO —comprobado ejecutandolo— y lo escribio un esceptico independiente, no quien hara el trabajo.',
+    'inv-capa-normativa-sin-pre-commit': 'no se muta creando un fichero: su aceptacion es un comando que interroga el estado real del sistema. Nacio ROJO y se comprobo EJECUTANDOLO desde este arbol el 2026-08-23, al re-ubicarla desde pw-ralph — alli su arreglo caia fuera del worktree y no habia forma de cerrarla.',
 }
 ARTEFACTOS = {
 }
@@ -619,6 +621,7 @@ COMPROBADORES = {
     "bug-emit-pierde-el-provenance": _fabrica_bug("bug-emit-pierde-el-provenance", *_BUGS["bug-emit-pierde-el-provenance"]),
     "bug-check-sale-con-1": _fabrica_bug("bug-check-sale-con-1", *_BUGS["bug-check-sale-con-1"]),
     "sondas-miran-su-arbol": sondas_miran_su_arbol,
+    'inv-capa-normativa-sin-pre-commit': _fabrica_inv('inv-capa-normativa-sin-pre-commit', *_INV['inv-capa-normativa-sin-pre-commit']),
 }
 
 # ── MUTACIÓN: un comprobador en el que se puede confiar es uno que se ha VISTO cambiar ──
