@@ -140,3 +140,52 @@ def test_ningun_diccionario_del_tablero_tiene_claves_repetidas():
                 vistas.add(k.value)
     assert not repetidas, ("claves repetidas (la primera queda muerta y nadie lo ve): "
                            + "; ".join(repetidas))
+
+
+# --- «el comando es un comando, no una frase que lo describe» --------------------------------
+#
+# Medido el 2026-08-23: 23 entradas `_INV` repartidas por los siete tableros metian su explicacion
+# en el MISMO campo que el comando, sin backticks. `_solo_el_comando` solo desnuda lo que EMPIEZA
+# por backtick —deliberadamente, para no adivinar: la version que adivinaba produjo un falso
+# VERDE—, asi que la cadena entera llegaba al shell.
+#
+# Para un `python -c` los argumentos de mas son inocuos. Para un `powershell -Command` se
+# CONCATENAN al codigo y lo revientan: `inv-ess-variable-checker-su-unica` salia exit 255 con
+# «There are no more files» y no podia ponerse verde hiciera nadie lo que hiciera. Y el test de
+# arriba NO lo cazaba, porque 255 no es 9009 y ese mensaje no esta entre sus firmas.
+#
+# Por eso esta comprobacion es ESTRUCTURAL y no otra firma de error mas: no adivina que trozo es
+# el comando, solo exige que el campo ya venga separado.
+
+_SEPARADOR_DE_PROSA = (chr(8212), "(HOY")
+
+
+def _comando_de(nombre: str) -> str:
+    bruto = str(TB._INV[nombre][0])
+    return TB._solo_el_comando(bruto) if hasattr(TB, "_solo_el_comando") else bruto
+
+
+def test_ningun_comando_lleva_la_prosa_dentro():
+    malos = [n for n in INV
+             if n not in _PROSA_TOLERADA
+             and any(s in _comando_de(n) for s in _SEPARADOR_DE_PROSA)]
+    assert not malos, (
+        "el campo `comando` de estas entradas lleva la explicacion dentro, asi que la prosa entra "
+        "al shell: " + ", ".join(malos) + ". Se arregla poniendo el comando entre backticks y la "
+        "prosa detras, que es la unica forma que `_solo_el_comando` extrae sin adivinar.")
+
+
+def test_la_tolerancia_de_prosa_no_nombra_fantasmas():
+    """Una excepcion a un nombre que ya no esta en el tablero no protege nada, y despista."""
+    fantasmas = sorted(set(_PROSA_TOLERADA) - set(INV))
+    assert not fantasmas, "toleradas pero ya no estan en _INV: " + ", ".join(fantasmas)
+
+_PROSA_TOLERADA = {
+    "inv-test-hechos-que-caducan-barre":
+        "lleva backticks PROPIOS dentro del comando, asi que envolverlo en backticks romperia la "
+        "extraccion (cortaria en el primero de dentro). Comprobado que arranca y sale 0: es un "
+        "`python -c`, y los argumentos de mas acaban en sys.argv sin hacer dano.",
+    "inv-audit-settings-source-sh-no":
+        "rota de fabrica y se deja asi A PROPOSITO: lo que la tarea pide es RETIRAR un hook de "
+        "SEGURIDAD (CVE-2025-59536), y arreglar su comando la volveria accionable por el robot.",
+}
