@@ -15,7 +15,7 @@ justamente lo único que dependía de que alguien se acordara de lanzarlo.
 > y entonces no protege de nada — sólo **parece** que protege, que es peor que no tener nada,
 > porque ocupa el sitio de la protección que sí harías.
 
-Este documento es lo que se montó y, sobre todo, las seis decisiones que no eran obvias.
+Este documento es lo que se montó y, sobre todo, las ocho decisiones que no eran obvias.
 
 ## Lo que hay ahora
 
@@ -28,6 +28,7 @@ Este documento es lo que se montó y, sobre todo, las seis decisiones que no era
 | la promesa | `capa-normativa/scripts/aceptacion.py tableros-corren-solos` |
 | el comprobador | `capa-normativa/scripts/aceptaciones/tableros_corren_solos.py` |
 | sus pruebas | `tests/test_ronda_de_tableros.py` + `tests/test_tableros_corren_solos.py` |
+| el aviso que no se escapa | `~/.claude/hooks/session_start.sh` lee `.rondas/AVISO.txt` |
 | su entrada de censo | `proyectos/REGISTRO.md` |
 
 Las 08:30 no son arbitrarias: van **después** de la ventana de los tres Ralph, así que la ronda
@@ -187,15 +188,82 @@ Por eso hay dos listas y no una: `_REPOS_NO_VIGILADOS` saca un repo **con todos 
 sí está vigilado por otra (`eu-political-observatory`, porque su tablero ya lo corre `eu-ralph` y
 meter las dos duplicaría cada rojo).
 
-## Por qué la promesa nace ROJA, y no es una formalidad
+## Decisión G · Un globo dura diez segundos, y G mira por la mañana
 
-El lanzador viaja en la rama `claude/mystifying-mirzakhani-81a4bc`. La tarea apunta al **checkout
-principal**, donde el guion todavía no está, así que hasta que la rama no se fusione en `main` la
-tarea arrancará, no encontrará el guion, lo dirá en su log y saldrá 2.
+Le pregunté qué haría si a las 22:40 le saltara un globo avisando de dos rojos nuevos.
+**«Lo miro mañana.»**
 
-Podría haberse apuntado la tarea al worktree para que saliera verde hoy. Habría sido exactamente el
-fallo que `SONDAS_ATADAS_A_OTRO_ARBOL_2026-08-22.md` documenta, y además una mentira: la ronda no
-corre sola hasta que corre sola.
+Dos cosas se siguen de ahí, y la segunda no era obvia:
 
-Se pondrá verde ella sola la primera mañana que corra después de la fusión. Esa es la forma
-correcta de que una promesa se cierre — porque el mundo cambió, no porque alguien la reescribió.
+1. **La segunda pasada diaria no vale nada.** Si nadie actúa hasta el día siguiente, adelantar el
+   aviso doce horas no adelanta ninguna decisión — solo añade un globo. Queda en una pasada al día.
+   Y con ella se cae también el disparo por cambio, que ya había tumbado el dato: 76–131 commits
+   diarios en los cuatro repos vigilados, así que «¿ha cambiado algo?» contesta que sí siempre.
+2. **Pero el canal seguía dependiendo de su memoria.** La ronda de las 08:30 coincide con cuando
+   mira, sí; el problema es que el globo dura diez segundos. A las 08:35 puede no estar delante, y
+   entonces el aviso muere y la información se queda en un informe que hay que acordarse de abrir
+   — exactamente la dependencia que este encargo existía para quitar.
+
+Así que el aviso se cuelga además de `~/.claude/hooks/session_start.sh`, que ya hace esto mismo con
+las entradas vencidas del REGISTRO y que él lee cada mañana sin acordarse de nada.
+
+Dos reglas prestadas de esa misma línea:
+
+- **Habla sólo si hay algo que hacer.** `AVISO.txt` se escribe vacío cuando no lo hay, y el hook
+  calla. Un aviso que sale todos los días es decorado en una semana, y entonces el día que diga
+  algo tampoco se lee.
+- **El hook es tonto a propósito**: imprime un fichero. Corre en cada arranque de sesión, así que
+  quien decide qué decir es la ronda, que deja el texto ya escrito. Nada de leer JSON en bash.
+
+Y si la ronda deja de correr, el hook dice **eso** en vez del aviso de anteayer, que ya no es
+cierto: misma ventana de 48 h que exige la promesa.
+
+## Decisión H · Un rojo NUEVO no se cree a la primera
+
+Esto no se decidió: lo impuso la primera pasada real. La ronda avisó de **cuatro rojos nuevos**
+—`canario-de-los-hooks` y tres hermanos suyos— y al repreguntarles con la máquina tranquila
+estaban **verdes**. No había ningún rojo: los tumbó la carga de correr siete tableros seguidos,
+porque hay comprobadores que interrogan procesos con timeout.
+
+O sea que el instrumento cargaba la máquina que estaba midiendo. Y un guarda que da falsas alarmas
+es peor que uno silencioso, porque enseña a no mirarlo — la lección de la decisión B por otra
+puerta: allí era repetir el mismo aviso, aquí es avisar de algo que no ha pasado. Para el que lo
+lee, es lo mismo.
+
+Ahora un rojo nuevo se repregunta —a él solo, por su nombre— y sólo se avisa de los que insisten.
+Es barato porque sólo se repregunta lo nuevo, que casi siempre son cero.
+
+Tres detalles que costaron descubrirse:
+
+- En la corrida por nombre **no hay línea de resumen** con la que contrastar, así que la invariante
+  es «un veredicto por cada nombre pedido». Si no cuadra, se **conserva** la alarma: tragarse un
+  rojo de verdad es mucho más caro que dar uno de más.
+- **No basta con no avisar del inestable.** La primera versión lo dejaba dentro de la lista de
+  rojos del tablero: no salía como «rojo nuevo», pero cambiaba la firma y el globo saltaba igual
+  con otro título. La falsa alarma volvía por la puerta de atrás. Lo cazó el test al exigir
+  `avisos == []` en vez de «un aviso distinto».
+- Y por lo mismo, al día siguiente se habría leído como «resuelto» — un segundo aviso falso.
+
+Los inestables no se tiran: van al informe como hallazgo propio. Un comprobador que cambia de color
+según la carga está roto aunque su promesa esté bien.
+
+## Nació ROJA, y se puso verde sola el mismo día
+
+El lanzador viajaba en una rama y la tarea apuntaba al checkout principal, así que la promesa nacía
+roja con motivo: la tarea arrancaba, no encontraba el guion, lo apuntaba en su log y salía 2.
+Apuntar la tarea al worktree para verla verde ese día habría sido el fallo que documenta
+`SONDAS_ATADAS_A_OTRO_ARBOL_2026-08-22.md`.
+
+Al fusionar y disparar la tarea desde el Programador, la ronda corrió, escribió su informe y el
+examinador lo aceptó: **🟢 sin que nadie tocara nada.**
+
+Y ese disparo pagó dos veces, porque los dos fallos que encontró son invisibles leyendo el código:
+
+| fallo | por qué no se ve |
+|---|---|
+| la ronda se ponía **roja a sí misma** en cada informe | auto-referencia: el tablero que juzga es uno de los siete que ella corre, y mientras la tarea corre `LastTaskResult` vale 267009, no 0 |
+| **cuatro falsas alarmas** por carga | el instrumento cargaba la máquina que medía |
+
+Ésa es la moraleja de la jornada, y es la de siempre en esta casa: **el instrumento falla más que
+lo medido.** Ninguno de los dos habría salido en una revisión de código ni en los tests que ya
+había. Salieron al ejecutar la cosa entera, una sola vez, de verdad.

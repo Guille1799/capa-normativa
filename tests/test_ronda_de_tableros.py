@@ -681,6 +681,60 @@ def test_el_informe_legible_nombra_los_inestables(tmp_path):
     assert "flaky" in texto
 
 
+# ── el aviso que sobrevive al globo ──────────────────────────────────────────────────────────
+#
+# G contestó «lo miro mañana» a un aviso de las 22:40. La ronda de la mañana encaja con eso, pero
+# su globo dura diez segundos: si no está delante a las 08:35, el aviso muere. `AVISO.txt` es el
+# canal que no se le escapa — lo imprime `session_start.sh` al abrir cualquier sesión.
+
+def test_sin_nada_que_hacer_el_aviso_esta_VACIO():
+    """La mitad del diseño. Un aviso que sale todos los días es decorado en una semana, y entonces
+    el día que diga algo tampoco se lee. El silencio es lo que hace que hablar signifique algo."""
+    assert RONDA.aviso_para_la_sesion(_informe()) == ""
+
+
+def test_los_rojos_nuevos_salen_con_nombre_y_ruta():
+    con_nuevos = _informe(nuevos_rojos={"eu-ralph": ["poblacion-por-seccion"]})
+    texto = RONDA.aviso_para_la_sesion(con_nuevos)
+    assert "1 rojo(s) NUEVO(S)" in texto
+    assert "poblacion-por-seccion" in texto
+    assert "ULTIMA.md" in texto
+
+
+def test_un_tablero_que_no_se_pudo_leer_tambien_habla():
+    """Es peor que un rojo: un tablero sin leer no es «verde», es «no lo sabemos»."""
+    roto = _informe()
+    roto["tableros"][0]["estado"] = "caido"
+    assert "no pudo mirarlo todo" in RONDA.aviso_para_la_sesion(roto)
+
+
+def test_un_huerfano_habla_aunque_todo_lo_demas_este_bien():
+    assert "sin vigilar: repo-nuevo" in RONDA.aviso_para_la_sesion(
+        _informe(huerfanos=["repo-nuevo"]))
+
+
+def test_los_inestables_se_dicen_como_lo_que_son():
+    """No como un rojo: como un comprobador roto, que es un trabajo distinto."""
+    texto = RONDA.aviso_para_la_sesion(_informe(inestables={"capa-normativa": ["canario"]}))
+    assert "cambian de color segun la carga" in texto
+    assert "no es un rojo, es un comprobador roto" in texto
+
+
+def test_el_aviso_se_escribe_SIEMPRE_aunque_sea_vacio(tmp_path):
+    """Si no se reescribiera, el fichero de ayer seguiría diciendo lo de ayer — y un aviso que no
+    se apaga al resolverse enseña a ignorar los avisos."""
+    _, _, _ = _ronda_de_mentira(tmp_path, rojos=["nuevo"], siguen_rojos=["nuevo"])
+    aviso = tmp_path / "informes" / "AVISO.txt"
+    assert aviso.exists() and "nuevo" in aviso.read_text(encoding="utf-8")
+    # segunda pasada, ya sin rojos: el aviso tiene que quedarse mudo
+    _siete_falsos(tmp_path / "arbol", [], [])
+    m = _cargar(RONDA_PROYECTOS=tmp_path / "arbol", RONDA_INFORMES=tmp_path / "informes")
+    m._TABLEROS = tuple((n, sub, None) for n, sub, _ in RONDA._TABLEROS)
+    m._toast = lambda t, c: True
+    m.main([])
+    assert aviso.read_text(encoding="utf-8") == "", "el aviso de ayer no puede sobrevivir a hoy"
+
+
 # ── una sola promesa, no dos ─────────────────────────────────────────────────────────────────
 
 def test_la_ronda_NO_añade_una_promesa_propia_al_tablero():
