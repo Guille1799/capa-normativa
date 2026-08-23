@@ -358,6 +358,63 @@ def correr_tablero(t: dict) -> dict:
                 verifica=verifica, detalle=(err.splitlines()[-1][:120] if err else ""))
 
 
+def leer_nombrados(salida: str, pedidos: list[str]) -> dict | None:
+    """Los rojos de una corrida `aceptacion.py <n1> <n2>`, o `None` si la salida no es fiable.
+
+    ⚠️ Aquí NO hay línea de resumen: el tablero solo la imprime cuando se le llama sin argumentos.
+    La invariante equivalente es que salga **un veredicto por cada nombre pedido**. Si no cuadra,
+    se devuelve `None` — y quien llama conserva el rojo. En la duda se conserva la alarma: tragarse
+    un rojo de verdad es mucho más caro que dar uno de más.
+    """
+    veredictos = {}
+    for linea in salida.splitlines():
+        t = linea.strip()
+        if not t or t[0] not in (VERDE, ROJO):
+            continue
+        resto = t[1:].strip()
+        if resto:
+            veredictos[resto.split(None, 1)[0]] = (t[0] == ROJO)
+    if set(veredictos) != set(pedidos):
+        return None
+    return veredictos
+
+
+def reconfirmar(t: dict, exe: str, nombres: list[str]) -> tuple[list[str], list[str]]:
+    """Vuelve a preguntar por unos rojos concretos. Devuelve `(confirmados, inestables)`.
+
+    ## Por qué existe (medido el 2026-08-23, la primera vez que la tarea corrió de verdad)
+
+    La ronda avisó de cuatro rojos nuevos —`canario-de-los-hooks` y tres hermanos suyos— y al
+    volver a preguntar por ellos, con la máquina tranquila, **estaban verdes**. No había ningún
+    rojo: los tumbó la carga. Correr siete tableros seguidos carga la máquina, y hay
+    comprobadores que interrogan procesos con timeout y se caen si el equipo va justo.
+
+    Un guarda que da falsas alarmas es peor que uno silencioso, porque enseña a no mirarlo — es la
+    misma lección de `inv-el-healthcheck-avisa-cada-30` entrando por otra puerta. Así que **un
+    rojo NUEVO no se cree a la primera**: se le vuelve a preguntar, a él solo, y solo se avisa de
+    los que insisten.
+
+    Sale barato justamente porque se pregunta solo por lo nuevo, que casi siempre son cero.
+
+    Y los que NO se reconfirman no se tiran a la basura: van al informe como `inestables`, que es
+    un hallazgo por sí mismo — un comprobador que cambia de color según la carga está roto aunque
+    su promesa esté bien.
+    """
+    if not nombres:
+        return [], []
+    try:
+        r = subprocess.run([exe, "scripts/aceptacion.py", *nombres], cwd=str(t["cwd"]),
+                           env=_entorno_limpio(), capture_output=True,
+                           timeout=TIMEOUT_TABLERO_S)
+    except (subprocess.TimeoutExpired, OSError):
+        return list(nombres), []       # sin respuesta se conserva la alarma
+    veredictos = leer_nombrados(r.stdout.decode("utf-8", "replace"), nombres)
+    if veredictos is None:
+        return list(nombres), []       # salida no fiable: se conserva la alarma
+    return ([n for n in nombres if veredictos[n]],
+            [n for n in nombres if not veredictos[n]])
+
+
 # ── comparar con la pasada anterior ──────────────────────────────────────────────────────────
 
 def leer_ultimo(carpeta: Path = None) -> dict | None:
@@ -549,6 +606,15 @@ def _md(informe: dict) -> str:
         ap("")
         for tab, cuales in sorted(resueltos.items()):
             ap("- 🟢 **" + tab + "** — se cerró: " + ", ".join(cuales))
+    inestables = informe.get("inestables") or {}
+    if inestables:
+        ap("")
+        ap("### ⚠️ Salieron rojos y al repreguntar estaban verdes")
+        ap("")
+        ap("No se ha avisado de éstos. Un comprobador que cambia de color según la carga de la "
+           "máquina está roto aunque su promesa esté bien, así que la lista es un hallazgo:")
+        for tab, cuales in sorted(inestables.items()):
+            ap("- **" + tab + "** — " + ", ".join(cuales))
     ap("")
     ap("## Los tableros")
     ap("")
@@ -762,6 +828,35 @@ def main(argv: list[str]) -> int:
 
     previo = leer_ultimo(carpeta)
     nuevos, resueltos = comparar(resultados, previo)
+
+    # Un rojo NUEVO no se cree a la primera: se le vuelve a preguntar antes de molestar a nadie.
+    # Ver `reconfirmar()` — la primera ronda de verdad dio cuatro falsas alarmas por carga.
+    inestables = {}
+    por_nombre = {t["nombre"]: t for t in vigilados}
+    for t, ficha in zip(vigilados, resultados):
+        t["resultado"] = ficha
+    for tab in sorted(nuevos):
+        exe, problema = _interprete_de(por_nombre[tab])
+        if problema:
+            continue
+        _di("  ... reconfirmando " + str(len(nuevos[tab])) + " rojo(s) nuevo(s) de " + tab)
+        confirmados, dudosos = reconfirmar(por_nombre[tab], exe, nuevos[tab])
+        if dudosos:
+            inestables[tab] = dudosos
+            _di("      " + str(len(dudosos)) + " no se reconfirman: " + ", ".join(dudosos))
+            # Salen de `rojos` y cuentan como verdes, que es lo que contestó la repregunta.
+            #
+            # ⚠️ No basta con no avisar de ellos: si se quedan en la lista, cambian la FIRMA y el
+            # globo sale igual, solo que con otro título. La falsa alarma volvería por la puerta
+            # de atrás. Y la ronda siguiente los vería «resueltos», que es un segundo aviso falso.
+            ficha = por_nombre[tab]["resultado"]
+            ficha["rojos"] = [r for r in ficha["rojos"] if r not in dudosos]
+            ficha["verdes"] += len(dudosos)
+        if confirmados:
+            nuevos[tab] = confirmados
+        else:
+            del nuevos[tab]
+
     fin = datetime.now()
     informe = {
         "version": 1,
@@ -776,6 +871,7 @@ def main(argv: list[str]) -> int:
         "ausentes": ausentes,
         "nuevos_rojos": nuevos,
         "resueltos": resueltos,
+        "inestables": inestables,
     }
     try:
         carpeta.mkdir(parents=True, exist_ok=True)
