@@ -26,6 +26,7 @@ from __future__ import annotations
 import importlib.util
 import json
 import os
+import sys
 from datetime import datetime, timedelta
 from pathlib import Path
 
@@ -289,6 +290,75 @@ def test_las_cumplidas_no_se_cuentan_como_promesas():
     assert r["cumplidas"] == ["contexto-propio"]
 
 
+# ── un rojo nuevo no se cree a la primera ────────────────────────────────────────────────────
+#
+# El 2026-08-23, la primera vez que la tarea corrió de verdad, la ronda avisó de cuatro rojos
+# nuevos. Al repreguntar por ellos con la máquina tranquila estaban VERDES: los había tumbado la
+# carga de correr siete tableros seguidos. Cuatro falsas alarmas en la primera pasada real.
+
+ROJO_EMOJI, VERDE_EMOJI = "\U0001F534", "\U0001F7E2"
+
+
+def test_lee_los_veredictos_de_una_corrida_por_nombre():
+    """Sin línea de resumen: la invariante es un veredicto por cada nombre pedido."""
+    salida = ("  " + ROJO_EMOJI + " uno   sigue roja" + chr(10)
+              + "  " + VERDE_EMOJI + " dos   ya no" + chr(10))
+    assert RONDA.leer_nombrados(salida, ["uno", "dos"]) == {"uno": True, "dos": False}
+
+
+def test_si_faltan_veredictos_la_salida_NO_es_fiable():
+    """Y entonces se conserva la alarma: tragarse un rojo de verdad es más caro que uno de más."""
+    salida = "  " + ROJO_EMOJI + " uno   sigue roja" + chr(10)
+    assert RONDA.leer_nombrados(salida, ["uno", "dos"]) is None
+
+
+def test_si_contesta_por_un_nombre_que_no_se_pidio_tampoco_es_fiable():
+    salida = ("  " + ROJO_EMOJI + " uno   x" + chr(10) + "  " + VERDE_EMOJI + " otro  y" + chr(10))
+    assert RONDA.leer_nombrados(salida, ["uno"]) is None
+
+
+def _tablero_falso(tmp_path, respuesta: str, codigo: int = 0):
+    """Un `scripts/aceptacion.py` de mentira que contesta lo que se le diga."""
+    d = tmp_path / "repo" / "scripts"
+    d.mkdir(parents=True, exist_ok=True)
+    (d / "aceptacion.py").write_text(
+        "import sys" + chr(10)
+        + "sys.stdout.reconfigure(encoding='utf-8')" + chr(10)
+        + "print(" + repr(respuesta) + ")" + chr(10)
+        + "sys.exit(" + str(codigo) + ")" + chr(10), encoding="utf-8")
+    return {"nombre": "falso", "sub": "repo", "interprete": None, "cwd": tmp_path / "repo"}
+
+
+def test_el_rojo_que_insiste_se_confirma(tmp_path):
+    t = _tablero_falso(tmp_path, "  " + ROJO_EMOJI + " uno   sigue roja")
+    confirmados, inestables = RONDA.reconfirmar(t, sys.executable, ["uno"])
+    assert confirmados == ["uno"]
+    assert inestables == []
+
+
+def test_el_rojo_que_al_repreguntar_esta_verde_NO_se_avisa(tmp_path):
+    """El caso medido: `canario-de-los-hooks` rojo bajo carga, verde al preguntarle solo a él."""
+    t = _tablero_falso(tmp_path, "  " + VERDE_EMOJI + " uno   estaba verde")
+    confirmados, inestables = RONDA.reconfirmar(t, sys.executable, ["uno"])
+    assert confirmados == []
+    assert inestables == ["uno"], "y no se pierde: va al informe como hallazgo"
+
+
+def test_si_la_repregunta_no_se_entiende_se_CONSERVA_la_alarma(tmp_path):
+    """En la duda se conserva el rojo. Un guarda que se traga alarmas por no saber leer la
+    respuesta es peor que uno que da alguna de más."""
+    t = _tablero_falso(tmp_path, "aqui no hay veredictos que valgan", codigo=2)
+    confirmados, inestables = RONDA.reconfirmar(t, sys.executable, ["uno"])
+    assert confirmados == ["uno"]
+    assert inestables == []
+
+
+def test_sin_rojos_nuevos_no_se_repregunta_nada(tmp_path):
+    """El coste de esto es cero el 99 % de los días, que es lo que lo hace asumible."""
+    t = _tablero_falso(tmp_path, "no deberia llamarse", codigo=1)
+    assert RONDA.reconfirmar(t, sys.executable, []) == ([], [])
+
+
 # ── lo NUEVO es lo que importa ───────────────────────────────────────────────────────────────
 
 def test_solo_se_denuncia_lo_que_no_estaba_antes():
@@ -503,6 +573,112 @@ def test_cada_tablero_declarado_tiene_interprete_utilizable():
     malos = [t["nombre"] + ": " + (m or "") for t in vigilados
              for _, m in [RONDA._interprete_de(t)] if m]
     assert not malos, "; ".join(malos)
+
+
+# ── la ronda entera, con siete tableros de mentira ───────────────────────────────────────────
+#
+# Los tests de arriba prueban las piezas. Éstos prueban el PEGAMENTO, que es donde estaba el
+# fallo real: `reconfirmar()` funcionaba y aun así habría que enchufarlo bien a `main()`.
+
+_FALSO = '''import sys
+sys.stdout.reconfigure(encoding="utf-8")
+ROJOS = {rojos!r}
+VERDES = ["ok1", "ok2"]
+args = [a for a in sys.argv[1:]]
+if "--verifica" in args:
+    print("  2/2 verificados por mutacion (0 declarados no mutables).")
+    sys.exit(0)
+if args:
+    # Corrida por NOMBRE: sin linea de resumen, como el tablero de verdad.
+    for n in args:
+        print("  " + ("\\U0001F534" if n in {siguen_rojos!r} else "\\U0001F7E2") + " " + n + " x")
+    sys.exit(0)
+for n in VERDES:
+    print("  \\U0001F7E2 " + n + " bien")
+for n in ROJOS:
+    print("  \\U0001F534 " + n + " mal")
+print()
+print("  %d/%d promesas cumplidas." % (len(VERDES), len(VERDES) + len(ROJOS)))
+sys.exit(1 if ROJOS else 0)
+'''
+
+
+def _siete_falsos(tmp_path, rojos, siguen_rojos):
+    """Los siete tableros declarados, de mentira, contestando lo que se les diga."""
+    for _, sub, _ in RONDA._TABLEROS:
+        d = tmp_path / sub / "scripts"
+        d.mkdir(parents=True, exist_ok=True)
+        (d / "aceptacion.py").write_text(
+            _FALSO.format(rojos=rojos, siguen_rojos=siguen_rojos), encoding="utf-8")
+    return tmp_path
+
+
+def _ronda_de_mentira(tmp_path, rojos, siguen_rojos):
+    """Dos pasadas seguidas: una de referencia con todo verde, y la que importa.
+
+    Se hacen las dos de verdad, en vez de fabricar el informe anterior a mano, porque así se
+    ejercita también el fichero de estado del aviso — que es la mitad de la regla de «avisar solo
+    en el cambio» y la que no se ve en una sola pasada.
+    """
+    raiz, informes = tmp_path / "arbol", tmp_path / "informes"
+    _siete_falsos(raiz, [], [])
+    m = _cargar(RONDA_PROYECTOS=raiz, RONDA_INFORMES=informes)
+    # El intérprete declarado de tres tableros es su venv, que en un árbol de mentira no existe.
+    # Qué intérprete le toca a cada uno lo cubre `test_cada_tablero_declarado_tiene_interprete...`.
+    m._TABLEROS = tuple((n, sub, None) for n, sub, _ in RONDA._TABLEROS)
+    m._toast = lambda titulo, cuerpo: True
+    assert m.main([]) == 0
+
+    _siete_falsos(raiz, rojos, siguen_rojos)
+    avisos = []
+    m._toast = lambda titulo, cuerpo: avisos.append((titulo, cuerpo)) or True
+    codigo = m.main([])
+    return codigo, json.loads((informes / "ultima.json").read_text(encoding="utf-8")), avisos
+
+
+def test_la_ronda_entera_confirma_un_rojo_nuevo_y_avisa(tmp_path):
+    """Camino completo: 7 tableros, aparece un rojo, se repregunta, insiste, se avisa."""
+    codigo, informe, avisos = _ronda_de_mentira(
+        tmp_path, rojos=["nuevo"], siguen_rojos=["nuevo"])
+    assert codigo == 0, "que haya rojos no es un fallo de la ronda"
+    assert informe["corridos"] == 7
+    assert informe["nuevos_rojos"] == {n: ["nuevo"] for n, _, _ in RONDA._TABLEROS}
+    assert not informe["inestables"]
+    assert len(avisos) == 1 and "ROJO(S) NUEVO(S)" in avisos[0][0]
+
+
+def test_la_ronda_entera_NO_avisa_de_un_rojo_que_no_se_reconfirma(tmp_path):
+    """El fallo medido el 2026-08-23: cuatro rojos nuevos que al repreguntar estaban verdes.
+
+    El tablero falso dice ROJO en la pasada completa y VERDE cuando se le pregunta por ese nombre
+    — exactamente lo que hizo `canario-de-los-hooks` bajo carga.
+
+    ⚠️ Y se exige `avisos == []`, no «un aviso distinto». La primera versión de esto dejaba el rojo
+    inestable dentro de la lista del tablero: no salía como «rojo nuevo», pero cambiaba la FIRMA y
+    el globo saltaba igual con otro título. La falsa alarma volvía por la puerta de atrás.
+    """
+    codigo, informe, avisos = _ronda_de_mentira(tmp_path, rojos=["flaky"], siguen_rojos=[])
+    assert codigo == 0
+    assert informe["nuevos_rojos"] == {}, "no se avisa de lo que no se reconfirma"
+    assert informe["inestables"] == {n: ["flaky"] for n, _, _ in RONDA._TABLEROS}, \
+        "pero no se pierde: va al informe como hallazgo"
+    assert all(not t["rojos"] for t in informe["tableros"]), \
+        "sale de la lista de rojos, o cambiaria la firma y el globo saltaria igual"
+    assert avisos == [], "y no se molesta a nadie"
+
+
+def test_un_rojo_inestable_tampoco_se_lee_como_RESUELTO_manana(tmp_path):
+    """El segundo aviso falso: si hoy cuenta como rojo y mañana desaparece, mañana sale «se cerró»."""
+    _, informe, _ = _ronda_de_mentira(tmp_path, rojos=["flaky"], siguen_rojos=[])
+    assert informe["resueltos"] == {}
+
+
+def test_el_informe_legible_nombra_los_inestables(tmp_path):
+    """Si no salen en ULTIMA.md, un comprobador que parpadea no lo descubre nadie."""
+    _, informe, _ = _ronda_de_mentira(tmp_path, rojos=["flaky"], siguen_rojos=[])
+    texto = RONDA._md(informe)
+    assert "al repreguntar estaban verdes" in texto
+    assert "flaky" in texto
 
 
 # ── una sola promesa, no dos ─────────────────────────────────────────────────────────────────
