@@ -114,6 +114,32 @@ def test_los_rotos_declarados_existen_de_verdad():
     assert not fantasmas, ("declarados como rotos pero ya no estan en _INV: " + ", ".join(fantasmas))
 
 
+def test_los_no_mutables_declarados_existen_de_verdad():
+    """Una excepcion a un nombre que ya no esta en el tablero no protege nada — y aqui ademas
+    DESCUADRA LA CUENTA.
+
+    Medido el 2026-08-23 en el tablero de capa-normativa: una promesa se retiro de COMPROBADORES al
+    cumplirse y su entrada de SIN_MUTACION se quedo detras. `--verifica` restaba 27 no-mutables de
+    26 comprobadores e imprimia «-1/-1 verificados por mutacion»... saliendo con 0. O sea: el numero
+    era imposible y el veredicto decia que todo bien, que es la peor combinacion posible en un
+    tablero. Y la ronda nocturna de tableros publica esa linea cada manana.
+
+    En ESTE tablero no habia ningun fantasma el dia que se escribio: es la guarda que impide que
+    vuelva a pasar, no el arreglo de nada.
+
+    Se mira contra COMPROBADORES —el diccionario que `--verifica` recorre— y no contra ninguna otra
+    lista: lo que exime de mutacion a alguien solo tiene sentido si ese alguien se va a recorrer.
+    """
+    declarados = set(getattr(TB, "SIN_MUTACION", {}))
+    reales = set(getattr(TB, "COMPROBADORES", {}))
+    assert reales, "no se leyo ningun COMPROBADORES: el test estaria pasando en vacio"
+    fantasmas = sorted(declarados - reales)
+    assert not fantasmas, (
+        "declarados en SIN_MUTACION pero ya no estan en COMPROBADORES: " + ", ".join(fantasmas)
+        + ". Al retirar una promesa hay que quitar TAMBIEN su entrada de SIN_MUTACION, o la "
+          "cuenta de `--verifica` se va en negativo y el resumen deja de querer decir nada.")
+
+
 def test_ningun_diccionario_del_tablero_tiene_claves_repetidas():
     """Una clave repetida en un literal de Python convierte una definicion en CODIGO MUERTO.
 

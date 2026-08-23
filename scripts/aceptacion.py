@@ -511,9 +511,17 @@ def _verifica(solo: str | None = None) -> int:
     for nombre, motivo in malos:
         print(f"  🔴 {nombre:24} {motivo}")
     print()
-    verificados = len(COMPROBADORES) - len(malos) - len(SIN_MUTACION)
-    print(f"  {verificados}/{len(COMPROBADORES) - len(SIN_MUTACION)} verificados por mutación"
-          f" ({len(SIN_MUTACION)} declarados no mutables).")
+    # El divisor sale de COMPROBADORES, NO de restar dos longitudes. El 2026-08-23, en el tablero
+    # de capa-normativa, este resumen decia «-1/-1 verificados» y aun asi salia con 0: una promesa
+    # cumplida se retiro de COMPROBADORES y su entrada de SIN_MUTACION se quedo detras, asi que se
+    # restaban 27 no-mutables de 26 comprobadores. Contar los que REALMENTE se van a mutar no puede
+    # dar negativo diga lo que diga SIN_MUTACION — y del fantasma en si avisa
+    # tests/test_inv_ejecutan_de_verdad.py::test_los_no_mutables_declarados_existen_de_verdad,
+    # porque un numero que se defiende solo tambien deja de denunciar el desorden que lo causo.
+    mutables = [n for n in COMPROBADORES if n not in SIN_MUTACION]
+    verificados = len(mutables) - len(malos)
+    print(f"  {verificados}/{len(mutables)} verificados por mutación"
+          f" ({len(COMPROBADORES) - len(mutables)} declarados no mutables).")
     return 1 if malos else 0
 
 
