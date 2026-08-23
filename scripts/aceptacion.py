@@ -40,43 +40,9 @@ DECISION = RAIZ / "docs/decisiones/CONTEXTO_PROPIO.md"
 # mientras siguio en el tablero salia VERDE y no obligaba a nada.
 
 
-def canario_completo():
-    """Los CUATRO detectores del vigilante tienen que estar cubiertos por el canario.
-
-    Hoy `CASOS` solo trae caso rojo para `secretos` y `sintaxis` — los dos que corre el hook
-    pre-commit. `preguntas` y `punteros` estan registrados en DETECTORES y NO tienen ninguno, asi
-    que `canario(DETECTORES)` LANZA en vez de pasar de largo. Eso ya es la decision correcta y
-    esta escrita en vigilante/__init__.py: un detector sin caso rojo es un detector que nadie ha
-    comprobado, y esa distincion no puede ser silenciosa.
-
-    Pero lanzar no es estar cubierto. Mientras falten, el canario solo puede correrse sobre un
-    subconjunto elegido a mano — y un canario que hay que llamar con la lista buena es justo el
-    tipo de guarda que un dia se llama con la lista de ayer.
-
-    EL DANO QUE PREVIENE ESTA MEDIDO: el 2026-08-20 el escaner de secretos recorria CERO ficheros
-    y contestaba «limpio» por un GIT_DIR heredado. Lo cazo el canario. `preguntas` y `punteros`
-    hoy no tienen quien les haga eso.
-
-    Forma EXIT CODE: se ejecuta el canario sobre TODOS los detectores registrados y se pide que
-    no lance. Ni una pregunta sobre el contenido de nada.
-    """
-    import subprocess
-    import sys
-    codigo = (
-        "import sys; sys.path.insert(0, r'" + str(RAIZ / "src") + "');"
-        " from capa_normativa.vigilante import DETECTORES;"
-        " from capa_normativa.vigilante.canario import canario;"
-        " canario(DETECTORES)"
-    )
-    try:
-        r = subprocess.run([sys.executable, "-c", codigo], capture_output=True,
-                           timeout=300, cwd=str(RAIZ))
-    except subprocess.TimeoutExpired:
-        return False, "el canario se cuelga (>5 min) sobre los cuatro detectores"
-    if r.returncode != 0:
-        err = r.stderr.decode("utf-8", "replace").strip().splitlines()
-        return False, (err[-1][:150] if err else "canario(DETECTORES) falla sin mensaje")
-    return True, "los cuatro detectores registrados tienen caso rojo y el canario los ve saltar"
+# `canario_completo()` vivia aqui. Retirada el 2026-08-23 al cumplirse (ver CUMPLIDAS):
+# los cuatro detectores del vigilante ya tienen caso rojo y el canario los ve saltar.
+# Su relevo es `canario-de-los-hooks`, que hace lo mismo con los diez hooks del sistema.
 
 
 #: Los defectos que la caza adversarial del 2026-08-21 encontro y su esceptico verifico. Cada
@@ -405,7 +371,46 @@ def guardia_de_commit() -> tuple[bool, str]:
     return True, "el pre-commit esta versionado y grita ante una carga envenenada conocida"
 
 
+def canario_de_los_hooks() -> tuple[bool, str]:
+    """Los diez hooks registrados tienen que sobrevivir a basura Y rechazar su carga envenenada.
+
+    Delega en `scripts/canario_hooks.py`, que lee los hooks de `~/.claude/settings.json` en vez de
+    listarlos a mano — una lista escrita envejece en silencio, y el dia que se registre uno nuevo
+    el canario seguiria diciendo que estan todos cubiertos.
+
+    Dos mitades, y solo la primera se puede comprobar hoy:
+      · ROBUSTEZ: ante una carga malformada, terminan sin reventar y sin bloquear. Los diez pasan.
+      · ENVENENADA: la entrada que cada uno DEBE rechazar. Eso depende de que vigila cada hook y
+        no se puede escribir en general, asi que se declara caso por caso — y el canario SALTA
+        ante un hook sin caso, en vez de pasar de largo, copiando a `canario(DETECTORES)`.
+
+    Nace ROJO con 9 hooks sin caso declarado. Se pone verde declarandolos, que es el trabajo: no
+    se aprueba escribiendo nada en el comprobador.
+    """
+    import subprocess
+    import sys
+    guion = RAIZ / "scripts" / "canario_hooks.py"
+    if not guion.exists():
+        return False, "no existe scripts/canario_hooks.py: nadie comprueba los hooks"
+    try:
+        r = subprocess.run([sys.executable, str(guion)], capture_output=True, timeout=900,
+                           cwd=str(RAIZ))
+    except subprocess.TimeoutExpired:
+        return False, "el canario de los hooks se cuelga (>15 min)"
+    salida = (r.stdout + r.stderr).decode("utf-8", "replace").strip().splitlines()
+    if r.returncode != 0:
+        util = [l for l in salida if l.strip().startswith(chr(183))]
+        return False, (util[0].strip() if util else (salida[-1] if salida else "falla sin mensaje"))[:180]
+    return True, "los 10 hooks sobreviven a basura y rechazan su carga envenenada"
+
+
 CUMPLIDAS = {
+    "canario-completo": (
+        "cumplida el 2026-08-23, retirada del tablero ese mismo dia. Pedia que los CUATRO "
+        "detectores del vigilante tuvieran caso rojo en CASOS, para que `canario(DETECTORES)` "
+        "dejara de lanzar por falta de cobertura. Los cuatro lo tienen y el canario los ve "
+        "saltar. Su relevo natural es `canario-de-los-hooks`: el mismo contrato aplicado a los "
+        "diez hooks de settings.json, que hoy nace ROJO con nueve sin caso declarado."),
     "contexto-propio": (
         "cumplida el 2026-08-23, retirada del tablero ese mismo dia. Pedia que capa-normativa "
         "tuviera cadena de checkpoints PROPIA en vez de archivar sus sesiones bajo mcp y "
@@ -416,6 +421,7 @@ CUMPLIDAS = {
 }
 
 SIN_MUTACION = {
+    "canario-de-los-hooks": ("no se muta creando un fichero: interroga a los hooks REALES registrados en settings.json, dandoles cargas por stdin y leyendo su exit code. Su rojo de hoy son 9 hooks sin caso envenenado declarado, y solo baja declarandolos."),
     "guardia-de-commit": ("no se muta creando un fichero: su condicion que importa es que el hook GRITE ante una carga envenenada, y eso lo prueba montando un repo de pega e intentando un commit real. Un touch pasa las dos primeras condiciones y falla la tercera, que es el punto."),
     "revista-de-runtimes": ("no se muta creando un fichero: su rojo sale de INTERROGAR a cada interprete del sistema por la version que resuelve. Y su propia `--autoprueba` ya hace la verificacion por mutacion: inyecta una deriva y exige que el check se entere."),
     "registro-sin-caducados": ("no se muta creando un fichero: su rojo depende de la FECHA de hoy contra las de REGISTRO.md, no de que exista nada. Se pone rojo el solo cuando algo caduca, y solo pasa retirando lo caducado o renovando su fecha con señal de uso real."),
@@ -450,6 +456,7 @@ SIN_MUTACION = {
 ARTEFACTOS = {
 }
 COMPROBADORES = {
+    "canario-de-los-hooks": canario_de_los_hooks,
     "guardia-de-commit": guardia_de_commit,
     "revista-de-runtimes": revista_de_runtimes,
     "registro-sin-caducados": registro_sin_caducados,
@@ -474,7 +481,6 @@ COMPROBADORES = {
     "bug-branch-note-se-parsea": _fabrica_bug("bug-branch-note-se-parsea", *_BUGS["bug-branch-note-se-parsea"]),
     "bug-emit-pierde-el-provenance": _fabrica_bug("bug-emit-pierde-el-provenance", *_BUGS["bug-emit-pierde-el-provenance"]),
     "bug-check-sale-con-1": _fabrica_bug("bug-check-sale-con-1", *_BUGS["bug-check-sale-con-1"]),
-    "canario-completo": canario_completo,
     "sondas-miran-su-arbol": sondas_miran_su_arbol,
 }
 
