@@ -581,7 +581,6 @@ SIN_MUTACION = {
     'bug-branch-note-se-parsea': 'no se muta creando un fichero: exige que un TEST NOMBRADO exista y PASE. Un stub vacio sale 4 (sin escribir), no 0 — y el comprobador distingue esos dos rojos. Su ROJO es su estado natural hoy: el defecto lo verifico un esceptico EJECUTANDO el codigo.',
     'bug-emit-pierde-el-provenance': 'no se muta creando un fichero: exige que un TEST NOMBRADO exista y PASE. Un stub vacio sale 4 (sin escribir), no 0 — y el comprobador distingue esos dos rojos. Su ROJO es su estado natural hoy: el defecto lo verifico un esceptico EJECUTANDO el codigo.',
     'bug-check-sale-con-1': 'no se muta creando un fichero: exige que un TEST NOMBRADO exista y PASE. Un stub vacio sale 4 (sin escribir), no 0 — y el comprobador distingue esos dos rojos. Su ROJO es su estado natural hoy: el defecto lo verifico un esceptico EJECUTANDO el codigo.',
-    'canario-completo': 'no se muta creando un fichero: exige que un TEST NOMBRADO exista y PASE. Un stub vacio sale 4 (sin escribir), no 0 — y el comprobador distingue esos dos rojos. Su ROJO es su estado natural hoy: el defecto lo verifico un esceptico EJECUTANDO el codigo.',
     'inv-revista-de-runtimes-quien-corre': 'no se muta creando un fichero: su aceptacion interroga el estado real del sistema (tareas programadas, logs, config, indices). Nacio ROJO —comprobado ejecutandolo— y lo escribio un esceptico independiente, no quien hara el trabajo.',
     'inv-test-hechos-que-caducan-barre': 'no se muta creando un fichero: su aceptacion interroga el estado real del sistema (tareas programadas, logs, config, indices). Nacio ROJO —comprobado ejecutandolo— y lo escribio un esceptico independiente, no quien hara el trabajo.',
     'inv-capa-normativa-es-el-unico': 'no se muta creando un fichero: su aceptacion interroga el estado real del sistema (tareas programadas, logs, config, indices). Nacio ROJO —comprobado ejecutandolo— y lo escribio un esceptico independiente, no quien hara el trabajo.',
@@ -680,9 +679,17 @@ def _verifica(solo: str | None = None) -> int:
     for nombre, motivo in malos:
         print(f"  🔴 {nombre:24} {motivo}")
     print()
-    verificados = len(COMPROBADORES) - len(malos) - len(SIN_MUTACION)
-    print(f"  {verificados}/{len(COMPROBADORES) - len(SIN_MUTACION)} verificados por mutación"
-          f" ({len(SIN_MUTACION)} declarados no mutables).")
+    # El divisor sale de COMPROBADORES, NO de restar dos longitudes. El 2026-08-23 este
+    # resumen decia «-1/-1 verificados» y aun asi salia con 0: `canario-completo` se retiro al
+    # cumplirse y su entrada de SIN_MUTACION se quedo, asi que se restaban 27 no-mutables de 26
+    # comprobadores. Contar los que REALMENTE se van a mutar no puede dar negativo diga lo que
+    # diga SIN_MUTACION — y del fantasma en si avisa
+    # tests/test_inv_ejecutan_de_verdad.py::test_los_no_mutables_declarados_existen_de_verdad,
+    # porque un numero que se defiende solo tambien deja de denunciar el desorden que lo causo.
+    mutables = [n for n in COMPROBADORES if n not in SIN_MUTACION]
+    verificados = len(mutables) - len(malos)
+    print(f"  {verificados}/{len(mutables)} verificados por mutación"
+          f" ({len(COMPROBADORES) - len(mutables)} declarados no mutables).")
     return 1 if malos else 0
 
 
