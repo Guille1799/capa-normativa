@@ -905,6 +905,34 @@ def main(argv: list[str]) -> int:
         else:
             del nuevos[tab]
 
+    # Y lo mismo por el otro lado, que es la mitad que faltaba: un rojo que DESAPARECE tampoco se
+    # cree a la primera.
+    #
+    # ⚠️ Sin esto, un comprobador que parpadea produce un globo falso en cada vuelta completa:
+    # aparece (se reconfirma, se calla), y al desaparecer sale como «se cerró» y ESO sí avisa. La
+    # falsa alarma se colaba por la puerta de salida. Medido con `canario-de-los-hooks`, que bajo
+    # la carga de la ronda sale rojo y a solas sale verde.
+    #
+    # La dirección segura es la misma: si la repregunta no se entiende, NO se celebra el cierre.
+    for tab in sorted(resueltos):
+        if tab not in por_nombre:
+            continue                      # un tablero que ya no está no puede repreguntarse
+        exe, problema = _interprete_de(por_nombre[tab])
+        if problema:
+            continue
+        _di("  ... comprobando " + str(len(resueltos[tab])) + " cierre(s) de " + tab)
+        aun_rojos, de_verdad = reconfirmar(por_nombre[tab], exe, resueltos[tab])
+        if aun_rojos:
+            ficha = por_nombre[tab]["resultado"]
+            ficha["rojos"] = sorted(set(ficha["rojos"]) | set(aun_rojos))
+            ficha["verdes"] = max(0, ficha["verdes"] - len(aun_rojos))
+            inestables.setdefault(tab, []).extend(aun_rojos)
+            _di("      " + str(len(aun_rojos)) + " no estaban cerrados: " + ", ".join(aun_rojos))
+        if de_verdad:
+            resueltos[tab] = de_verdad
+        else:
+            del resueltos[tab]
+
     fin = datetime.now()
     informe = {
         "version": 1,

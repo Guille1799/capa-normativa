@@ -673,6 +673,50 @@ def test_un_rojo_inestable_tampoco_se_lee_como_RESUELTO_manana(tmp_path):
     assert informe["resueltos"] == {}
 
 
+def test_un_cierre_tampoco_se_cree_a_la_primera(tmp_path):
+    """La puerta de salida, que es la mitad que faltaba.
+
+    Un comprobador que parpadea produce un globo falso en cada vuelta completa: aparece (se
+    reconfirma y se calla), y al desaparecer sale como «se cerró» — y eso SÍ avisa. Así que un rojo
+    que desaparece se repregunta igual que uno que aparece.
+
+    Aquí el tablero falso deja de listar `parpadea` en la pasada completa, pero contesta ROJO
+    cuando se le pregunta por él: no estaba cerrado.
+    """
+    raiz, informes = tmp_path / "arbol", tmp_path / "informes"
+    _siete_falsos(raiz, ["parpadea"], ["parpadea"])
+    m = _cargar(RONDA_PROYECTOS=raiz, RONDA_INFORMES=informes)
+    m._TABLEROS = tuple((n, sub, None) for n, sub, _ in RONDA._TABLEROS)
+    m._toast = lambda t, c: True
+    m.main([])                                    # queda `parpadea` como rojo conocido
+
+    _siete_falsos(raiz, [], ["parpadea"])         # desaparece de la lista, pero sigue rojo a solas
+    avisos = []
+    m._toast = lambda t, c: avisos.append((t, c)) or True
+    m.main([])
+    informe = json.loads((informes / "ultima.json").read_text(encoding="utf-8"))
+
+    assert informe["resueltos"] == {}, "no se celebra un cierre que la repregunta desmiente"
+    assert all("parpadea" in t["rojos"] for t in informe["tableros"]), "vuelve a la lista"
+    assert avisos == [], "y no se molesta a nadie"
+
+
+def test_un_cierre_de_verdad_SI_se_registra(tmp_path):
+    """El control. Sin él, bastaría con no celebrar nunca ningún cierre para pasar el de arriba."""
+    raiz, informes = tmp_path / "arbol", tmp_path / "informes"
+    _siete_falsos(raiz, ["cerrada"], ["cerrada"])
+    m = _cargar(RONDA_PROYECTOS=raiz, RONDA_INFORMES=informes)
+    m._TABLEROS = tuple((n, sub, None) for n, sub, _ in RONDA._TABLEROS)
+    m._toast = lambda t, c: True
+    m.main([])
+
+    _siete_falsos(raiz, [], [])                   # cerrada de verdad: verde también a solas
+    m.main([])
+    informe = json.loads((informes / "ultima.json").read_text(encoding="utf-8"))
+    assert informe["resueltos"] == {n: ["cerrada"] for n, _, _ in RONDA._TABLEROS}
+    assert not informe["inestables"]
+
+
 def test_el_informe_legible_nombra_los_inestables(tmp_path):
     """Si no salen en ULTIMA.md, un comprobador que parpadea no lo descubre nadie."""
     _, informe, _ = _ronda_de_mentira(tmp_path, rojos=["flaky"], siguen_rojos=[])
