@@ -106,6 +106,21 @@ def informe_de_la_ronda():
     return None if m is None else m.leer_ultimo()
 
 
+#: `SCHED_S_TASK_RUNNING` (0x41301). Windows lo pone en `LastTaskResult` MIENTRAS la tarea corre.
+#:
+#: ⚠️ Sin esto la ronda se ponia ROJA A SI MISMA en cada informe que escribia, y es una trampa de
+#: auto-referencia con nombre propio: el tablero de `capa-normativa` es UNO de los siete que corre
+#: la ronda, asi que este comprobador se ejecuta SIEMPRE con su propia tarea en marcha. Preguntar
+#: por el resultado de algo que aun no ha terminado es preguntar por algo que todavia no existe.
+#:
+#: Se descubrio ejecutandola de verdad desde el Programador: 21 verdes / 5 rojos donde la misma
+#: pasada a mano daba 23 / 3. Leyendo el codigo no se ve; solo aparece cuando se muerde la cola.
+#:
+#: Un cuelgue no se cuela por aqui: si la tarea lleva tres dias «corriendo», su `LastRunTime` es de
+#: hace tres dias, y de ahi sale el `arranque` que el veredicto exige fresco.
+_EJECUTANDOSE = 267009
+
+
 def _reciente(iso: str, horas: int = 48) -> bool:
     if not iso:
         return False
@@ -131,7 +146,8 @@ def main() -> int:
               " se acuerda")
         return 1
     vivas = [t for t in corre_tableros
-             if t.get("resultado") == 0 and _reciente(t.get("ultimo", ""))]
+             if t.get("resultado") == _EJECUTANDOSE
+             or (t.get("resultado") == 0 and _reciente(t.get("ultimo", "")))]
     if not vivas:
         print("ROJO: hay tarea para los tableros (" + ", ".join(
             str(t.get("nombre")) for t in corre_tableros) + ") pero NINGUNA ha terminado bien en"
