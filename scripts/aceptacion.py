@@ -316,6 +316,32 @@ def revista_de_runtimes() -> tuple[bool, str]:
     return True, "los interpretes cuadran con el manifiesto, y la revista sabe detectar una deriva"
 
 
+def tableros_corren_solos() -> tuple[bool, str]:
+    """Los siete tableros y `--verifica` se ejecutan SOLOS, no cuando alguien se acuerda.
+
+    Nace ROJA el 2026-08-23. Corren automaticamente el pre-commit, los tres Ralph de madrugada y el
+    healthcheck; los tableros completos y `--verifica` no los ejecuta nadie.
+
+    Existe porque al encolar ese trabajo dije «me aseguro de que --verifica entre tambien»: una
+    promesa en prosa, sin nada que la hiciera cumplirse, tres mensajes despues de explicar por que
+    eso no vale. Esto es esa frase convertida en un exit code.
+    """
+    import subprocess
+    import sys
+    guion = RAIZ / "scripts" / "aceptaciones" / "tableros_corren_solos.py"
+    if not guion.is_file():
+        return False, "no existe " + guion.name
+    try:
+        r = subprocess.run([sys.executable, str(guion)], capture_output=True,
+                           timeout=600, cwd=str(RAIZ))
+    except subprocess.TimeoutExpired:
+        return False, "la comprobacion se cuelga (>10 min)"
+    salida = (r.stdout + r.stderr).decode("utf-8", "replace").strip().splitlines()
+    if r.returncode != 0:
+        return False, (salida[-1] if salida else "falla sin mensaje")[:180]
+    return True, "los tableros y --verifica corren solos, con ejecucion buena y reciente"
+
+
 def guardia_de_commit() -> tuple[bool, str]:
     """El pre-commit de este repo tiene que estar VERSIONADO y tiene que GRITAR de verdad.
 
@@ -421,6 +447,7 @@ CUMPLIDAS = {
 SIN_MUTACION = {
     "canario-de-los-hooks": ("no se muta creando un fichero: interroga a los hooks REALES registrados en settings.json, dandoles cargas por stdin y leyendo su exit code. Su rojo de hoy son 9 hooks sin caso envenenado declarado, y solo baja declarandolos."),
     "guardia-de-commit": ("no se muta creando un fichero: su condicion que importa es que el hook GRITE ante una carga envenenada, y eso lo prueba montando un repo de pega e intentando un commit real. Un touch pasa las dos primeras condiciones y falla la tercera, que es el punto."),
+    "tableros-corren-solos": ("no se muta creando un fichero: su rojo sale de preguntarle al Programador de tareas de Windows si algo ejecuta `aceptacion.py` y `--verifica`, y si esa ejecucion termino bien y es reciente. Su ROJO lo cubre tests/test_tableros_corren_solos.py, que le inyecta el mundo: sin tarea, con tarea que corre los tableros pero NO --verifica, registrada pero fallando, registrada pero de hace un mes, y cero tareas legibles (ROJO, para que no apruebe en vacio) — mas el control en verde."),
     "revista-de-runtimes": ("no se muta creando un fichero: su rojo sale de INTERROGAR a cada interprete del sistema por la version que resuelve. Y su propia `--autoprueba` ya hace la verificacion por mutacion: inyecta una deriva y exige que el check se entere."),
     "registro-sin-caducados": ("no se muta creando un fichero: su rojo depende de la FECHA de hoy contra las de REGISTRO.md, no de que exista nada. Se pone rojo el solo cuando algo caduca, y solo pasa retirando lo caducado o renovando su fecha con señal de uso real."),
     "sondas-miran-su-arbol": ("no se muta creando un fichero: su rojo no depende de que exista "
@@ -455,6 +482,7 @@ ARTEFACTOS = {
 COMPROBADORES = {
     "canario-de-los-hooks": canario_de_los_hooks,
     "guardia-de-commit": guardia_de_commit,
+    "tableros-corren-solos": tableros_corren_solos,
     "revista-de-runtimes": revista_de_runtimes,
     "registro-sin-caducados": registro_sin_caducados,
     'inv-revista-de-runtimes-quien-corre': _fabrica_inv('inv-revista-de-runtimes-quien-corre', *_INV['inv-revista-de-runtimes-quien-corre']),
