@@ -313,6 +313,59 @@ def revista_de_runtimes() -> tuple[bool, str]:
     return True, "los interpretes cuadran con el manifiesto, y la revista sabe detectar una deriva"
 
 
+def guardia_de_commit() -> tuple[bool, str]:
+    """El pre-commit de este repo tiene que estar VERSIONADO y tiene que GRITAR de verdad.
+
+    Tres condiciones, y las tres hacen falta:
+
+      1. `core.hooksPath` apunta a una carpeta del repo. Un hook que solo vive en `.git/hooks`
+         no viaja en un clon, no se revisa en un diff y puede desaparecer sin que nadie se entere.
+      2. Ahi hay un `pre-commit` y esta SEGUIDO por git (`git ls-files --error-unmatch`).
+         Que exista el fichero no basta: sin versionar no hay red de revert.
+      3. Ese hook, corrido contra un repo de pega con un caso ROJO conocido, sale con exit != 0.
+
+    ⚠️ La tercera es la unica que prueba algo. Las dos primeras las aprueba un `touch`, y ese es
+    justo el fallo que se persigue: el 2026-08-20 el escaner recorria CERO ficheros y contestaba
+    «limpio» por un GIT_DIR heredado. Existir no es funcionar.
+
+    Y se pregunta a git por la ruta EFECTIVA (`rev-parse --git-path hooks`) en vez de mirar
+    `.git/hooks` a ciegas: asi se colo el shim fantasma de eu, un pre-commit que git ignoraba y
+    que aun asi mentia a quien lo leyera.
+    """
+    import subprocess
+    import sys
+
+    def git(*a, cwd=RAIZ):
+        return subprocess.run(["git", "-C", str(cwd), *a], capture_output=True, text=True,
+                              timeout=120)
+
+    ruta = git("config", "--get", "core.hooksPath").stdout.strip()
+    if not ruta:
+        return False, ("core.hooksPath sin definir: el pre-commit solo vive en .git/hooks, que no "
+                       "viaja en un clon ni se revisa en un diff")
+    hook = (RAIZ / ruta / "pre-commit")
+    if not hook.exists():
+        return False, "core.hooksPath apunta a " + ruta + " y ahi no hay pre-commit"
+    if git("ls-files", "--error-unmatch", "--", str(hook.relative_to(RAIZ)).replace(chr(92), "/")).returncode != 0:
+        return False, ("existe " + ruta + "/pre-commit pero NO esta versionado: sin red de revert "
+                       "y sin revisarse en ningun diff")
+    try:
+        sys.path.insert(0, str(RAIZ / "src"))
+        from capa_normativa.vigilante.canario import repo_de_pega
+    except Exception as e:
+        return False, "no se puede montar el repo de pega (" + type(e).__name__ + ")"
+    with repo_de_pega() as pega:
+        subprocess.run(["git", "-C", str(pega), "config", "core.hooksPath",
+                        str(hook.parent)], capture_output=True, timeout=60)
+        r = subprocess.run(["git", "-C", str(pega), "-c", "user.email=canario@local",
+                            "-c", "user.name=canario", "commit", "-m", "carga envenenada"],
+                           capture_output=True, timeout=600)
+    if r.returncode == 0:
+        return False, ("el hook DEJO PASAR un commit con un caso rojo conocido: existe pero no "
+                       "protege, que es peor que no tenerlo porque parece que si")
+    return True, "el pre-commit esta versionado y grita ante una carga envenenada conocida"
+
+
 CUMPLIDAS = {
     "contexto-propio": (
         "cumplida el 2026-08-23, retirada del tablero ese mismo dia. Pedia que capa-normativa "
@@ -324,6 +377,7 @@ CUMPLIDAS = {
 }
 
 SIN_MUTACION = {
+    "guardia-de-commit": ("no se muta creando un fichero: su condicion que importa es que el hook GRITE ante una carga envenenada, y eso lo prueba montando un repo de pega e intentando un commit real. Un touch pasa las dos primeras condiciones y falla la tercera, que es el punto."),
     "revista-de-runtimes": ("no se muta creando un fichero: su rojo sale de INTERROGAR a cada interprete del sistema por la version que resuelve. Y su propia `--autoprueba` ya hace la verificacion por mutacion: inyecta una deriva y exige que el check se entere."),
     "registro-sin-caducados": ("no se muta creando un fichero: su rojo depende de la FECHA de hoy contra las de REGISTRO.md, no de que exista nada. Se pone rojo el solo cuando algo caduca, y solo pasa retirando lo caducado o renovando su fecha con señal de uso real."),
     "sondas-miran-su-arbol": ("no se muta creando un fichero: su rojo no depende de que exista "
@@ -357,6 +411,7 @@ SIN_MUTACION = {
 ARTEFACTOS = {
 }
 COMPROBADORES = {
+    "guardia-de-commit": guardia_de_commit,
     "revista-de-runtimes": revista_de_runtimes,
     "registro-sin-caducados": registro_sin_caducados,
     'inv-revista-de-runtimes-quien-corre': _fabrica_inv('inv-revista-de-runtimes-quien-corre', *_INV['inv-revista-de-runtimes-quien-corre']),
