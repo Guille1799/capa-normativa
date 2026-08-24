@@ -3,8 +3,8 @@ name: CI
 # POR QUÉ EXISTE ESTE FICHERO (2026-08-12)
 #
 # El paquete llegó a la v0.15.0 con 242 tests y **sin CI ninguno**: solo corrían cuando alguien se
-# acordaba de correrlos. Y este paquete lo PINEA otro repo (`ponerse_wenorro` lo instala desde un
-# tag), así que un push roto se propaga al inquilino en cuanto alguien sube el pin.
+# acordaba de correrlos. Y este paquete lo PINEA otro repositorio mío, privado, que lo instala
+# desde un tag, así que un push roto se propaga al inquilino en cuanto alguien sube el pin.
 #
 # Es el mismo patrón que el propio paquete persigue —un mecanismo que solo funciona si alguien se
 # acuerda no es un mecanismo— aplicado al paquete mismo.

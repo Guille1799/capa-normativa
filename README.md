@@ -1,5 +1,9 @@
 # capa-normativa
 
+[![CI](https://github.com/Guille1799/capa-normativa/actions/workflows/ci.yml/badge.svg)](https://github.com/Guille1799/capa-normativa/actions/workflows/ci.yml)
+[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
+[![Python 3.10 | 3.12 | 3.14](https://img.shields.io/badge/python-3.10%20%7C%203.12%20%7C%203.14-blue.svg)](https://github.com/Guille1799/capa-normativa/blob/main/.github/workflows/ci.yml)
+
 **Conocimiento externo que gobierna código, como datos verificables.**
 
 Para sistemas cuyo comportamiento depende de conocimiento que viene de fuera —literatura
@@ -613,6 +617,20 @@ Tres reglas lo sujetan, para que el campo nuevo no sea una etiqueta libre:
 - `norms.yaml` — lo que *tu* sistema hace. Es lo único que el código puede citar.
 
 **El vigilante** no lee nada de eso: se le pasa una ruta y trabaja sobre lo que git conoce.
+
+## Correr los tests
+
+```bash
+git clone https://github.com/Guille1799/capa-normativa.git
+cd capa-normativa
+pip install -e ".[dev]"
+python -m pytest -q          # 445 passed
+```
+
+Verificado el 2026-08-24 sobre `v0.17.0`: **445 passed**. El CI los corre en **3.10, 3.12 y
+3.14** —las tres deliberadas, y el porqué de cada una está escrito en
+`.github/workflows/ci.yml`— y además pasa el vigilante **sobre este mismo repositorio**: un
+paquete que vende detectores y no se los aplica a sí mismo es difícil de defender.
 
 ## Instalación
 
