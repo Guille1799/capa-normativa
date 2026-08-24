@@ -46,11 +46,37 @@ def test_una_tarea_activa_que_no_corre_desde_hace_meses_esta_muerta():
     assert "sin correr" in caidos[0][1]
 
 
-def test_un_ultimo_intento_fallido_es_muerte():
+def test_un_codigo_de_WINDOWS_es_muerte():
+    """0x800705AF — «el fichero de paginacion es demasiado pequeño». Lo puso el sistema porque el
+    programa no llego a terminar."""
     m = _cargar()
     caidos = m.muertos([_tarea(resultado="2147943855")], hoy=HOY)
     assert len(caidos) == 1
-    assert "fallo" in caidos[0][1]
+    assert "NO llego a terminar" in caidos[0][1]
+
+
+def test_un_guardian_que_GRITA_no_esta_muerto():
+    """La correccion del 2026-08-24, y el test que impide que vuelva.
+
+    Tres guardianes salen != 0 POR DISEÑO cuando encuentran algo: `healthcheck.py` sale 1 con
+    resultado DEGRADED, `test-regresion-diaria.ps1` sale 1 cuando la regresion falla, y
+    `ralph_diario.sh` usa 2 para «atascado». La primera version de este comprobador los llamaba
+    muertos a los tres — llenaba el rojo de ruido, y un comprobador ruidoso se deja de leer.
+
+    Un codigo pequeño lo eligio el programa: es un HALLAZGO suyo. Reportarlo es trabajo de cada
+    guardian, no de este.
+    """
+    m = _cargar()
+    for codigo in ("1", "2", "3"):
+        assert m.muertos([_tarea(resultado=codigo)], hoy=HOY) == [], f"exit {codigo} no es muerte"
+
+
+def test_la_frontera_esta_donde_la_pone_Windows():
+    """Justo por debajo del umbral es hallazgo; justo por encima, muerte. Sin esta pareja, mover
+    el umbral no rompe nada y deja de significar lo que dice."""
+    m = _cargar()
+    assert m.muertos([_tarea(resultado=str(0x7FFFFFFF))], hoy=HOY) == []
+    assert len(m.muertos([_tarea(resultado=str(0x80000000))], hoy=HOY)) == 1
 
 
 # --- lo que NO es muerte ------------------------------------------------------

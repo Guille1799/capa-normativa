@@ -60,6 +60,29 @@ _RESULTADOS_TOLERADOS = {
             "en N dias», que dice mas y con fecha.",
 }
 
+#: A partir de aqui, el codigo NO lo puso el programa: lo puso Windows. Son HRESULT (0x8007xxxx)
+#: y NTSTATUS (0xC000xxxx) — «rechazada por el operador», «terminada a la fuerza», «el fichero de
+#: paginacion es demasiado pequeño». Eso si es muerte: el guardian no llego a hacer su trabajo.
+_UMBRAL_INFRAESTRUCTURA = 0x80000000
+
+#: ⚠️ CORRECCION del 2026-08-24, medida el mismo dia que se escribio este comprobador.
+#:
+#: La primera version daba por MUERTO cualquier resultado distinto de 0, y con eso llamaba muertos
+#: a tres guardianes que estaban haciendo exactamente su trabajo:
+#:
+#:   · `healthcheck.py` sale 1 cuando el resultado es DEGRADED, o sea cuando ENCUENTRA algo
+#:   · `test-regresion-diaria.ps1` sale 1 cuando la regresion falla, y ademas lanza su aviso
+#:   · `ralph_diario.sh` devuelve el codigo del loop, que usa 2 para «atascado»
+#:
+#: Un guardian que grita no esta muerto: esta gritando. Confundir las dos cosas llena el rojo de
+#: ruido, y un comprobador ruidoso se deja de leer — que es la forma en que mueren los guardianes
+#: buenos, esta vez a manos del guardian de los guardianes.
+#:
+#: La linea se traza donde la traza Windows: un codigo pequeño lo eligio el programa (es un
+#: HALLAZGO suyo); uno por encima de 0x80000000 lo puso el sistema porque el programa no llego a
+#: terminar (eso SI es muerte). Y reportar los hallazgos es trabajo de cada guardian —el
+#: healthcheck notifica, la regresion lanza su toast—, no de este comprobador.
+
 
 def _es_tuya(tarea: dict) -> bool:
     """El mismo criterio que el censo: es tuya si ejecuta un script que escribiste.
@@ -113,8 +136,12 @@ def muertos(tareas=None, hoy=None) -> list[tuple[str, str]]:
         except (TypeError, ValueError):
             fuera.append((nombre, f"su ultimo resultado no es un numero: {t.get('resultado')!r}"))
             continue
-        if res not in _RESULTADOS_TOLERADOS:
-            fuera.append((nombre, f"su ultimo intento fallo con {res} (0x{res & 0xFFFFFFFF:08X})"))
+        if res in _RESULTADOS_TOLERADOS:
+            continue
+        if res >= _UMBRAL_INFRAESTRUCTURA:
+            fuera.append((nombre, f"NO llego a terminar: {res} (0x{res & 0xFFFFFFFF:08X}) lo puso "
+                                  f"Windows, no el programa"))
+        # Un codigo pequeño lo eligio el programa: es un hallazgo suyo, no su muerte.
     return fuera
 
 
