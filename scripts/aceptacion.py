@@ -657,6 +657,12 @@ CUMPLIDAS = {
 }
 
 SIN_MUTACION = {
+    "escaparate-sin-rutas-de-casa":
+        "no se muta escribiendo un fichero: interroga a los repos PUBLICOS de verdad con `git ls-files`, "
+        "asi que una mutacion tendria que ensuciar un repo real. Su cambio de color se verifico en las DOS "
+        "direcciones el 2026-08-24 con tests/test_escaparate_sin_rutas_de_casa.py, que monta repos de "
+        "mentira en un temporal: ROJO con una ruta de casa dentro, VERDE sin ella, y ROJO tambien cuando "
+        "no se puede preguntar (cero repos publicos, o `gh` mudo) — que es la trampa de aprobar en vacio.",
     "escaparate-con-guarda":
         "no se muta creando un fichero: pregunta a GitHub que repos son publicos y EJECUTA la "
         "guarda de cada uno, y eso no se fabrica con un artefacto. Su rojo SI esta cubierto por "
@@ -719,7 +725,38 @@ SIN_MUTACION = {
 }
 ARTEFACTOS = {
 }
+def escaparate_sin_rutas_de_casa() -> tuple[bool, str]:
+    """Ningun repo PUBLICO versiona la ruta de casa de G.
+
+    La guarda `pre-push` vigila LA PUERTA: lo que va a salir en el proximo empujon. Eso deja fuera
+    todo lo que ya esta dentro — lo publicado antes de que la guarda existiera, o lo que entro con
+    un `--no-verify`. Un portero no es un inventario, y hacen falta los dos.
+
+    MEDIDO el 2026-08-24, con la guarda verde e instalada en los seis repos publicos: 24 ficheros
+    ya publicados llevaban `…/Users/<usuario>` dentro. Las dos cosas eran ciertas a la vez.
+
+    Separa lo ya empujado de lo que no, porque el arreglo tiene precios distintos: antes de empujar
+    es una reescritura local sin victimas; despues exige force-push sobre historia publica, y eso
+    lo decide G. Delega en scripts/aceptaciones/escaparate_sin_rutas_de_casa.py.
+    """
+    import subprocess
+    import sys
+    guion = RAIZ / "scripts" / "aceptaciones" / "escaparate_sin_rutas_de_casa.py"
+    if not guion.is_file():
+        return False, "no existe " + guion.name
+    try:
+        r = subprocess.run([sys.executable, str(guion)], capture_output=True,
+                           timeout=900, cwd=str(RAIZ))
+    except subprocess.TimeoutExpired:
+        return False, "la comprobacion se cuelga (>15 min)"
+    salida = (r.stdout + r.stderr).decode("utf-8", "replace").strip().splitlines()
+    if r.returncode != 0:
+        return False, (salida[-1] if salida else "falla sin mensaje")[:260]
+    return True, (salida[-1].replace("VERDE: ", "") if salida else "sin rutas de casa")
+
+
 COMPROBADORES = {
+    "escaparate-sin-rutas-de-casa": escaparate_sin_rutas_de_casa,
     "canario-de-los-hooks": canario_de_los_hooks,
     "guardia-de-commit": guardia_de_commit,
     "guardianes-vivos": guardianes_vivos,
