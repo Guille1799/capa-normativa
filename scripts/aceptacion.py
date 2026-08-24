@@ -456,6 +456,35 @@ def tableros_corren_solos() -> tuple[bool, str]:
     return True, "los tableros y --verifica corren solos, con ejecucion buena y reciente"
 
 
+def guardianes_vivos() -> tuple[bool, str]:
+    """Los guardianes programados no solo existen: estan activos y su ultimo intento no fallo.
+
+    El censo pregunta si cada guardian esta DESCRITO. Este pregunta si FUNCIONA, y la diferencia
+    costo 73 dias sin que nadie la viera: `ClaudeWarmup` —la tarea que llama a `claude -p` a diario
+    y con ello renueva el token de refresco— llevaba DESACTIVADA desde el 12 de junio, con 51
+    corridas perdidas, y figuraba en el censo tan tranquila. Lo tapaba Ralph, que hace esa misma
+    llamada cada noche; pero la cola segura de este repo esta hoy a cero, asi que la tapadera es
+    mas fina de lo que parece.
+
+    Es `AUTONOMIA_MUERTA_41_DIAS` otra vez, y mas largo. Un inventario que dice «existe» y no dice
+    «funciona» es un inventario que tranquiliza.
+    """
+    import subprocess
+    import sys
+    guion = RAIZ / "scripts" / "aceptaciones" / "guardianes_vivos.py"
+    if not guion.is_file():
+        return False, "no existe " + guion.name
+    try:
+        r = subprocess.run([sys.executable, str(guion)], capture_output=True,
+                           timeout=600, cwd=str(RAIZ))
+    except subprocess.TimeoutExpired:
+        return False, "la comprobacion se cuelga (>10 min)"
+    salida = (r.stdout + r.stderr).decode("utf-8", "replace").strip().splitlines()
+    if r.returncode != 0:
+        return False, (salida[-1] if salida else "falla sin mensaje")[:200]
+    return True, "todos los guardianes programados propios estan activos y su ultimo intento no fallo"
+
+
 def guardia_de_commit() -> tuple[bool, str]:
     """El pre-commit de este repo tiene que estar VERSIONADO y tiene que GRITAR de verdad.
 
@@ -569,6 +598,13 @@ CUMPLIDAS = {
 }
 
 SIN_MUTACION = {
+    "guardianes-vivos":
+        "no se muta creando un fichero: pregunta al Programador de tareas de Windows por el "
+        "estado y el ultimo resultado de cada tarea, y eso no se fabrica con un fichero. Su rojo "
+        "SI esta cubierto por tests que lo ejercitan — tests/test_guardianes_vivos.py comprueba "
+        "que una DESACTIVADA sale muerta, que una activa sin correr desde hace meses tambien, "
+        "que 267009 (corriendo AHORA) NO es muerte, y que si el Programador no contesta es ROJO "
+        "en vez de «ningun guardian muerto».",
     "canario-de-los-hooks": ("no se muta creando un fichero: interroga a los hooks REALES registrados en settings.json, dandoles cargas por stdin y leyendo su exit code. Su rojo de hoy son 9 hooks sin caso envenenado declarado, y solo baja declarandolos."),
     "guardia-de-commit": ("no se muta creando un fichero: su condicion que importa es que el hook GRITE ante una carga envenenada, y eso lo prueba montando un repo de pega e intentando un commit real. Un touch pasa las dos primeras condiciones y falla la tercera, que es el punto."),
     "tableros-corren-solos": ("no se muta creando un fichero: su rojo sale de preguntarle al Programador de tareas de Windows si algo ejecuta `aceptacion.py` y `--verifica`, y si esa ejecucion termino bien y es reciente. Su ROJO lo cubre tests/test_tableros_corren_solos.py, que le inyecta el mundo: sin tarea, con tarea que corre los tableros pero NO --verifica, registrada pero fallando, registrada pero de hace un mes, y cero tareas legibles (ROJO, para que no apruebe en vacio) — mas el control en verde."),
@@ -606,6 +642,7 @@ ARTEFACTOS = {
 COMPROBADORES = {
     "canario-de-los-hooks": canario_de_los_hooks,
     "guardia-de-commit": guardia_de_commit,
+    "guardianes-vivos": guardianes_vivos,
     "tableros-corren-solos": tableros_corren_solos,
     "revista-de-runtimes": revista_de_runtimes,
     "registro-sin-caducados": registro_sin_caducados,

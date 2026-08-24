@@ -79,29 +79,35 @@ def _hooks_de(settings: Path, etiqueta: str) -> list[str]:
     return fuera
 
 
-def _tareas_programadas() -> list[str]:
-    """Las tareas de la raíz cuya acción nombra un script. Falla en ROJO, nunca en «hay menos».
+def tareas_detalladas() -> list[dict]:
+    """Las tareas de la raíz del Programador, con su estado y su último resultado.
+
+    Una sola consulta para las dos preguntas que se le hacen al Programador —«¿quién arranca solo?»
+    (este censo) y «¿siguen vivos?» (`guardianes_vivos.py`)—, porque dos consultas para una misma
+    fuente es la forma de que empiecen a discrepar sin que nadie lo note.
 
     Se cuenta DOS veces —el total por un lado, el detalle por otro— y se exige que cuadre. El
-    motivo es medido: `Get-ScheduledTask` devuelve a veces *«A general error occurred»* sin más,
-    y las dos salidas obvias son malas. Con `-ErrorAction Stop`, ese fallo transitorio pinta el
-    censo de rojo y un rojo intermitente enseña a ignorarlo. Con `SilentlyContinue`, la tarea
-    ilegible **desaparece de la cuenta** y el censo cuadra con un guardián de menos, que es
-    exactamente lo que no puede pasar. Cuadrando total contra detalle, una tarea que no se deja
-    leer se ve; y el reintento absorbe el fallo pasajero sin tapar el permanente.
+    motivo es medido: `Get-ScheduledTask` devuelve a veces *«A general error occurred»* sin más, y
+    las dos salidas obvias son malas. Con `-ErrorAction Stop`, ese fallo transitorio pinta el censo
+    de rojo y un rojo intermitente enseña a ignorarlo. Con `SilentlyContinue`, la tarea ilegible
+    **desaparece de la cuenta** y el censo cuadra con un guardián de menos, que es exactamente lo
+    que no puede pasar. Cuadrando total contra detalle, una tarea que no se deja leer se ve; y el
+    reintento absorbe el fallo pasajero sin tapar el permanente.
     """
     ps = (
         "$t = @(Get-ScheduledTask -TaskPath '\\' -ErrorAction SilentlyContinue); "
         "'TOTAL|' + $t.Count; "
         "foreach ($x in $t) { $a = ($x.Actions | Select-Object -First 1); "
-        "'{0}|{1} {2}' -f $x.TaskName, $a.Execute, $a.Arguments }"
+        "$i = $x | Get-ScheduledTaskInfo; "
+        "'{0}|{1} {2}|{3}|{4}|{5}' -f $x.TaskName, $a.Execute, $a.Arguments, $x.State, "
+        "$i.LastRunTime, $i.LastTaskResult }"
     )
     ultimo = ""
     for intento in (1, 2):
         try:
             r = subprocess.run(["powershell", "-NoProfile", "-Command", ps],
                                capture_output=True, text=True, encoding="utf-8",
-                               errors="replace", timeout=120)
+                               errors="replace", timeout=180)
         except Exception as e:  # noqa: BLE001
             ultimo = f"no se pudo preguntar al Programador: {e}"
             continue
@@ -114,7 +120,7 @@ def _tareas_programadas() -> list[str]:
             continue
 
         total = int(cabecera.split("|", 1)[1] or 0)
-        filas = [l for l in salida if "|" in l and not l.startswith("TOTAL|")]
+        filas = [l for l in salida if l.count("|") >= 4 and not l.startswith("TOTAL|")]
         if total == 0:
             ultimo = "el Programador dice que hay 0 tareas: eso es no haber podido mirar"
             continue
@@ -125,12 +131,19 @@ def _tareas_programadas() -> list[str]:
 
         fuera = []
         for l in filas:
-            nombre, accion = l.split("|", 1)
-            if any(ext in accion.lower() for ext in _SCRIPTS):
-                fuera.append(f"tarea:{nombre.strip()}")
+            nombre, accion, estado, ultima, resultado = l.split("|", 4)
+            fuera.append({"nombre": nombre.strip(), "accion": accion.strip(),
+                          "estado": estado.strip(), "ultima": ultima.strip(),
+                          "resultado": resultado.strip()})
         return fuera
 
     raise FuenteRota(ultimo)
+
+
+def _tareas_programadas() -> list[str]:
+    """Las de la raíz cuya acción nombra un script. Falla en ROJO, nunca en «hay menos»."""
+    return [f"tarea:{t['nombre']}" for t in tareas_detalladas()
+            if any(ext in t["accion"].lower() for ext in _SCRIPTS)]
 
 
 def _repos() -> list[Path]:
