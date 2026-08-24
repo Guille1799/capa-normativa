@@ -20,16 +20,6 @@ cazara.
 
 from __future__ import annotations
 
-import pytest
-
-# APARCADO el 2026-08-24, no borrado. Rescatado de `bold-blackburn`, donde llevaba desde
-# el 23 sin fusionar: pide `_hook_efectivo`, una costura que el diseño de main no expone.
-#
-# No se salta en silencio: `guardia_de_commit`
-# figura en `_SIN_COARTADA_TODAVIA` de tests/test_coartada_de_los_no_mutables.py, con
-# y `test_la_deuda_declarada_SIGUE_siendo_deuda`, asi que el dia que se reescriba este fichero aquel test falla y
-# obliga a cerrar las dos puntas a la vez.
-pytest.skip("pide `_hook_efectivo`, una costura que el diseño de main no expone", allow_module_level=True)
 
 import importlib.util
 import shutil

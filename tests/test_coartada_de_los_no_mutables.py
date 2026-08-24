@@ -129,19 +129,14 @@ def _mecanismo(nombre: str) -> str:
 #: `aceptacion.py`: piden costuras (`_hook_efectivo`, `REGISTRO...`) que este no tiene. Citarlos
 #: igualmente habria puesto la invariante verde con los tests saltados, que es este mismo agujero
 #: un piso mas arriba.
-_SIN_COARTADA_TODAVIA = {
-    "canario-de-los-hooks":
-        "tiene test rescatado (tests/test_canario_de_los_hooks.py) pero escrito contra otro diseño: "
-        "sus mensajes y la cuenta de hooks (decia 10, hoy son 9) no cuadran. Falta reescribirlo.",
-    "guardia-de-commit":
-        "su test rescatado pide `_hook_efectivo`, una costura que el diseño de main no expone. "
-        "Reescribirlo exige decidir si esa costura se abre o el test se hace de otra forma.",
-    "registro-sin-caducados":
-        "igual: su test rescatado pide una constante `REGISTRO...` que aqui no existe.",
-    "sondas-miran-su-arbol":
-        "nombra tests/test_arbol_propio.py, que existe pero no menciona el mecanismo. O el test "
-        "crece para ejercerlo, o la exencion tiene que nombrar otra cosa.",
-}
+#: VACIA desde el 2026-08-24, y ese es el estado bueno: ninguna exencion de `SIN_MUTACION` se
+#: queda sin alguien que haya visto a ese comprobador cambiar de color. Nacio con cuatro
+#: entradas esa misma noche y se vacio en la misma sesion, cerrando cada una con su test en vez
+#: de con una excusa. Si vuelve a llenarse, que sea con motivo escrito y por poco tiempo.
+#:
+#: `test_la_deuda_declarada_SIGUE_siendo_deuda` se salta con la lista vacia («got empty parameter
+#: set»), y eso es correcto: no hay deuda que vigilar.
+_SIN_COARTADA_TODAVIA: dict[str, str] = {}
 
 
 @pytest.mark.parametrize("nombre", sorted(_SIN_COARTADA_TODAVIA))

@@ -20,19 +20,10 @@ apunte ahí deja de ser un test y pasa a ser un efecto secundario.
 
 from __future__ import annotations
 
-import pytest
-
-# APARCADO el 2026-08-24, no borrado. Rescatado de `bold-blackburn`, donde llevaba desde
-# el 23 sin fusionar: escrito contra otro diseño: sus mensajes esperados y la cuenta de hooks (decia 10, hoy 9 tras retirar audit_settings_source.sh) no cuadran con este tablero.
-#
-# No se salta en silencio: `canario_de_los_hooks`
-# figura en `_SIN_COARTADA_TODAVIA` de tests/test_coartada_de_los_no_mutables.py, con
-# y `test_la_deuda_declarada_SIGUE_siendo_deuda`, asi que el dia que se reescriba este fichero aquel test falla y
-# obliga a cerrar las dos puntas a la vez.
-pytest.skip("escrito contra otro diseño: sus mensajes esperados y la cuenta de hooks (decia 10, hoy 9 t", allow_module_level=True)
 
 import importlib.util
 import json
+import os
 import sys
 from pathlib import Path
 
@@ -97,11 +88,36 @@ def _sandbox(tmp_path: Path, cuerpo: str) -> Path:
     return ajustes
 
 
+@pytest.fixture(autouse=True)
+def _entorno_limpio():
+    """Devuelve `CLAUDE_SETTINGS` a su sitio pase lo que pase.
+
+    Sin esto, un test que apunte el canario a su sandbox se lo dejaría apuntado al siguiente — y
+    un test contaminado que pasa es peor que uno que falla.
+    """
+    antes = os.environ.get("CLAUDE_SETTINGS")
+    yield
+    if antes is None:
+        os.environ.pop("CLAUDE_SETTINGS", None)
+    else:
+        os.environ["CLAUDE_SETTINGS"] = antes
+
+
 def _tablero(ajustes: Path):
+    """El tablero, con el canario apuntando al `settings.json` de pega.
+
+    La primera version parcheaba `m._cmd_canario_hooks`, una costura que este tablero NO TIENE: el
+    parche creaba un atributo que nadie leia y el canario seguia midiendo el `settings.json` REAL
+    del usuario. O sea que los tests no probaban nada y encima lo hacian en verde — el fallo exacto
+    que el canario existe para impedir, cometido por su propio test.
+
+    Se usa la costura que SI existe: `canario_hooks.py` lee `CLAUDE_SETTINGS` del entorno, y el
+    tablero lanza el guion como subproceso, que lo hereda.
+    """
+    os.environ["CLAUDE_SETTINGS"] = str(ajustes)
     spec = importlib.util.spec_from_file_location("tablero_canario", str(TABLERO))
     m = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(m)
-    m._cmd_canario_hooks = lambda: [sys.executable, str(CANARIO), "--settings", str(ajustes)]
     return m
 
 
@@ -168,13 +184,18 @@ def test_un_hook_que_REVIENTA_con_basura_es_ROJO(tmp_path):
 def test_el_sandbox_no_toca_el_settings_del_usuario(tmp_path):
     """La guarda de este fichero contra sí mismo.
 
-    Si `--settings` dejara de tener efecto, los tests de arriba interrogarían a los diez hooks
-    REALES —montando repos y disparando gates de verdad— y el de «se la traga» seguiría en ROJO
-    por el motivo equivocado. Aquí se exige que el canario haya leído EXACTAMENTE el hook de pega.
+    Si la redirección dejara de tener efecto, los tests de arriba interrogarían a los hooks REALES
+    —montando repos y disparando gates de verdad— y el de «se la traga» seguiría en ROJO por el
+    motivo equivocado. Aquí se exige que el canario haya leído EXACTAMENTE el hook de pega.
+
+    Y no es hipotético: hasta el 2026-08-24 estos tests parcheaban `_cmd_canario_hooks`, una
+    costura que el tablero NO TIENE, así que medían el `settings.json` real y pasaban en verde sin
+    probar nada. Este test es el único que lo habría cantado, y estaba aparcado con los demás.
     """
     import subprocess
     ajustes = _sandbox(tmp_path, _SE_LA_TRAGA)
-    r = subprocess.run([sys.executable, str(CANARIO), "--settings", str(ajustes)],
-                       capture_output=True, timeout=600, cwd=str(RAIZ))
+    entorno = dict(os.environ, CLAUDE_SETTINGS=str(ajustes))
+    r = subprocess.run([sys.executable, str(CANARIO)],
+                       capture_output=True, timeout=600, cwd=str(RAIZ), env=entorno)
     salida = (r.stdout + r.stderr).decode("utf-8", "replace")
     assert "1 hooks registrados" in salida, salida[:400]

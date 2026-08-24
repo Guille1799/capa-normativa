@@ -39,6 +39,14 @@ RAIZ_PROYECTOS = Path(os.environ.get("PROYECTOS_RAIZ") or Path.home() / "proyect
 _P = RAIZ_PROYECTOS.as_posix()
 _H = Path.home().as_posix()
 
+#: Override de la ruta del REGISTRO, para poder apuntar la sonda a un fichero de pega.
+#:
+#: Va a `None` y se resuelve PEREZOSAMENTE dentro de la sonda, no aqui: `_carpeta_de_proyectos()`
+#: llama a `_checkout_principal()`, que corre git, y evaluarlo al importar costaria esa llamada en
+#: cada test que cargue el tablero — que son muchos. Asi el comportamiento en produccion es
+#: exactamente el de antes, y el test puede apuntar a otro sitio sin romper el sistema para hacerlo.
+REGISTRO = None
+
 CONTEXTO = RAIZ_PROYECTOS / "Contexto" / "capa-normativa"
 CONFIG_RAG = RAIZ_PROYECTOS / "mcp_smart_context" / "projects_config.yaml"
 CORE = RAIZ / "docs/CN_REFERENCIA_CORE.md"
@@ -362,7 +370,7 @@ def registro_sin_caducados() -> tuple[bool, str]:
     """
     import datetime
     import re
-    reg = _carpeta_de_proyectos() / "REGISTRO.md"
+    reg = REGISTRO or (_carpeta_de_proyectos() / "REGISTRO.md")
     if not reg.exists():
         return False, "no existe " + str(reg) + ": la norma no puede hacerse cumplir sin registro"
     hoy = datetime.date.today()
@@ -485,6 +493,40 @@ def guardianes_vivos() -> tuple[bool, str]:
     return True, "todos los guardianes programados propios estan activos y su ultimo intento no fallo"
 
 
+def _hook_efectivo():
+    """Cual es el pre-commit que git ejecutaria de verdad, o por que no hay ninguno.
+
+    Sale de `guardia_de_commit` para poder APUNTARLO A OTRO SITIO desde un test. Sin esta costura,
+    la unica forma de probar la tercera condicion —la unica que prueba algo, que el hook GRITE ante
+    una carga envenenada— seria romper el hook real de la maquina. Un guardian que solo se puede
+    probar rompiendo el sistema no se prueba nunca, y ese es el estado en que estuvo: sus cinco
+    tests existian desde el 2026-08-23 en una rama sin fusionar, pidiendo justamente esto.
+
+    Devuelve `(ruta, "")` si hay hook efectivo y versionado, o `(None, motivo)` con el porque.
+    """
+    import subprocess
+
+    def git(*a, cwd=RAIZ):
+        return subprocess.run(["git", "-C", str(cwd), *a], capture_output=True, text=True,
+                              timeout=120)
+
+    ruta = git("config", "--get", "core.hooksPath").stdout.strip()
+    if not ruta:
+        return None, ("core.hooksPath sin definir: el pre-commit solo vive en .git/hooks, que no "
+                      "viaja en un clon ni se revisa en un diff")
+    hook = _en_el_arbol_propio(ruta) / "pre-commit"
+    if not hook.exists():
+        # Las DOS rutas: la que dice la config y donde se ha buscado de verdad. Cuando no
+        # coinciden —desde un worktree nunca coinciden— la que importa es la segunda, y sin
+        # imprimirla este rojo se lee como «falta el hook» en vez de «mira otro sitio».
+        return None, ("core.hooksPath apunta a " + ruta + " y en el arbol propio ("
+                      + str(hook.parent) + ") no hay pre-commit")
+    if git("ls-files", "--error-unmatch", "--", str(hook.relative_to(RAIZ)).replace(chr(92), "/")).returncode != 0:
+        return None, ("existe " + ruta + "/pre-commit pero NO esta versionado: sin red de revert "
+                      "y sin revisarse en ningun diff")
+    return hook, ""
+
+
 def guardia_de_commit() -> tuple[bool, str]:
     """El pre-commit de este repo tiene que estar VERSIONADO y tiene que GRITAR de verdad.
 
@@ -513,24 +555,9 @@ def guardia_de_commit() -> tuple[bool, str]:
     import subprocess
     import sys
 
-    def git(*a, cwd=RAIZ):
-        return subprocess.run(["git", "-C", str(cwd), *a], capture_output=True, text=True,
-                              timeout=120)
-
-    ruta = git("config", "--get", "core.hooksPath").stdout.strip()
-    if not ruta:
-        return False, ("core.hooksPath sin definir: el pre-commit solo vive en .git/hooks, que no "
-                       "viaja en un clon ni se revisa en un diff")
-    hook = _en_el_arbol_propio(ruta) / "pre-commit"
-    if not hook.exists():
-        # Las DOS rutas: la que dice la config y donde se ha buscado de verdad. Cuando no
-        # coinciden —desde un worktree nunca coinciden— la que importa es la segunda, y sin
-        # imprimirla este rojo se lee como «falta el hook» en vez de «mira otro sitio».
-        return False, ("core.hooksPath apunta a " + ruta + " y en el arbol propio ("
-                       + str(hook.parent) + ") no hay pre-commit")
-    if git("ls-files", "--error-unmatch", "--", str(hook.relative_to(RAIZ)).replace(chr(92), "/")).returncode != 0:
-        return False, ("existe " + ruta + "/pre-commit pero NO esta versionado: sin red de revert "
-                       "y sin revisarse en ningun diff")
+    hook, motivo = _hook_efectivo()
+    if hook is None:
+        return False, motivo
     try:
         sys.path.insert(0, str(RAIZ / "src"))
         from capa_normativa.vigilante.canario import repo_de_pega
@@ -605,16 +632,29 @@ SIN_MUTACION = {
         "que una DESACTIVADA sale muerta, que una activa sin correr desde hace meses tambien, "
         "que 267009 (corriendo AHORA) NO es muerte, y que si el Programador no contesta es ROJO "
         "en vez de «ningun guardian muerto».",
-    "canario-de-los-hooks": ("no se muta creando un fichero: interroga a los hooks REALES registrados en settings.json, dandoles cargas por stdin y leyendo su exit code. Su rojo de hoy son 9 hooks sin caso envenenado declarado, y solo baja declarandolos."),
-    "guardia-de-commit": ("no se muta creando un fichero: su condicion que importa es que el hook GRITE ante una carga envenenada, y eso lo prueba montando un repo de pega e intentando un commit real. Un touch pasa las dos primeras condiciones y falla la tercera, que es el punto."),
+    "canario-de-los-hooks": ("no se muta creando un fichero: interroga a los hooks REALES registrados en settings.json, dandoles cargas por stdin y leyendo su exit code. Su rojo de hoy son 9 hooks sin caso envenenado declarado, y solo baja declarandolos."
+        " · COARTADA: tests/test_canario_de_los_hooks.py lo apunta a un settings.json de pega "
+        "via CLAUDE_SETTINGS y exige ROJO cuando el hook se traga la carga envenenada, VERDE "
+        "cuando la rechaza, y trae su propio guarda de que la redireccion funciona."),
+    "guardia-de-commit": ("no se muta creando un fichero: su condicion que importa es que el hook GRITE ante una carga envenenada, y eso lo prueba montando un repo de pega e intentando un commit real. Un touch pasa las dos primeras condiciones y falla la tercera, que es el punto."
+        " · COARTADA: tests/test_guardia_de_commit.py apunta `_hook_efectivo` a un hook de pega "
+        "y exige ROJO cuando se traga la carga envenenada y VERDE cuando grita — mas un test de "
+        "que el hook de pega se ejecuta de verdad, para que el verde no sea por no haber corrido."),
     "tableros-corren-solos": ("no se muta creando un fichero: su rojo sale de preguntarle al Programador de tareas de Windows si algo ejecuta `aceptacion.py` y `--verifica`, y si esa ejecucion termino bien y es reciente. Su ROJO lo cubre tests/test_tableros_corren_solos.py, que le inyecta el mundo: sin tarea, con tarea que corre los tableros pero NO --verifica, registrada pero fallando, registrada pero de hace un mes, y cero tareas legibles (ROJO, para que no apruebe en vacio) — mas el control en verde."),
     "revista-de-runtimes": ("no se muta creando un fichero: su rojo sale de INTERROGAR a cada interprete del sistema por la version que resuelve. Y su propia `--autoprueba` ya hace la verificacion por mutacion: inyecta una deriva y exige que el check se entere."),
-    "registro-sin-caducados": ("no se muta creando un fichero: su rojo depende de la FECHA de hoy contra las de REGISTRO.md, no de que exista nada. Se pone rojo el solo cuando algo caduca, y solo pasa retirando lo caducado o renovando su fecha con señal de uso real."),
+    "registro-sin-caducados": ("no se muta creando un fichero: su rojo depende de la FECHA de hoy contra las de REGISTRO.md, no de que exista nada. Se pone rojo el solo cuando algo caduca, y solo pasa retirando lo caducado o renovando su fecha con señal de uso real."
+        " · COARTADA: tests/test_registro_sin_caducados.py apunta `REGISTRO` a ficheros de pega "
+        "y exige ROJO con una entrada vencida sin retirar, VERDE con la MISMA ya retirada, y ROJO "
+        "cuando el fichero no existe — que es la mitad que impide aprobar en vacio."),
     "sondas-miran-su-arbol": ("no se muta creando un fichero: su rojo no depende de que exista "
                               "nada, sino de lo que TOCAN las demas sondas al ejecutarse. Se "
                               "verifica al reves — apuntando una sonda a un arbol hermano y "
                               "exigiendo que salte —, y eso lo cubre tests/test_arbol_propio.py, "
-                              "donde cada puerta vigilada tiene su propio caso rojo."),
+                              "donde cada puerta vigilada tiene su propio caso rojo."
+        " · COARTADA: tests/test_sondas_miran_su_arbol.py monta un repo con worktree anidado y "
+        "mete una sonda que lee el arbol de al lado, exigiendo ROJO; y otra que solo mira lo suyo, "
+        "exigiendo VERDE. Antes citaba tests/test_arbol_propio.py, que prueba el MODULO y nunca "
+        "ejecuta este comprobador — o sea que el que vigila a los demas era el unico sin coartada."),
     'bug-git-como-subcadena-apaga': 'no se muta creando un fichero: exige que un TEST NOMBRADO exista y PASE. Un stub vacio sale 4 (sin escribir), no 0 — y el comprobador distingue esos dos rojos. Su ROJO es su estado natural hoy: el defecto lo verifico un esceptico EJECUTANDO el codigo.',
     'bug-versionados-descarta-en-silencio': 'no se muta creando un fichero: exige que un TEST NOMBRADO exista y PASE. Un stub vacio sale 4 (sin escribir), no 0 — y el comprobador distingue esos dos rojos. Su ROJO es su estado natural hoy: el defecto lo verifico un esceptico EJECUTANDO el codigo.',
     'bug-emit-check-grita-deriva': 'no se muta creando un fichero: exige que un TEST NOMBRADO exista y PASE. Un stub vacio sale 4 (sin escribir), no 0 — y el comprobador distingue esos dos rojos. Su ROJO es su estado natural hoy: el defecto lo verifico un esceptico EJECUTANDO el codigo.',
