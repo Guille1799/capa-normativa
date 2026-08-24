@@ -203,12 +203,40 @@ def test_la_tolerancia_de_prosa_no_nombra_fantasmas():
     fantasmas = sorted(set(_PROSA_TOLERADA) - set(INV))
     assert not fantasmas, "toleradas pero ya no estan en _INV: " + ", ".join(fantasmas)
 
-_PROSA_TOLERADA = {
-    "inv-test-hechos-que-caducan-barre":
-        "lleva backticks PROPIOS dentro del comando, asi que envolverlo en backticks romperia la "
-        "extraccion (cortaria en el primero de dentro). Comprobado que arranca y sale 0: es un "
-        "`python -c`, y los argumentos de mas acaban en sys.argv sin hacer dano.",
-}
+# --- «ninguna comilla sobrevive a la extraccion» --------------------------------------------
+#
+# El hueco, medido el 2026-08-24. `inv-save-state-py-inject-context` estaba escrita como
+#
+#     Test nombrado, ROJO hoy: `python -m pytest ...`. Contrato: ...
+#
+# o sea con la PROSA DELANTE. `_solo_el_comando` solo desnuda lo que EMPIEZA por comilla, asi que
+# devolvia la frase entera y al shell le llegaba «Test nombrado, ROJO hoy: ...». La promesa era
+# incerrable: hiciera nadie lo que hiciera, nunca se pondria verde.
+#
+# Y las tres comprobaciones que ya existian la dejaron pasar:
+#
+#   · no dio 9009, porque Git Bash TIENE un ejecutable llamado `Test`. Salio exit 2.
+#   · su mensaje —«Test: extra argument 'ROJO'»— no esta entre las firmas de error de shell.
+#   · el test de separadores mira DENTRO de lo extraido, y ni el guion largo ni «(HOY» aparecian.
+#
+# Las tres son comprobaciones de SINTOMA, y por eso las tres son esquivables: dependen de que
+# programa haya instalado y de que mensaje escupa. Esta es de FORMA, que no depende de nada: si
+# una comilla llega al shell, el campo no estaba separado. Y ademas una comilla en bash es
+# SUSTITUCION DE COMANDOS, no adorno — lo que llegue puede llegar a ejecutarse.
+def test_ninguna_comilla_sobrevive_a_la_extraccion():
+    malos = [n for n in INV if n not in _PROSA_TOLERADA and "`" in _comando_de(n)]
+    assert not malos, (
+        "a estas entradas les queda una comilla de markdown en lo que se manda al shell, o sea "
+        "que el campo `comando` no estaba separado de su prosa: " + ", ".join(malos) + ". Se "
+        "arregla poniendo el comando entre backticks y la prosa DETRAS del cierre.")
+
+# Vacio desde el 2026-08-24. La unica entrada que habia se justificaba diciendo que el comando
+# «lleva backticks PROPIOS dentro», asi que envolverlo romperia la extraccion. MEDIDO: el comando
+# tiene CERO backticks — los dos estan en la prosa de detras, o sea DESPUES del cierre. Envolverlo
+# extrae exactamente el comando y sigue saliendo 0.
+#
+# Una exencion que vive de una premisa falsa es peor que ninguna: parece revisada.
+_PROSA_TOLERADA: dict[str, str] = {}
 
 
 # --- «una aceptacion no se señala a si misma por una ruta que solo es verdad en un arbol» -----
