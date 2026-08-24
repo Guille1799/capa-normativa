@@ -17,7 +17,10 @@ shell** y llevaban meses marcando «pendiente» sin haber arrancado ni una vez:
   · `inv-decision-recall-y-session-restorer` — comillas de PowerShell dentro de cmd.exe
   · `inv-ollama-chain-py-registrado-con`     — el campo contenía prosa, no un comando
   · `inv-dos-pre-commit-con-el`              — la prosa iba DELANTE del comando
-  · `inv-audit-settings-source-sh-no`        — roto de fábrica, y su arreglo es decisión de G
+  · `inv-audit-settings-source-sh-no`        — roto de fábrica; su arreglo era decisión de G,
+                                              tomada el 2026-08-24: el hook preguntaba por la
+                                              AUTORÍA y no por el CONTENIDO, así que trabajando
+                                              solo no podía dispararse. Retirado y reparado.
 
 Los tres primeros se arreglaron ese día; dos de ellos revelaron trabajo **ya hecho** que el
 examinador roto ocultaba. Este test los habría cazado el día que se escribieron.
@@ -53,14 +56,12 @@ _EXIT_NO_EXISTE = 9009
 #: ⚠️ Van marcadas `xfail(strict=True)`, o sea que **el andamio se retira solo**: el dia que
 #: alguien arregle una, este test FALLA y obliga a sacarla de aqui. Una lista de excepciones que
 #: no se entera de que sobra es como acaban siendo permanentes.
-_ROTOS_DECLARADOS = {
-    "inv-audit-settings-source-sh-no":
-        "roto de fabrica (su campo de comando no es ejecutable) Y su arreglo es DECISION DE"
-        " G: lo que la tarea pide es RETIRAR un hook de SEGURIDAD (CVE-2025-59536). Arreglar"
-        " el comando lo volveria accionable por el robot, y un agente autonomo retirando un"
-        " control de seguridad no es algo que deba poder pasar por descuido. Se deja roto A"
-        " PROPOSITO, y declarado aqui para que se vea que es a proposito y no un olvido.",
-}
+#: VACIO desde el 2026-08-24, y ese es el estado bueno: ninguna aceptacion de este tablero se
+#: queda sin arrancar. La ultima que vivio aqui fue `inv-audit-settings-source-sh-no`, rota a
+#: proposito mientras retirar un hook de SEGURIDAD (CVE-2025-59536) fuera una decision pendiente
+#: de G. G decidio retirarlo, se reparo el comando, y el `xfail(strict=True)` hizo su trabajo:
+#: fallo el mismo dia y obligo a sacarla de aqui en vez de dejarla de adorno.
+_ROTOS_DECLARADOS: dict[str, str] = {}
 
 
 def _tablero():
@@ -207,9 +208,6 @@ _PROSA_TOLERADA = {
         "lleva backticks PROPIOS dentro del comando, asi que envolverlo en backticks romperia la "
         "extraccion (cortaria en el primero de dentro). Comprobado que arranca y sale 0: es un "
         "`python -c`, y los argumentos de mas acaban en sys.argv sin hacer dano.",
-    "inv-audit-settings-source-sh-no":
-        "rota de fabrica y se deja asi A PROPOSITO: lo que la tarea pide es RETIRAR un hook de "
-        "SEGURIDAD (CVE-2025-59536), y arreglar su comando la volveria accionable por el robot.",
 }
 
 
