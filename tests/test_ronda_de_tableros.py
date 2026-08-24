@@ -729,7 +729,7 @@ def test_el_informe_legible_nombra_los_inestables(tmp_path):
 #
 # G contestó «lo miro mañana» a un aviso de las 22:40. La ronda de la mañana encaja con eso, pero
 # su globo dura diez segundos: si no está delante a las 08:35, el aviso muere. `AVISO.txt` es el
-# canal que no se le escapa — lo imprime `session_start.sh` al abrir cualquier sesión.
+# canal que no se le escapa — lo imprime `session_start.py` al abrir cualquier sesión.
 
 def test_sin_nada_que_hacer_el_aviso_esta_VACIO():
     """La mitad del diseño. Un aviso que sale todos los días es decorado en una semana, y entonces

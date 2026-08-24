@@ -63,7 +63,12 @@ _MALFORMADAS = {
 #: revisa, una implicita se hereda. Y si alguno pasa a bloquear algun dia, hay que sacarlo de aqui.
 SOLO_INFORMAN = {
     "audit_settings_source.sh": "avisa de settings.json tocado por otro autor; sale 0 siempre",
-    "session_start.sh": "imprime contexto de arranque; no veta nada",
+    # Fue `session_start.sh` hasta el 2026-08-24. Se porto a Python porque estaba registrado como
+    # `bash …`, y en Windows `bash` a secas NO es Git Bash: resuelve al lanzador de WSL, que sin
+    # distro sale 1 sin imprimir nada. O sea que el hook vivia o moria segun quien ganara el PATH,
+    # y moria EN SILENCIO, porque SessionStart falla abierto. Era el unico de los nueve que
+    # necesitaba un shell; los otros ocho ya eran Python.
+    "session_start.py": "imprime contexto de arranque; no veta nada",
     "inject_context.py": "inyecta contexto en el prompt; no veta nada",
     "save_state.py": "guarda el estado en PreCompact y SessionEnd; no veta nada",
     "prompt_router.py": "inyecta directivas [AUTO] en el prompt; sus 8 salidas son todas 0",

@@ -679,7 +679,7 @@ def aviso_para_la_sesion(informe: dict) -> str:
         información se queda en un informe que tiene que acordarse de abrir — que es justo la
         dependencia que este encargo existía para quitar.
 
-    Así que el aviso se cuelga también de `session_start.sh`, que ya avisa igual de las entradas
+    Así que el aviso se cuelga también de `session_start.py`, que ya avisa igual de las entradas
     vencidas del REGISTRO y que él lee cada mañana sin acordarse de nada.
 
     ⚠️ **Devuelve vacío cuando no hay nada que hacer, y eso es la mitad del diseño.** Un aviso que
