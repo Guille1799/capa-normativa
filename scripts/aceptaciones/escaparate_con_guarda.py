@@ -27,6 +27,7 @@ from __future__ import annotations
 
 import json
 import os
+import shutil
 import subprocess
 import sys
 from pathlib import Path
@@ -45,6 +46,34 @@ class NoSePudoMirar(Exception):
 def _git(*a, cwd=None):
     return subprocess.run(["git", *a], capture_output=True, text=True, encoding="utf-8",
                           errors="replace", timeout=120, cwd=str(cwd) if cwd else None)
+
+
+def _shell() -> str:
+    """El `sh` con el que git ejecutaria la guarda de verdad.
+
+    NO se coge del PATH a secas. Medido el 2026-08-24 en esta maquina: `git.exe` esta en el PATH
+    (via `C:/Program Files/Git/cmd`) pero **`sh` NO** — Git para Windows no publica su `bin/`. Asi
+    que este comprobador funcionaba cuando yo lo lanzaba desde Git Bash, que si lo trae, y
+    REVENTABA con FileNotFoundError en la ronda programada, que corre desde otro entorno.
+
+    Y reventar es lo peor que puede hacer: el tablero no leia «los repos publicos estan sin guarda»
+    —que seria una alarma— sino una traza, que es ruido. Un instrumento roto y un hallazgo se ven
+    igual de rojos desde fuera, y solo uno de los dos pide trabajo.
+
+    Se DERIVA de donde este git, en vez de cablear la ruta: si git se mueve, el shell se mueve con
+    el, porque son el mismo paquete. Una constante escrita apuntaria al sitio de ayer.
+    """
+    directo = shutil.which("sh") or shutil.which("bash")
+    if directo:
+        return directo
+    git = shutil.which("git")
+    if git:
+        raiz = Path(git).resolve().parent.parent
+        for cand in ("bin/sh.exe", "usr/bin/sh.exe", "bin/bash.exe"):
+            if (raiz / cand).is_file():
+                return str(raiz / cand)
+    raise NoSePudoMirar(
+        "no hay ningun `sh` con el que ejecutar las guardas, ni en el PATH ni junto a git")
 
 
 def _repos_con_remoto() -> list[Path]:
@@ -94,7 +123,7 @@ def _guarda_de(repo: Path) -> Path | None:
 
 def _arranca(repo: Path, guarda: Path) -> tuple[bool, str]:
     """La guarda se EJECUTA de verdad. Que el fichero exista no prueba que corra."""
-    r = subprocess.run(["sh", str(guarda.resolve())], cwd=str(repo), capture_output=True,
+    r = subprocess.run([_shell(), str(guarda.resolve())], cwd=str(repo), capture_output=True,
                        text=True, encoding="utf-8", errors="replace", timeout=300)
     salida = (r.stdout + r.stderr)
     if r.returncode == 127 or "not found" in salida.lower():
@@ -116,14 +145,19 @@ def escaparate_con_guarda() -> tuple[bool, str]:
         return False, "cero repos publicos detectados: sospechoso, no limpio"
 
     sin, rotas = [], []
-    for repo in pubs:
-        guarda = _guarda_de(repo)
-        if guarda is None:
-            sin.append(repo.name)
-            continue
-        ok, motivo = _arranca(repo, guarda)
-        if not ok:
-            rotas.append(f"{repo.name} ({motivo})")
+    try:
+        for repo in pubs:
+            guarda = _guarda_de(repo)
+            if guarda is None:
+                sin.append(repo.name)
+                continue
+            ok, motivo = _arranca(repo, guarda)
+            if not ok:
+                rotas.append(f"{repo.name} ({motivo})")
+    except NoSePudoMirar as e:
+        # Un comprobador que lanza no dice nada: el tablero enseña una traza donde deberia haber un
+        # veredicto. Aqui se traduce a ROJO CON MOTIVO, que es lo unico accionable.
+        return False, f"no se pudo ejecutar las guardas ({e}). Eso NO es «todas arrancan»."
 
     if sin or rotas:
         partes = []
