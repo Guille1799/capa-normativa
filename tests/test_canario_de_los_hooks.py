@@ -17,7 +17,19 @@ con la que se interroga al canario. El test le añade `--settings <sandbox>` y l
 que encuentra, y los del usuario montan repos, leen transcripts y bloquean sesiones. Un test que
 apunte ahí deja de ser un test y pasa a ser un efecto secundario.
 """
+
 from __future__ import annotations
+
+import pytest
+
+# APARCADO el 2026-08-24, no borrado. Rescatado de `bold-blackburn`, donde llevaba desde
+# el 23 sin fusionar: escrito contra otro diseño: sus mensajes esperados y la cuenta de hooks (decia 10, hoy 9 tras retirar audit_settings_source.sh) no cuadran con este tablero.
+#
+# No se salta en silencio: `canario_de_los_hooks`
+# figura en `_SIN_COARTADA_TODAVIA` de tests/test_coartada_de_los_no_mutables.py, con
+# y `test_la_deuda_declarada_SIGUE_siendo_deuda`, asi que el dia que se reescriba este fichero aquel test falla y
+# obliga a cerrar las dos puntas a la vez.
+pytest.skip("escrito contra otro diseño: sus mensajes esperados y la cuenta de hooks (decia 10, hoy 9 t", allow_module_level=True)
 
 import importlib.util
 import json

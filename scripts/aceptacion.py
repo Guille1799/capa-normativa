@@ -633,6 +633,30 @@ COMPROBADORES = {
     'inv-capa-normativa-sin-pre-commit': _fabrica_inv('inv-capa-normativa-sin-pre-commit', *_INV['inv-capa-normativa-sin-pre-commit']),
 }
 
+
+#: LA COARTADA DE LOS FABRICADOS, escrita UNA vez para el conjunto exacto al que aplica.
+#:
+#: `tests/test_coartada_de_los_no_mutables.py` exige que toda entrada de `SIN_MUTACION` nombre algo
+#: que haya VISTO a ese comprobador cambiar de color — «el comprobador, o LA FABRICA QUE LO
+#: PRODUCE». Los comprobadores de `_BUGS` y `_INV` no son funciones sueltas: los fabrica
+#: `_fabrica_bug` / `_fabrica_inv`, y esa fabrica si esta ejercida en los tres desenlaces (verde,
+#: sin escribir, existe-y-falla) y en los dos del inv (exit 0 / exit != 0).
+#:
+#: Se anota aqui en vez de copiar la misma frase en veinte entradas, y no es pereza: el 2026-08-24
+#: se midio que OCHO exenciones compartian un texto identico copiado a mano, y ese es justo el
+#: modo en que estas listas dejan de decir la verdad. Se aplica SOLO a los fabricados, detectados
+#: igual que lo hace el test (`<locals>` en el `__qualname__`), para que un comprobador escrito a
+#: mano no herede una coartada que no ha ganado.
+_COARTADA_DE_FABRICA = (
+    " · COARTADA: lo produce una fabrica, y la fabrica esta ejercida en "
+    "tests/test_fabricas_del_tablero.py — que la ve pasar por sus tres desenlaces, no solo por el "
+    "verde."
+)
+for _n, _fn in COMPROBADORES.items():
+    if _n in SIN_MUTACION and "<locals>" in getattr(_fn, "__qualname__", ""):
+        SIN_MUTACION[_n] = str(SIN_MUTACION[_n]) + _COARTADA_DE_FABRICA
+
+
 # ── MUTACIÓN: un comprobador en el que se puede confiar es uno que se ha VISTO cambiar ──
 #
 # Un comprobador rojo porque la promesa sigue abierta y uno rojo porque su ruta está mal son

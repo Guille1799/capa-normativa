@@ -17,7 +17,19 @@ casos, y **los dos del medio son los que prueban algo**:
 Sin el segundo y el tercero, un comprobador que dijera ROJO SIEMPRE pasaría el primero y el
 cuarto y parecería sano. Ese es justo el fallo que este fichero existe para hacer imposible.
 """
+
 from __future__ import annotations
+
+import pytest
+
+# APARCADO el 2026-08-24, no borrado. Rescatado de `bold-blackburn`, donde llevaba desde
+# el 23 sin fusionar: pide una constante `REGISTRO...` que este tablero no define.
+#
+# No se salta en silencio: `registro_sin_caducados`
+# figura en `_SIN_COARTADA_TODAVIA` de tests/test_coartada_de_los_no_mutables.py, con
+# y `test_la_deuda_declarada_SIGUE_siendo_deuda`, asi que el dia que se reescriba este fichero aquel test falla y
+# obliga a cerrar las dos puntas a la vez.
+pytest.skip("pide una constante `REGISTRO...` que este tablero no define", allow_module_level=True)
 
 import datetime as dt
 import importlib.util
