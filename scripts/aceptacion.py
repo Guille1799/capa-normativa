@@ -464,6 +464,38 @@ def tableros_corren_solos() -> tuple[bool, str]:
     return True, "los tableros y --verifica corren solos, con ejecucion buena y reciente"
 
 
+def escaparate_con_guarda() -> tuple[bool, str]:
+    """Todo repo PUBLICO tiene la guarda del `pre-push`, y esa guarda ARRANCA.
+
+    La regla es de G (2026-08-24): «github es donde los reclutadores iran a mirar». Vivia escrita
+    en prosa en CINCO `CLAUDE.md` —«⚠️ El repo es publico»— y no habia impedido absolutamente nada:
+    ni un hook, ni un comprobador, ni un test. Un mecanismo que solo funciona si alguien lo lee no
+    es un mecanismo.
+
+    Ahora hay guarda. Pero una guarda es un fichero, y un fichero se borra, se renombra o nunca se
+    instalo en el repo que creaste ayer — y un repo publico sin guarda empuja libre, sin señal. Esto
+    comprueba que sigue puesta EJECUTANDOLA: un `pre-push` que existe y revienta al arrancar protege
+    igual que ninguno, y desde fuera se ven identicos.
+
+    La lista de repos publicos se le pregunta a GitHub, no se mantiene a mano: una lista escrita
+    caduca el dia que haces publico uno privado, que es justo cuando mas falta hace.
+    """
+    import subprocess
+    import sys
+    guion = RAIZ / "scripts" / "aceptaciones" / "escaparate_con_guarda.py"
+    if not guion.is_file():
+        return False, "no existe " + guion.name
+    try:
+        r = subprocess.run([sys.executable, str(guion)], capture_output=True,
+                           timeout=600, cwd=str(RAIZ))
+    except subprocess.TimeoutExpired:
+        return False, "la comprobacion se cuelga (>10 min)"
+    salida = (r.stdout + r.stderr).decode("utf-8", "replace").strip().splitlines()
+    if r.returncode != 0:
+        return False, (salida[-1] if salida else "falla sin mensaje")[:200]
+    return True, "todos los repos publicos tienen la guarda del escaparate y arranca en todos"
+
+
 def guardianes_vivos() -> tuple[bool, str]:
     """Los guardianes programados no solo existen: estan activos y su ultimo intento no fallo.
 
@@ -625,6 +657,14 @@ CUMPLIDAS = {
 }
 
 SIN_MUTACION = {
+    "escaparate-con-guarda":
+        "no se muta creando un fichero: pregunta a GitHub que repos son publicos y EJECUTA la "
+        "guarda de cada uno, y eso no se fabrica con un artefacto. Su rojo SI esta cubierto por "
+        "tests que lo ejercitan — tests/test_escaparate.py comprueba que un repo publico sin "
+        "guarda sale ROJO, que si `gh` no contesta es ROJO en vez de «todos la tienen», que cero "
+        "repos publicos es sospechoso y no limpio, y que sin el guion compartido tambien es ROJO. "
+        "Verificado ademas a mano el 2026-08-24 quitandole la guarda a ryse-publico: rojo, y "
+        "verde al devolverla.",
     "guardianes-vivos":
         "no se muta creando un fichero: pregunta al Programador de tareas de Windows por el "
         "estado y el ultimo resultado de cada tarea, y eso no se fabrica con un fichero. Su rojo "
@@ -683,6 +723,7 @@ COMPROBADORES = {
     "canario-de-los-hooks": canario_de_los_hooks,
     "guardia-de-commit": guardia_de_commit,
     "guardianes-vivos": guardianes_vivos,
+    "escaparate-con-guarda": escaparate_con_guarda,
     "tableros-corren-solos": tableros_corren_solos,
     "revista-de-runtimes": revista_de_runtimes,
     "registro-sin-caducados": registro_sin_caducados,

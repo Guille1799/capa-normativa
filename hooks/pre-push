@@ -1,0 +1,16 @@
+#!/bin/sh
+# ESCAPARATE — lo que sale a un repo PUBLICO pasa por aqui antes de salir.
+#
+# Shim: el guion vive en UN sitio, asi que tocarlo actualiza todos los repos a la vez. Mismo
+# patron que el `pre-commit` del vigilante, y por el mismo motivo: N copias divergen.
+#
+# La regla es de G (2026-08-24): «github es donde los reclutadores iran a mirar». Vivia como prosa
+# en cinco CLAUDE.md sin impedir nada — un mecanismo que solo funciona si alguien lo lee no es un
+# mecanismo.
+export LANG=C.UTF-8
+GUION="${ESCAPARATE_GUION:-$HOME/proyectos/.claude/hooks/escaparate_pre_push.py}"
+if [ ! -f "$GUION" ]; then
+    echo "pre-push: falta $GUION — la guarda del escaparate NO se ha ejecutado." >&2
+    exit 1
+fi
+python "$GUION"
