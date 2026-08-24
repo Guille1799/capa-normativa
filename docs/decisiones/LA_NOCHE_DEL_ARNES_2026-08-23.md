@@ -65,7 +65,7 @@ tapan entre sí.
 
 ## Corrección al mapa de anoche
 
-**`C:/Users/Guille/proyectos/` es un repositorio git** (165 ficheros, 55 commits), y versiona los
+**`~/proyectos/` es un repositorio git** (165 ficheros, 55 commits), y versiona los
 lanzadores y `proyectos/.claude/hooks/`. Anoche los metí en el saco de «sin repo, sin red de
 revert» junto a `~/.claude/`. No es lo mismo: sólo `~/.claude/` carece de red.
 

@@ -28,11 +28,13 @@ habilite un proyecto que no llegue al índice, que es exactamente el fallo que l
 """
 from __future__ import annotations
 
+import os
 import sqlite3
 import sys
 from pathlib import Path
 
-MCP = Path("C:/Users/Guille/proyectos/mcp_smart_context")
+#: Derivada, no escrita: repo publico (la nota gemela esta en `scripts/aceptacion.py`).
+MCP = Path(os.environ.get("PROYECTOS_RAIZ") or Path.home() / "proyectos") / "mcp_smart_context"
 CONFIG = MCP / "projects_config.yaml"
 INDICE = MCP / "context_memory.db"
 

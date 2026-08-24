@@ -25,13 +25,22 @@ entrada es una DECISION pendiente sobre su propia cadena de checkpoints.
 """
 from __future__ import annotations
 
+import os
 import sys
 from pathlib import Path
 
 RAIZ = Path(__file__).resolve().parent.parent
 
-CONTEXTO = Path(r"C:/Users/Guille/proyectos/Contexto/capa-normativa")
-CONFIG_RAG = Path(r"C:/Users/Guille/proyectos/mcp_smart_context/projects_config.yaml")
+#: Donde viven los repos hermanos. Se DERIVA de `Path.home()` en vez de escribirse: este repo es
+#: publico, y una ruta con el nombre de usuario dentro no es solo un dato personal — es codigo que
+#: solo funciona en una maquina. La variable de entorno esta para los tests y para quien tenga los
+#: repos en otro sitio.
+RAIZ_PROYECTOS = Path(os.environ.get("PROYECTOS_RAIZ") or Path.home() / "proyectos")
+_P = RAIZ_PROYECTOS.as_posix()
+_H = Path.home().as_posix()
+
+CONTEXTO = RAIZ_PROYECTOS / "Contexto" / "capa-normativa"
+CONFIG_RAG = RAIZ_PROYECTOS / "mcp_smart_context" / "projects_config.yaml"
 CORE = RAIZ / "docs/CN_REFERENCIA_CORE.md"
 DECISION = RAIZ / "docs/decisiones/CONTEXTO_PROPIO.md"
 
@@ -98,7 +107,7 @@ def _en_el_arbol_propio(ruta: str) -> Path:
 
     ⚠️ `core.hooksPath` es configuracion COMPARTIDA: vive en el `.git` comun, asi que los N
     worktrees leen el mismo valor, y hoy ese valor es la ruta ABSOLUTA al checkout principal
-    (`C:/Users/Guille/proyectos/capa-normativa/hooks`). Una sonda que la use tal cual no es que
+    (`<raiz-de-proyectos>/capa-normativa/hooks`). Una sonda que la use tal cual no es que
     se equivoque a veces: solo puede acertar en 1 de los N arboles, por construccion.
 
     Y ahi esta el fallo de `SONDAS_ATADAS_A_OTRO_ARBOL` en su forma mas silenciosa. El agente
@@ -213,7 +222,7 @@ _INV = {
     # de `revista_runtimes.py --autoprueba`, que no depende de la sintaxis del shell.
     'inv-revista-de-runtimes-quien-corre': ('python scripts/aceptacion.py revista-de-runtimes',
         'construir: Revista de runtimes «quien-corre-que» — manifiesto interprete->paquete->version ejecutable'),
-    'inv-test-hechos-que-caducan-barre': ('C:/Users/Guille/proyectos/mcp_smart_context/venv/Scripts/python.exe -c "import sys;sys.path.insert(0,r\'C:/Users/Guille/proyectos/mcp_smart_context/tests\');import test_hechos_que_caducan as t;sys.exit(0 if t._dir_muerto(\'Contexto/no_existe_xyz/\') and not t._dir_muerto(\'Contexto/capa-normativa/\') else 1)"   (HOY ROJO: `_dir_muerto` no existe, AttributeError. No lo aprueba un stub constante: tiene que decir True para la carpeta inexistente Y False para una que existe desde ayer, o sea mirar el disco. Nace roja aunque hoy no haya ningun puntero-a-carpeta muerto en el arbol, porque interroga al detector, no a la cosecha.)',
+    'inv-test-hechos-que-caducan-barre': (_P + '/mcp_smart_context/venv/Scripts/python.exe -c "import sys;sys.path.insert(0,r\'' + _P + '/mcp_smart_context/tests\');import test_hechos_que_caducan as t;sys.exit(0 if t._dir_muerto(\'Contexto/no_existe_xyz/\') and not t._dir_muerto(\'Contexto/capa-normativa/\') else 1)"   (HOY ROJO: `_dir_muerto` no existe, AttributeError. No lo aprueba un stub constante: tiene que decir True para la carpeta inexistente Y False para una que existe desde ayer, o sea mirar el disco. Nace roja aunque hoy no haya ningun puntero-a-carpeta muerto en el arbol, porque interroga al detector, no a la cosecha.)',
         'exprimir: test_hechos_que_caducan — barre rutas muertas y versiones falsas pero se le escapan las afirmaciones de existe'),
     # Comando reescrito el 2026-08-23: el anterior citaba `--verifica guardia-de-commit`,
     # que sobre un comprobador no-mutable salia 0 SIEMPRE (aceptacion verde para siempre),
@@ -221,13 +230,13 @@ _INV = {
     'inv-capa-normativa-es-el-unico': ('python scripts/aceptacion.py guardia-de-commit',
         'arreglar: capa-normativa es el unico repo sin pre-commit — y es el que ALOJA al vigilante'),
     # Ruta reanclada el 2026-08-23: la variante CANARIO citaba
-    # `python C:/Users/Guille/proyectos/capa-normativa/scripts/aceptacion.py --verifica ...`, o
+    # `python <raiz-de-proyectos>/capa-normativa/scripts/aceptacion.py --verifica ...`, o
     # sea el tablero DEL CHECKOUT PRINCIPAL. Desde un worktree eso es un arbol hermano, y
     # `sondas-miran-su-arbol` la acusaba por ello aunque el comando ni llegue a ejecutarse hoy
     # (la cadena empieza por prosa, asi que `_solo_el_comando` la deja entera): la acusacion es
     # correcta igual, porque el dia que se ejecute apuntara fuera. Relativa resuelve contra
     # `cwd=RAIZ`, que es el arbol que se esta juzgando.
-    'inv-audit-settings-source-sh-no': ('Si se retira: `python -c"import json,os,sys; t=json.dumps(json.load(open(r\'C:/Users/Guille/.claude/settings.json\',encoding=\'utf-8\'))); sys.exit(1 if (\'audit_settings_source\' in t or os.path.exists(r\'C:/Users/Guille/.claude/hooks/audit_settings_source.sh\')) else 0)"` — hoy ROJO por las dos mitades (registrado Y presente en disco); solo pasa desregistrandolo y borrandolo. Si en vez de retirarlo se quiere conservar la capacidad, entonces la aceptacion es un CANARIO, no un diff: `python scripts/aceptacion.py --verifica canario-settings`, que copia el settings.json vigente a un sandbox de %TEMP%, le INYECTA un hook de laboratorio que el snapshot revisado no contiene, corre el guardian contra esa copia y EXIGE exit != 0 o el aviso por stderr. Hoy ROJO porque el guardian pregunta por la autoria y no por el contenido, asi que ante un settings envenenado se calla. Un diff contra el snapshot NO vale como aceptacion: hoy los dos ficheros son identicos y nacería verde.',
+    'inv-audit-settings-source-sh-no': ('Si se retira: `python -c"import json,os,sys; t=json.dumps(json.load(open(r\'' + _H + '/.claude/settings.json\',encoding=\'utf-8\'))); sys.exit(1 if (\'audit_settings_source\' in t or os.path.exists(r\'' + _H + '/.claude/hooks/audit_settings_source.sh\')) else 0)"` — hoy ROJO por las dos mitades (registrado Y presente en disco); solo pasa desregistrandolo y borrandolo. Si en vez de retirarlo se quiere conservar la capacidad, entonces la aceptacion es un CANARIO, no un diff: `python scripts/aceptacion.py --verifica canario-settings`, que copia el settings.json vigente a un sandbox de %TEMP%, le INYECTA un hook de laboratorio que el snapshot revisado no contiene, corre el guardian contra esa copia y EXIGE exit != 0 o el aviso por stderr. Hoy ROJO porque el guardian pregunta por la autoria y no por el contenido, asi que ante un settings envenenado se calla. Un diff contra el snapshot NO vale como aceptacion: hoy los dos ficheros son identicos y nacería verde.',
         'retirar: audit_settings_source.sh — no puede avisar nunca, por dos motivos independientes'),
     # Comando reescrito el 2026-08-23. El anterior era PROSA con el comando citado dentro,
     # asi que el shell nunca lo ejecutaba y el tablero traducia ese fallo a «pendiente».
@@ -236,11 +245,11 @@ _INV = {
     # proposito — el comprobador se ponia rojo y `--verifica` seguia diciendo 0.
     'inv-autohealth-monitor-py-con-guion': ('python scripts/aceptacion.py registro-sin-caducados',
         'retirar: autohealth-monitor.py (con guion) — fichero de hook que no registra nadie'),
-    'inv-registro-md-session-start-sh': ("`python C:/Users/Guille/proyectos/scripts/aceptacion.py censo-de-guardianes` — hoy ROJA porque C:/Users/Guille/proyectos/scripts/ NO EXISTE (verificado: Test-Path = False), y un fichero vacío tampoco la aprueba: el tablero contesta `desconocida: censo-de-guardianes` y sale 2. Solo pasa cuando el comprobador ENUMERE los guardianes de sus fuentes vivas (entradas de hook de ~/.claude/settings.json, repos con pre-commit, `Get-ScheduledTask` de TaskPath '\\', ficheros aceptacion.py) y exija una cabecera '## ' en REGISTRO.md por cada uno — hoy 14 contra 29.",
+    'inv-registro-md-session-start-sh': ("`python " + _P + "/scripts/aceptacion.py censo-de-guardianes` — hoy ROJA porque <raiz-de-proyectos>/scripts/ NO EXISTE (verificado: Test-Path = False), y un fichero vacío tampoco la aprueba: el tablero contesta `desconocida: censo-de-guardianes` y sale 2. Solo pasa cuando el comprobador ENUMERE los guardianes de sus fuentes vivas (entradas de hook de ~/.claude/settings.json, repos con pre-commit, `Get-ScheduledTask` de TaskPath '\\', ficheros aceptacion.py) y exija una cabecera '## ' en REGISTRO.md por cada uno — hoy 14 contra 29.",
         'exprimir: REGISTRO.md + session_start.sh — el censo que existe pero no censa a los guardianes'),
     # Ruta reanclada el 2026-08-23. Esta si se ejecutaba: la cadena empieza por comilla, asi que
     # `_solo_el_comando` la desnudaba y corria de verdad
-    # `python C:/Users/Guille/proyectos/capa-normativa/scripts/aceptacion.py ...` — el tablero del
+    # `python <raiz-de-proyectos>/capa-normativa/scripts/aceptacion.py ...` — el tablero del
     # arbol de al lado. Un agente encerrado en su worktree añadia ahi `canario-de-los-hooks` y
     # esta aceptacion seguia roja para siempre, porque preguntaba en la copia que el no podia tocar.
     'inv-canario-py-aceptacion-py-verifica': ('`python scripts/aceptacion.py canario-de-los-hooks` — hoy ROJA: el nombre no existe en COMPROBADORES, el tablero imprime `desconocida:` y sale 2. Solo pasa cuando exista un comprobador que, para CADA una de las 10 entradas de hook de ~/.claude/settings.json, le entregue por stdin una carga envenenada conocida y exija que el hook grite (exit≠0 o mensaje de bloqueo), y que LANCE — no que salte en silencio — ante cualquier hook sin caso, replicando el contrato de CASOS. Un stub que devuelva True no la aprueba: `python scripts/aceptacion.py --verifica` la tumba con «no estaba ROJO de partida». Acción gemela y verificable: `canario-completo` debe desaparecer del tablero (hoy sale 0, medido).',

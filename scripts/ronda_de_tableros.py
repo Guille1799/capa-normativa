@@ -66,7 +66,7 @@ from pathlib import Path
 
 #: La raíz donde viven los repos. Se deja sobrescribir por entorno porque es lo que hace los
 #: tests posibles: sin esto, comprobar la ronda exigiría tener los siete repos de verdad.
-RAIZ_PROYECTOS = Path(os.environ.get("RONDA_PROYECTOS", r"C:/Users/Guille/proyectos"))
+RAIZ_PROYECTOS = Path(os.environ.get("RONDA_PROYECTOS") or Path.home() / "proyectos")
 
 #: Los informes NO van dentro de ningún repo de proyecto: la ronda es de la máquina, no de
 #: `capa-normativa`. Van a `proyectos/.rondas/`, que se autoignora con su propio `.gitignore`.

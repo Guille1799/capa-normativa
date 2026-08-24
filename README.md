@@ -617,7 +617,7 @@ Tres reglas lo sujetan, para que el campo nuevo no sea una etiqueta libre:
 ## Instalación
 
 ```bash
-pip install git+https://github.com/Guille1799/capa-normativa.git@v0.16.2
+pip install git+https://github.com/Guille1799/capa-normativa.git@v0.17.0
 ```
 
 Instala las dos cosas: el registro (`from capa_normativa import NormRegistry`) y el comando

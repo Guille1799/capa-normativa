@@ -166,7 +166,7 @@ def test_la_tarea_de_la_RONDA_tambien_cuenta_como_disparador():
     """La promesa no ata a una implementacion: vale una tarea que encadene `aceptacion.py` y vale
     una que lance la ronda. Lo que no vale es que no haya ninguna."""
     m = _chk()
-    m.tareas = lambda: [_tarea("C:\\Users\\Guille\\proyectos\\ronda_de_tableros.cmd")]
+    m.tareas = lambda: [_tarea("C:\\proyectos\\ronda_de_tableros.cmd")]
     m.informe_de_la_ronda = _informe_sano
     assert m.main() == 0
 

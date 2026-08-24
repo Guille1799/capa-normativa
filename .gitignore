@@ -13,3 +13,16 @@ build/
 # `git reset --hard` que ademas no los borra, porque a los ficheros sin seguir no les afecta.
 logs/
 ralph_run_*.log
+
+# Cuaderno de tareas, diario del bucle y CORE de referencia. Se CONSERVAN en disco —el loop los
+# lee en cada vuelta— pero NO se versionan: son estado de trabajo de ESTA maquina (1.058 + 304 +
+# 147 lineas que nombran los otros proyectos de G), y este repo es PUBLICO. Viajaban dentro de los
+# commits sin publicar y se sacaron del historial ANTES de la primera publicacion: hacerlo despues
+# habria exigido un force-push sobre un repo ya publico, que es mucho peor.
+#
+# `.ralph.conf` NO entra aqui a proposito: son 7 lineas de config sin nada personal, es
+# infraestructura legitima del proyecto, y desversionarla romperia la propiedad que documenta
+# ralph.sh (la config del arbol sobrevive al `git reset --hard` del propio loop).
+PENDIENTES.md
+PROGRESS.md
+docs/CN_REFERENCIA_CORE.md

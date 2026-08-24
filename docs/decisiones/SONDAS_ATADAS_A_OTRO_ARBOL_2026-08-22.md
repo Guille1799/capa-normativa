@@ -8,10 +8,10 @@ Cuatro comprobadores del tablero de `cn-ralph` escriben la ruta a mano:
 
 | comprobador | ruta que hardcodea |
 |---|---|
-| `inv-revista-de-runtimes-quien-corre` | `C:/Users/Guille/proyectos/capa-normativa` |
-| `inv-capa-normativa-es-el-unico` | `C:/Users/Guille/proyectos/capa-normativa/scripts/aceptacion.py` |
-| `inv-autohealth-monitor-py-con-guion` | `C:/Users/Guille/proyectos/capa-normativa/scripts/aceptacion.py` |
-| `inv-canario-py-aceptacion-py-verifica` | `C:/Users/Guille/proyectos/capa-normativa/scripts/aceptacion.py` |
+| `inv-revista-de-runtimes-quien-corre` | `~/proyectos/capa-normativa` |
+| `inv-capa-normativa-es-el-unico` | `~/proyectos/capa-normativa/scripts/aceptacion.py` |
+| `inv-autohealth-monitor-py-con-guion` | `~/proyectos/capa-normativa/scripts/aceptacion.py` |
+| `inv-canario-py-aceptacion-py-verifica` | `~/proyectos/capa-normativa/scripts/aceptacion.py` |
 
 El agente corre en `cn-ralph`, que es **otro worktree del mismo repo**. Así que arregla su copia
 y el comprobador sigue mirando el checkout principal: **el veredicto no se mueve nunca**, la tarea
@@ -154,7 +154,7 @@ sale **la misma para las tres: apuntar al árbol propio.** El motivo se dice aba
 
 | sonda | de dónde sale la ruta al árbol vecino |
 |---|---|
-| `guardia-de-commit` | `git config --get core.hooksPath` → `C:/Users/Guille/proyectos/capa-normativa/hooks`, absoluta |
+| `guardia-de-commit` | `git config --get core.hooksPath` → `~/proyectos/capa-normativa/hooks`, absoluta |
 | `inv-audit-settings-source-sh-no` | la ruta escrita a mano dentro de su campo de aceptación |
 | `inv-canario-py-aceptacion-py-verifica` | ídem, y ésta **sí llegaba a ejecutarse** |
 

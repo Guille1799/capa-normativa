@@ -33,12 +33,14 @@ from __future__ import annotations
 
 import json
 import subprocess
+import os
 import sys
 import tempfile
 from contextlib import contextmanager
 from pathlib import Path
 
-SETTINGS = Path("C:/Users/Guille/.claude/settings.json")
+#: Derivada, no escrita: repo publico (la nota esta en `scripts/aceptacion.py`).
+SETTINGS = Path(os.environ.get("CLAUDE_SETTINGS") or Path.home() / ".claude" / "settings.json")
 
 #: Cargas malformadas que TODO hook debe sobrevivir saliendo 0. No es una lista caprichosa: son
 #: las tres formas en que un hook recibe algo que no esperaba — nada, texto que no es JSON, y

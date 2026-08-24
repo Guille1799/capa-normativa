@@ -99,10 +99,11 @@ PROMPT="Trabajas en el proyecto $(basename "$PROJ") (lee CLAUDE.md para reglas/c
    no es tuya, o el mismo fallo se repite): NO improvises ni marques [x]. Mueve la tarea a la
    sección '⛔ BLOQUEADAS' de $LEDGER con 'confianza: baja', la PREGUNTA concreta y el plan que
    propondrías; COMMITEA ese movimiento; anótalo en $LOG; e imprime la palabra STUCK.
-6) SI EL GATE PASA: haz UN ÚNICO commit con 'git add' SELECTIVO — solo los ficheros que TÚ tocaste
-   + $LEDGER + $LOG. NUNCA 'git add -A' ni 'git add .' (barrería ficheros regenerados por el watcher
-   como SUMMARY/CORE → contaminaría el commit; pasó en un run real). El commit incluye (a) tu cambio de
-   código, (b) la tarea [x] en $LEDGER y (c) una línea arriba en $LOG. UNA tarea = UN commit. Tras
+6) SI EL GATE PASA: haz UN ÚNICO commit con 'git add' SELECTIVO — solo los ficheros que TÚ tocaste.
+   NO añadas $LEDGER ni $LOG: git los IGNORA a propósito (repo público) y 'git add' sobre ellos falla.
+   Se actualizan en disco igual, pero fuera del commit. NUNCA 'git add -A' ni 'git add .' (barrería ficheros regenerados por el watcher
+   como SUMMARY/CORE → contaminaría el commit; pasó en un run real). El commit incluye SOLO (a) tu cambio de
+   código; la tarea [x] en $LEDGER y la línea de $LOG se escriben en disco, sin versionar. UNA tarea = UN commit. Tras
    commitear, **TERMINA tu respuesta de inmediato**: NO cojas otra tarea (la siguiente iteración la hará
    con contexto fresco). Hacer varias tareas en una invocación está PROHIBIDO.
 7) STOP: si NO queda NINGUNA [ ] en \"$SECTION\", imprime EXACTAMENTE COMPLETE y termina."
@@ -134,6 +135,13 @@ for i in $(seq 1 "$MAX"); do
   echo "=== Ralph iter $i/$MAX — $(date '+%Y-%m-%d %H:%M:%S') — stuck=$stuck ===" | tee -a "$RUNLOG"
   REM_BEFORE="$(remaining_tasks)"
   HEAD_BEFORE="$(git rev-parse HEAD 2>/dev/null)"
+  # $LEDGER y $LOG ya NO estan versionados (repo publico: ver .gitignore). Eso les quita la red
+  # que tenian: hasta hoy, un `git reset --hard "$HEAD_BEFORE"` de las rutas de fallo revertia
+  # tambien la tarea marcada [x], asi que una vuelta fallida no podia dejarla por hecha. Sin
+  # seguimiento, git no los toca — y el agente habria podido marcar [x] una tarea que fallo, que
+  # el loop saltaria para siempre. Se respaldan a mano y se restauran en cada reversion.
+  LEDGER_ANTES="$(mktemp)"; cp "$LEDGER" "$LEDGER_ANTES" 2>/dev/null
+  LOG_ANTES="$(mktemp)";    cp "$LOG"    "$LOG_ANTES"    2>/dev/null
 
   # Stream EN VIVO a consola + runlog, capturando la salida para los checks.
   ITER_TMP="$(mktemp)"
@@ -172,6 +180,7 @@ for i in $(seq 1 "$MAX"); do
           echo "  ✗ aceptacion '$a' SIGUE ROJA → REVIERTO a $HEAD_BEFORE" | tee -a "$RUNLOG"
           $PY scripts/aceptacion.py "$a" 2>&1 | tail -2 | tee -a "$RUNLOG"
           git reset --hard "$HEAD_BEFORE" >/dev/null 2>&1
+          cp "$LEDGER_ANTES" "$LEDGER" 2>/dev/null; cp "$LOG_ANTES" "$LOG" 2>/dev/null
           break
         fi
       done
@@ -179,6 +188,7 @@ for i in $(seq 1 "$MAX"); do
       echo "  ✗ gate FALLA → REVIERTO a $HEAD_BEFORE" | tee -a "$RUNLOG"
       grep -iE 'failed|error|MRR' "$GATE_LOG" | tail -6 | tee -a "$RUNLOG"
       git reset --hard "$HEAD_BEFORE" >/dev/null 2>&1
+      cp "$LEDGER_ANTES" "$LEDGER" 2>/dev/null; cp "$LOG_ANTES" "$LOG" 2>/dev/null
     fi
     rm -f "$GATE_LOG"
   fi
