@@ -31,6 +31,7 @@ declarándolos, que es el trabajo — no se aprueba escribiendo nada aquí.
 
 from __future__ import annotations
 
+import ast
 import json
 import subprocess
 import os
@@ -201,6 +202,46 @@ def robustez() -> list[str]:
     return problemas
 
 
+def compilan() -> list[str]:
+    """Cada hook en Python tiene que PARSEAR. Un fichero que no compila no es un hook: es ruido.
+
+    Nace de un caso real del 2026-08-25. `autohealth_monitor.py` llevaba al menos dos dias sin
+    compilar: en la linea 120 tenia
+
+        msg = "
+    ".join(alerts)
+
+    o sea un `\\n` convertido en un salto de linea DE VERDAD — el destrozo tipico de un reemplazo
+    de texto descuidado sobre una secuencia de escape. El hook esta registrado en PostToolUse, asi
+    que moria con SyntaxError DETRAS DE CADA HERRAMIENTA, y nadie se entero porque PostToolUse
+    falla abierto.
+
+    Y su ficha en el censo decia «su UNICA salida es sys.exit(0), en la linea 125», contado a mano
+    LEYENDO el fuente. Leer demostro cual era la salida; solo ejecutarlo mostraba que no se llega
+    nunca. Esa es la leccion, y por eso esto se comprueba aparte.
+
+    Se separa de `robustez()` a proposito: alli el sintoma era «sale 1 con vacio», que es el mismo
+    mensaje que da un hook que decide bloquear. Un `SyntaxError` NO imprime «Traceback (most recent
+    call last)» —es un error de compilacion, no una excepcion en ejecucion—, asi que ni siquiera
+    caia en la rama de REVIENTA. Confundir un instrumento roto con un hallazgo cuesta horas.
+    """
+    problemas = []
+    for evento, cmd in hooks_registrados():
+        ruta = None
+        for trozo in cmd.replace(chr(92), "/").split():
+            if trozo.endswith(".py"):
+                ruta = Path(trozo)
+                break
+        if ruta is None or not ruta.is_file():
+            continue
+        try:
+            ast.parse(ruta.read_text(encoding="utf-8", errors="replace"))
+        except SyntaxError as e:
+            problemas.append(f"{ruta.name} [{evento}] NO COMPILA: linea {e.lineno}, {e.msg}. "
+                             "No es que falle: es que no llega a arrancar nunca.")
+    return problemas
+
+
 def sin_caso() -> list[str]:
     """Hooks registrados que no tienen carga envenenada declarada.
 
@@ -242,7 +283,10 @@ def main(argv: list[str]) -> int:
     if not registrados:
         print("ROJO: no se pudo leer ningun hook de settings.json — sin lista no hay canario")
         return 1
-    fallos = robustez()
+    # Primero si COMPILAN: un fichero que no parsea da un «sale 1» indistinguible de un hook que
+    # decide bloquear, y ese diagnostico equivocado cuesta horas. Que salga nombrado y aparte.
+    fallos = compilan()
+    fallos += robustez()
     if "--robustez" not in argv:
         fallos += envenenados()
         faltan = sin_caso()
