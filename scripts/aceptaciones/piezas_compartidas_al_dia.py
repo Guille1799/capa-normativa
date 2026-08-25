@@ -42,7 +42,6 @@ resultado sospechoso, no una máquina limpia.
 from __future__ import annotations
 
 import ast
-import difflib
 import os
 import subprocess
 import sys
@@ -57,18 +56,11 @@ RAIZ_PROYECTOS = Path(os.environ.get("PROYECTOS_RAIZ") or Path.home() / "proyect
 _REPOS = ("capa-normativa", "mcp_smart_context", "eu-political-observatory",
           "ponerse_wenorro", "JobHunter")
 
-#: Por debajo de esto, dos funciones con el mismo nombre **han divergido**: comparten poco más que
-#: el nombre. Medido el 2026-08-25: `_solo_el_comando` coincide 0,46 entre capa-normativa y mcp.
-_PARECIDO = 0.60
-
-#: Por encima de esto, dos copias **son la misma pieza**. Medido el mismo día: la maquinaria que sí
-#: está sincronizada coincide al 1,00 (`_fabrica_inv`, `_salida_resistente`) o al 0,97 (`main`).
-#: 0,90 deja sitio a una diferencia de una línea sin llamarla desincronización.
-_COINCIDEN = 0.90
-
-#: `ratio()` es cuadrático, así que se compara sobre una muestra. 4.000 caracteres son unas cien
-#: líneas: de sobra para una función, y barato de calcular.
-_TOPE_MUESTRA = 4_000
+#: No hay umbral de parecido, y es deliberado. Hubo dos —uno para «divergida» y otro para «son la
+#: misma»— y los dos sobraban en cuanto se comparó el CÓDIGO CANÓNICO en vez del texto: medido el
+#: 2026-08-26, de las 19 funciones compartidas entre los cinco repos **17 son idénticas byte a
+#: byte** y sólo 2 difieren. Después de quitar docstring y formato, una diferencia ya no puede ser
+#: de estilo: es de comportamiento, y se reporta sin grados.
 
 
 class NoSePudoMirar(Exception):
@@ -92,8 +84,37 @@ def _repos_vivos() -> list[Path]:
     return fuera
 
 
+def _codigo(nodo) -> str:
+    """El cuerpo EJECUTABLE de una función, sin su docstring y reimpreso de forma canónica.
+
+    ## Por qué se quita la docstring
+
+    Medido el 2026-08-26: `_solo_el_comando` daba 0,46 de parecido entre capa-normativa y
+    mcp_smart_context, y el detector la marcaba como divergida. Comparando **sólo lo ejecutable**
+    da **1,00**: son idénticas. Los cinco de diferencia eran prosa — cada repo cuenta la misma
+    historia con sus palabras.
+
+    En un código con docstrings de veinte líneas como éste, comparar el texto entero convierte cada
+    pieza compartida en un falso positivo permanente. Y un detector que grita siempre se apaga.
+
+    ## Por qué se reimprime en vez de comparar el fuente
+
+    `ast.unparse` normaliza sangrías, comillas y saltos, así que una diferencia de formato deja de
+    contar como diferencia de comportamiento — que es lo único que aquí importa.
+    """
+    cuerpo = list(nodo.body)
+    if (cuerpo and isinstance(cuerpo[0], ast.Expr)
+            and isinstance(cuerpo[0].value, ast.Constant)
+            and isinstance(cuerpo[0].value.value, str)):
+        cuerpo = cuerpo[1:]
+    try:
+        return "\n".join(ast.unparse(x) for x in cuerpo)
+    except Exception:  # noqa: BLE001
+        return ""
+
+
 def _funciones(texto: str) -> dict[str, str]:
-    """{nombre: fuente} de las funciones de nivel superior. Con `ast`, no con regex.
+    """{nombre: código ejecutable} de las funciones de nivel superior. Con `ast`, no con regex.
 
     Un regex sobre `def` no sabe dónde acaba la función, así que no puede comparar cuerpos — y
     comparar cuerpos es justo lo que hace falta para distinguir «la misma pieza» de «dos funciones
@@ -103,9 +124,7 @@ def _funciones(texto: str) -> dict[str, str]:
         arbol = ast.parse(texto)
     except SyntaxError:
         return {}
-    lineas = texto.splitlines(keepends=True)
-    return {n.name: "".join(lineas[n.lineno - 1:n.end_lineno])
-            for n in arbol.body
+    return {n.name: _codigo(n) for n in arbol.body
             if isinstance(n, (ast.FunctionDef, ast.AsyncFunctionDef))}
 
 
@@ -161,19 +180,27 @@ def desfases() -> list[tuple[str, str, str, list[str], list[str]]]:
             if len(donde) < 2:
                 # En un solo sitio no es una pieza que se quedo atras: es codigo propio.
                 continue
-            base = donde[0]
-            ratios = {
-                otro: difflib.SequenceMatcher(
-                    None, funcs[base][nombre][:_TOPE_MUESTRA],
-                    funcs[otro][nombre][:_TOPE_MUESTRA]).ratio()
-                for otro in donde[1:]
-            }
-
-            iguales = [r for r, v in ratios.items() if v >= _COINCIDEN]
-            divergidas = sorted(r for r, v in ratios.items() if v < _PARECIDO)
+            # Comparación EXACTA sobre el código canónico, sin umbral difuso. Medido el
+            # 2026-08-26: de las 19 funciones compartidas entre los cinco repos, **17 son
+            # idénticas byte a byte** una vez quitadas docstring y formato, y sólo 2 difieren
+            # (`main` y `_verifica`). Con esos números un umbral no aporta nada y se lleva por
+            # delante lo que sí importa: la diferencia real de `main` es del 5 % —
+            # capa-normativa muestra las promesas ya cumplidas y los demás no— y cualquier
+            # umbral razonable la habría dado por igual.
+            #
+            # Después de canonicalizar, una diferencia YA NO PUEDE ser de estilo: es de
+            # comportamiento. Así que se reporta, sin grados.
+            por_codigo: dict[str, list[str]] = {}
+            for r in donde:
+                por_codigo.setdefault(funcs[r][nombre], []).append(r)
+            mayoria = max(por_codigo.values(), key=len)
+            divergidas = sorted(r for r in donde if r not in mayoria)
 
             faltan = sorted(set(funcs) - set(donde))
-            if faltan and len(iguales) + 1 >= 2:
+            # Se exige que al menos DOS copias coincidan antes de llamar «falta» a la ausencia en
+            # una tercera. Si cada copia dice una cosa distinta, no hay version de referencia que
+            # propagar — hay que decidir cual es la buena, y eso es criterio.
+            if faltan and len(mayoria) >= 2:
                 # «Falta» no es lo mismo que «deberia tenerla», y confundirlas produce ruido.
                 # MEDIDO el 2026-08-26: `_fabrica_bug` falta en mcp_smart_context, pero mcp NO
                 # TIENE tabla `_BUGS` ni una sola llamada a esa funcion. Copiarla alli seria
@@ -191,7 +218,10 @@ def desfases() -> list[tuple[str, str, str, list[str], list[str]]]:
                 clase = "sin propagar" if nombre.startswith("test_") else "sin adoptar"
                 fuera.append((rel, nombre, clase, donde, faltan))
             if divergidas:
-                fuera.append((rel, nombre, "divergida", [base], divergidas))
+                # Se nombra el grupo MAYORITARIO entero, no un representante: saber que tres
+                # repos coinciden y uno se salio dice de que lado esta el arreglo. Con un solo
+                # nombre parece un empate entre dos versiones, y no lo es.
+                fuera.append((rel, nombre, "divergida", sorted(mayoria), divergidas))
     return fuera
 
 
