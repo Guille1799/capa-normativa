@@ -13,7 +13,7 @@ Medido el 2026-08-24, con la guarda instalada y funcionando en los seis repos p�
     eu-political-observatory    12
     eu-ralph                    12
 
-O sea que la guarda estaba verde y había 24 ficheros publicados con `C:\\Users\\Guille` dentro. Los
+O sea que la guarda estaba verde y había 24 ficheros publicados con la ruta de casa dentro. Los
 dos hechos son compatibles y las dos comprobaciones hacen falta: una mira el futuro y otra el
 presente.
 
@@ -32,6 +32,15 @@ Separa lo que ya está empujado de lo que aún no, porque el arreglo es de otro 
     huérfanos alcanzables por su SHA. Eso es una decisión de G, no de un comprobador.
 
 Sin esa distinción el rojo diría «hay 24» y no diría lo único que decide qué hacer.
+
+## Su primera captura fue él mismo
+
+Merece quedar escrito: la primera vez que corrió en la ronda, lo único que encontró en `capa-normativa`
+fue **este fichero**, porque su propio docstring citaba la ruta de casa como ejemplo. Se quitó la
+cita — la explicación no la necesitaba — y quedó limpio.
+
+No es una anécdota: un comprobador que no sobrevive a su propia regla es sospechoso, porque suele
+significar que la regla es impracticable. Ésta no lo era.
 
 ## La trampa prohibida
 
