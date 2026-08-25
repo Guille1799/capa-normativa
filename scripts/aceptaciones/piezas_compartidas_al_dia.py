@@ -174,7 +174,22 @@ def desfases() -> list[tuple[str, str, str, list[str], list[str]]]:
 
             faltan = sorted(set(funcs) - set(donde))
             if faltan and len(iguales) + 1 >= 2:
-                fuera.append((rel, nombre, "sin propagar", donde, faltan))
+                # «Falta» no es lo mismo que «deberia tenerla», y confundirlas produce ruido.
+                # MEDIDO el 2026-08-26: `_fabrica_bug` falta en mcp_smart_context, pero mcp NO
+                # TIENE tabla `_BUGS` ni una sola llamada a esa funcion. Copiarla alli seria
+                # meter codigo muerto — peor que no propagar.
+                #
+                # Se intento distinguirlas mirando si el nombre aparece en el repo destino, y NO
+                # discrimina: las cinco piezas que faltan dan cero apariciones, tests incluidos.
+                # Lo que si separa los dos casos es QUE CLASE de pieza es:
+                #
+                #   · un TEST no tiene nunca sitio donde se le llame, y esta pensado para estar en
+                #     todas partes: su ausencia es un hueco de verdad.
+                #   · una pieza de maquinaria solo hace falta si ese repo usa la facilidad. Que mcp
+                #     no lleve `_BUGS` no es un desfase: es una diferencia de diseño, y decidir si
+                #     la adopta es criterio, no automatismo.
+                clase = "sin propagar" if nombre.startswith("test_") else "sin adoptar"
+                fuera.append((rel, nombre, clase, donde, faltan))
             if divergidas:
                 fuera.append((rel, nombre, "divergida", [base], divergidas))
     return fuera
@@ -186,11 +201,21 @@ def piezas_compartidas_al_dia() -> tuple[bool, str]:
     except NoSePudoMirar as e:
         return False, f"no se pudo mirar ({e}). Eso NO es «todo al dia»."
 
-    if not atrasadas:
-        return True, "ninguna pieza compartida se ha quedado atras ni ha divergido"
-
     sin_propagar = [x for x in atrasadas if x[2] == "sin propagar"]
     divergidas = [x for x in atrasadas if x[2] == "divergida"]
+    sin_adoptar = [x for x in atrasadas if x[2] == "sin adoptar"]
+
+    # `sin adoptar` se INFORMA pero no pone rojo: es una diferencia de diseño entre repos, y
+    # decidir si uno adopta una facilidad del otro es criterio. Un rojo que no se puede cerrar sin
+    # tomar una decisión de diseño se aprende a ignorar, y ahí empieza a morir el tablero.
+    cola = ""
+    if sin_adoptar:
+        nombres = sorted({f for _, f, _, _, _ in sin_adoptar})
+        cola = (f" (aparte, sin poner rojo: {len(sin_adoptar)} pieza(s) de maquinaria que un repo "
+                f"no usa — {', '.join(nombres[:4])})")
+
+    if not sin_propagar and not divergidas:
+        return True, ("ninguna pieza compartida se ha quedado atras ni ha divergido" + cola)
 
     partes = []
     if sin_propagar:
@@ -207,7 +232,7 @@ def piezas_compartidas_al_dia() -> tuple[bool, str]:
 
     return False, (" · ".join(partes) + ". El repo que se queda atras NO se pone rojo por su "
                    "cuenta: simplemente no tiene el detector, asi que no detecta. Y una funcion "
-                   "divergida es peor, porque desde fuera parece propagada.")
+                   "divergida es peor, porque desde fuera parece propagada." + cola)
 
 
 if __name__ == "__main__":
@@ -218,6 +243,8 @@ if __name__ == "__main__":
         for rel, funcion, que, tienen, otros in desfases():
             print(f"  [{que}] {rel} :: {funcion}")
             print(f"      la tienen igual: {', '.join(tienen)}")
-            print(f"      {'le falta a' if que == 'sin propagar' else 'divergida en'}: "
-                  f"{', '.join(otros)}")
+            etiqueta = {"sin propagar": "le falta a",
+                        "sin adoptar": "no usa esa facilidad",
+                        "divergida": "divergida en"}[que]
+            print(f"      {etiqueta}: {', '.join(otros)}")
     sys.exit(0 if ok else 1)

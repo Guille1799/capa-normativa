@@ -230,18 +230,6 @@ _INV = {
     # encolado automatico el tablero hoy no los hace— sino que el veredicto EXISTA y nombre a cada
     # uno de los nueve checks, que son los que quedarian huerfanos si el healthcheck se retirase.
     # Se lanza con el interprete del propio tablero: ni el venv de otro repo ni `python` del PATH.
-    'inv-para-que-el-healthcheck-si-el-tablero': (
-        # La ruta del guion va RELATIVA a proposito: el comando corre con `cwd=RAIZ`, y una
-        # absoluta haria que desde un worktree se preguntara por la copia del vecino — roja
-        # hiciera nadie lo que hiciera. Lo vigila
-        # test_ninguna_aceptacion_nombra_un_arbol_por_su_ruta_absoluta, y me cazó en el primer
-        # intento. `sys.executable` si va absoluto: cae FUERA del repo, y ahi es lo correcto.
-        '`' + sys.executable + ' scripts/aceptaciones/healthcheck_vs_tableros.py'
-        + '`   (HOY ROJO: no existe docs/decisiones/HEALTHCHECK_VS_TABLEROS.md. No lo aprueba un'
-          ' fichero vacio: exige que el texto nombre los NUEVE checks —HTTP Server, SQLite,'
-          ' LanceDB, Sync, Proyectos, Docs freshness, Ultimo reindex, Procesos, Fuga AppX— o sea'
-          ' que obliga a mirarlos uno por uno en vez de despachar el conjunto con una frase.)',
-        'decidir: para que sirve healthcheck.py si el tablero se verifica a si mismo y el no'),
     # Comando reescrito el 2026-08-23. El anterior hacia `cd <ruta absoluta al arbol
     # principal> && ... && ! ...`: dos fallos a la vez. La ruta absoluta hacia que desde un
     # worktree se juzgara el arbol de al lado, y el `!` lo expande cmd.exe y rompe el
@@ -660,6 +648,16 @@ def canario_de_los_hooks() -> tuple[bool, str]:
 
 
 CUMPLIDAS = {
+    "inv-para-que-el-healthcheck-si-el-tablero": (
+        "cumplida el 2026-08-26, retirada del tablero ese mismo dia. Pedia DECIDIR para que "
+        "sirve `healthcheck.py` si el tablero se verifica a si mismo con mutacion y el no. La "
+        "decision esta en docs/decisiones/HEALTHCHECK_VS_TABLEROS.md y da veredicto para los "
+        "NUEVE checks: siete vigilan cosas que se rompen solas (HTTP, SQLite, LanceDB, Sync, "
+        "ultimo reindex, procesos, fuga AppX) y por eso el healthcheck se queda; `Proyectos` "
+        "deberia irse al tablero y `Docs freshness` se queda a proposito por estar enchufado "
+        "al encolado automatico. Y al reves: `guardianes-vivos` vive en el tablero vigilando el "
+        "mundo, que es por lo que el reindexado muerto a las 14:00 no se vio hasta las 19:30."
+    ),
     "canario-completo": (
         "cumplida el 2026-08-23, retirada del tablero ese mismo dia. Pedia que los CUATRO "
         "detectores del vigilante tuvieran caso rojo en CASOS, para que `canario(DETECTORES)` "
@@ -683,7 +681,10 @@ SIN_MUTACION = {
         "atras (y comprobando que nombra QUE falta y DONDE), ROJO cuando una copia DIVERGE —el caso que "
         "un detector de ausencias NO ve, y es peor porque desde fuera parece propagada—, VERDE cuando algo "
         "existe en UNA sola copia —que es codigo propio, no un desfase—, VERDE cuando dos ficheros solo "
-        "comparten NOMBRE, y ROJO cuando no se puede mirar, que es la trampa de aprobar en vacio.",
+        "comparten NOMBRE, VERDE-PERO-INFORMANDO cuando falta una pieza de MAQUINARIA que ese repo no usa "
+        "—`_fabrica_bug` falta en mcp, pero mcp no tiene tabla `_BUGS`: copiarla seria codigo muerto, y un "
+        "rojo que exige una decision de diseño para cerrarse se aprende a ignorar—, y ROJO cuando no se "
+        "puede mirar, que es la trampa de aprobar en vacio.",
     "escaparate-sin-rutas-de-casa":
         "no se muta escribiendo un fichero: interroga a los repos PUBLICOS de verdad con `git ls-files`, "
         "asi que una mutacion tendria que ensuciar un repo real. Su cambio de color se verifico en las DOS "
@@ -765,15 +766,6 @@ ARTEFACTOS = {
     # El stub nombra los nueve checks porque eso es justo lo que la aceptacion exige. Si algun dia
     # se anade un check a healthcheck.py, la aceptacion NO se entera a proposito (lleva los nueve
     # congelados dentro): la promesa es sobre la decision, no sobre mantener un registro al dia.
-    "inv-para-que-el-healthcheck-si-el-tablero": [
-        ((RAIZ / "docs" / "decisiones" / "HEALTHCHECK_VS_TABLEROS.md").as_posix(),
-         chr(10).join((
-             "# Veredicto de laboratorio (lo fabrica --verifica y lo borra al terminar)",
-             "",
-             "HTTP Server, SQLite, LanceDB, Sync, Proyectos, Docs freshness,",
-             "Ultimo reindex, Procesos, Fuga AppX.",
-             ""))),
-    ],
 }
 def escaparate_sin_rutas_de_casa() -> tuple[bool, str]:
     """Ningun repo PUBLICO versiona la ruta de casa de G.
@@ -871,7 +863,6 @@ COMPROBADORES = {
     "bug-check-sale-con-1": _fabrica_bug("bug-check-sale-con-1", *_BUGS["bug-check-sale-con-1"]),
     "sondas-miran-su-arbol": sondas_miran_su_arbol,
     'inv-capa-normativa-sin-pre-commit': _fabrica_inv('inv-capa-normativa-sin-pre-commit', *_INV['inv-capa-normativa-sin-pre-commit']),
-    'inv-para-que-el-healthcheck-si-el-tablero': _fabrica_inv('inv-para-que-el-healthcheck-si-el-tablero', *_INV['inv-para-que-el-healthcheck-si-el-tablero']),
 }
 
 

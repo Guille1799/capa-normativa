@@ -69,18 +69,39 @@ def test_verde_cuando_las_copias_estan_al_dia(tmp_path):
     assert ok, f"tres copias identicas y ha salido ROJO: {msg}"
 
 
-def test_rojo_cuando_una_copia_se_queda_atras(tmp_path):
-    """El caso real del 2026-08-25: una funcion en dos copias y ausente en la tercera."""
+def test_rojo_cuando_un_TEST_se_queda_atras(tmp_path):
+    """El caso real del 2026-08-25: un test en dos copias y ausente en la tercera.
+
+    Es rojo porque un test no tiene nunca sitio donde se le llame y esta pensado para estar en
+    todas partes: su ausencia siempre es un hueco.
+    """
     mod = _modulo()
-    _montar(mod, tmp_path, {"uno": _CUERPO + _EXTRA, "dos": _CUERPO + _EXTRA, "tres": _CUERPO})
+    extra = _EXTRA.replace("solo_en_dos", "test_solo_en_dos")
+    _montar(mod, tmp_path, {"uno": _CUERPO + extra, "dos": _CUERPO + extra, "tres": _CUERPO})
     ok, msg = mod.piezas_compartidas_al_dia()
-    assert not ok, "una copia se ha quedado atras y ha salido VERDE"
+    assert not ok, "un test se ha quedado atras y ha salido VERDE"
     assert "tres" in msg
 
     atrasadas = mod.desfases()
-    assert any(f == "solo_en_dos" and que == "sin propagar" and otros == ["tres"]
+    assert any(f == "test_solo_en_dos" and que == "sin propagar" and otros == ["tres"]
                for _, f, que, _, otros in atrasadas), \
         f"no nombra QUE falta ni DONDE: {atrasadas}"
+
+
+def test_maquinaria_que_un_repo_no_usa_se_informa_pero_NO_pone_rojo(tmp_path):
+    """«Falta» no es «deberia tenerla», y confundirlas es ruido.
+
+    MEDIDO el 2026-08-26: `_fabrica_bug` falta en mcp_smart_context, pero mcp no tiene tabla
+    `_BUGS` ni una sola llamada a esa funcion. Copiarla seria meter codigo muerto. Decidir si un
+    repo adopta una facilidad del otro es criterio, no automatismo — y un rojo que no se puede
+    cerrar sin tomar una decision de diseño se aprende a ignorar.
+    """
+    mod = _modulo()
+    _montar(mod, tmp_path, {"uno": _CUERPO + _EXTRA, "dos": _CUERPO + _EXTRA, "tres": _CUERPO})
+    ok, msg = mod.piezas_compartidas_al_dia()
+    assert ok, f"una pieza de maquinaria que un repo no usa ha puesto ROJO: {msg}"
+    assert "sin poner rojo" in msg, f"tampoco la informa, o sea que se pierde: {msg}"
+    assert any(f == "solo_en_dos" and que == "sin adoptar" for _, f, que, _, _ in mod.desfases())
 
 
 def test_rojo_cuando_una_copia_DIVERGE(tmp_path):
