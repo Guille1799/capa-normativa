@@ -218,10 +218,18 @@ def desfases() -> list[tuple[str, str, str, list[str], list[str]]]:
                 clase = "sin propagar" if nombre.startswith("test_") else "sin adoptar"
                 fuera.append((rel, nombre, clase, donde, faltan))
             if divergidas:
-                # Se nombra el grupo MAYORITARIO entero, no un representante: saber que tres
-                # repos coinciden y uno se salio dice de que lado esta el arreglo. Con un solo
-                # nombre parece un empate entre dos versiones, y no lo es.
-                fuera.append((rel, nombre, "divergida", sorted(mayoria), divergidas))
+                # Se exige mayoria de DOS para hablar de divergencia, igual que para hablar de
+                # ausencia. Con dos copias y dos versiones distintas no hay de que se desvio una:
+                # hay dos versiones y hay que DECIDIR cual vale, que es criterio y no automatismo.
+                #
+                # Caso real del 2026-08-26: otra sesion llevo `aceptacion_de_la_tarea.py` a
+                # JobHunter y su version difiere de la de mcp. Llamarlo «divergida» prometeria
+                # saber cual es la buena, y no se sabe.
+                #
+                # Cuando SI hay mayoria se nombra el grupo entero, no un representante: saber que
+                # dos repos coinciden y otros dos se salieron dice de que lado esta el arreglo.
+                clase = "divergida" if len(mayoria) >= 2 else "sin referencia"
+                fuera.append((rel, nombre, clase, sorted(mayoria), divergidas))
     return fuera
 
 
@@ -233,7 +241,10 @@ def piezas_compartidas_al_dia() -> tuple[bool, str]:
 
     sin_propagar = [x for x in atrasadas if x[2] == "sin propagar"]
     divergidas = [x for x in atrasadas if x[2] == "divergida"]
-    sin_adoptar = [x for x in atrasadas if x[2] == "sin adoptar"]
+    # `sin adoptar` y `sin referencia` comparten destino —se informan, no ponen rojo— pero por
+    # motivos distintos, y por eso se cuentan aparte: una es «este repo no usa esa facilidad» y la
+    # otra es «hay dos versiones y nadie ha decidido cual vale». Fundirlas escondería la segunda.
+    sin_adoptar = [x for x in atrasadas if x[2] in ("sin adoptar", "sin referencia")]
 
     # `sin adoptar` se INFORMA pero no pone rojo: es una diferencia de diseño entre repos, y
     # decidir si uno adopta una facilidad del otro es criterio. Un rojo que no se puede cerrar sin
@@ -241,8 +252,11 @@ def piezas_compartidas_al_dia() -> tuple[bool, str]:
     cola = ""
     if sin_adoptar:
         nombres = sorted({f for _, f, _, _, _ in sin_adoptar})
-        cola = (f" (aparte, sin poner rojo: {len(sin_adoptar)} pieza(s) de maquinaria que un repo "
-                f"no usa — {', '.join(nombres[:4])})")
+        cuantas_sin_ref = sum(1 for x in sin_adoptar if x[2] == "sin referencia")
+        detalle_ref = (f", {cuantas_sin_ref} con DOS versiones y ninguna mayoritaria"
+                       if cuantas_sin_ref else "")
+        cola = (f" (aparte, sin poner rojo: {len(sin_adoptar)} pieza(s) que piden criterio y no "
+                f"automatismo{detalle_ref} — {', '.join(nombres[:4])})")
 
     if not sin_propagar and not divergidas:
         return True, ("ninguna pieza compartida se ha quedado atras ni ha divergido" + cola)
@@ -273,7 +287,8 @@ if __name__ == "__main__":
         for rel, funcion, que, tienen, otros in desfases():
             print(f"  [{que}] {rel} :: {funcion}")
             print(f"      la tienen igual: {', '.join(tienen)}")
-            etiqueta = {"sin propagar": "le falta a",
+            etiqueta = {"sin referencia": "otra version en",
+                        "sin propagar": "le falta a",
                         "sin adoptar": "no usa esa facilidad",
                         "divergida": "divergida en"}[que]
             print(f"      {etiqueta}: {', '.join(otros)}")
