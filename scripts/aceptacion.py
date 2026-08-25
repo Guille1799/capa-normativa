@@ -680,9 +680,10 @@ SIN_MUTACION = {
         "no se muta creando un fichero: compara los CINCO repos reales entre si, asi que una mutacion "
         "tendria que ensuciar un repo de verdad. Su cambio de color lo cubre tests/test_piezas_compartidas_al_dia.py, "
         "que monta repos de pega en un temporal: VERDE con tres copias identicas, ROJO cuando una se queda "
-        "atras (y comprobando que nombra QUE falta y DONDE), VERDE cuando algo existe en UNA sola copia "
-        "—que es codigo propio, no un desfase—, VERDE cuando dos ficheros solo comparten NOMBRE, y ROJO "
-        "cuando no se puede mirar, que es la trampa de aprobar en vacio.",
+        "atras (y comprobando que nombra QUE falta y DONDE), ROJO cuando una copia DIVERGE —el caso que "
+        "un detector de ausencias NO ve, y es peor porque desde fuera parece propagada—, VERDE cuando algo "
+        "existe en UNA sola copia —que es codigo propio, no un desfase—, VERDE cuando dos ficheros solo "
+        "comparten NOMBRE, y ROJO cuando no se puede mirar, que es la trampa de aprobar en vacio.",
     "escaparate-sin-rutas-de-casa":
         "no se muta escribiendo un fichero: interroga a los repos PUBLICOS de verdad con `git ls-files`, "
         "asi que una mutacion tendria que ensuciar un repo real. Su cambio de color se verifico en las DOS "

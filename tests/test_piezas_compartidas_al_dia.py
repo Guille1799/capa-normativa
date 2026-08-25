@@ -78,8 +78,32 @@ def test_rojo_cuando_una_copia_se_queda_atras(tmp_path):
     assert "tres" in msg
 
     atrasadas = mod.desfases()
-    assert any(f == "solo_en_dos" and faltan == ["tres"] for _, f, _, faltan in atrasadas), \
+    assert any(f == "solo_en_dos" and que == "sin propagar" and otros == ["tres"]
+               for _, f, que, _, otros in atrasadas), \
         f"no nombra QUE falta ni DONDE: {atrasadas}"
+
+
+def test_rojo_cuando_una_copia_DIVERGE(tmp_path):
+    """El caso que un detector de ausencias NO ve, y es peor: la funcion esta en todas partes,
+    pero un cuerpo se fue por su cuenta. Desde fuera parece propagada.
+
+    Medido el 2026-08-25 en los repos de verdad: `_solo_el_comando` esta en los tres y solo
+    coincide un 0,46 — y es justo la funcion del fallo de esa noche.
+    """
+    mod = _modulo()
+    distinta = _CUERPO.replace("def comun_dos():\n    return 2",
+                               'def comun_dos():\n'
+                               '    total = 0\n'
+                               '    for i in range(100):\n'
+                               '        total += i * 7 - 3\n'
+                               '    return total, "nada que ver con la otra version"')
+    _montar(mod, tmp_path, {"uno": _CUERPO, "dos": _CUERPO, "tres": distinta})
+    ok, msg = mod.piezas_compartidas_al_dia()
+    assert not ok, "una copia ha divergido y ha salido VERDE"
+    assert "DIVERGIDA" in msg.upper(), f"no distingue divergir de faltar: {msg}"
+
+    assert any(f == "comun_dos" and que == "divergida" for _, f, que, _, _ in mod.desfases()), \
+        "no nombra la funcion que divergio"
 
 
 def test_una_sola_presencia_no_cuenta(tmp_path):

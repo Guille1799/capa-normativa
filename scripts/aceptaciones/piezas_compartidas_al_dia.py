@@ -41,9 +41,9 @@ resultado sospechoso, no una máquina limpia.
 """
 from __future__ import annotations
 
+import ast
 import difflib
 import os
-import re
 import subprocess
 import sys
 from pathlib import Path
@@ -57,14 +57,18 @@ RAIZ_PROYECTOS = Path(os.environ.get("PROYECTOS_RAIZ") or Path.home() / "proyect
 _REPOS = ("capa-normativa", "mcp_smart_context", "eu-political-observatory",
           "ponerse_wenorro", "JobHunter")
 
-#: Dos copias son «la misma pieza» si se parecen al menos esto.
+#: Por debajo de esto, dos funciones con el mismo nombre **han divergido**: comparten poco más que
+#: el nombre. Medido el 2026-08-25: `_solo_el_comando` coincide 0,46 entre capa-normativa y mcp.
 _PARECIDO = 0.60
 
-#: Sólo funciones de nivel superior o de un nivel de anidamiento: las de más adentro son detalle
-#: interno y su ausencia no dice nada útil.
-_DEF = re.compile(r"^\s{0,4}def\s+([a-zA-Z_]\w*)", re.M)
+#: Por encima de esto, dos copias **son la misma pieza**. Medido el mismo día: la maquinaria que sí
+#: está sincronizada coincide al 1,00 (`_fabrica_inv`, `_salida_resistente`) o al 0,97 (`main`).
+#: 0,90 deja sitio a una diferencia de una línea sin llamarla desincronización.
+_COINCIDEN = 0.90
 
-_TOPE_COMPARACION = 20_000
+#: `ratio()` es cuadrático, así que se compara sobre una muestra. 4.000 caracteres son unas cien
+#: líneas: de sobra para una función, y barato de calcular.
+_TOPE_MUESTRA = 4_000
 
 
 class NoSePudoMirar(Exception):
@@ -88,8 +92,46 @@ def _repos_vivos() -> list[Path]:
     return fuera
 
 
-def desfases() -> list[tuple[str, str, list[str], list[str]]]:
-    """(ruta, funcion, quien la tiene, a quien le falta) por cada pieza que se quedó atrás."""
+def _funciones(texto: str) -> dict[str, str]:
+    """{nombre: fuente} de las funciones de nivel superior. Con `ast`, no con regex.
+
+    Un regex sobre `def` no sabe dónde acaba la función, así que no puede comparar cuerpos — y
+    comparar cuerpos es justo lo que hace falta para distinguir «la misma pieza» de «dos funciones
+    que casualmente se llaman igual».
+    """
+    try:
+        arbol = ast.parse(texto)
+    except SyntaxError:
+        return {}
+    lineas = texto.splitlines(keepends=True)
+    return {n.name: "".join(lineas[n.lineno - 1:n.end_lineno])
+            for n in arbol.body
+            if isinstance(n, (ast.FunctionDef, ast.AsyncFunctionDef))}
+
+
+def desfases() -> list[tuple[str, str, str, list[str], list[str]]]:
+    """(ruta, función, qué pasa, quién la tiene, a quién le falta o quién divergió).
+
+    ## Por qué la unidad es la FUNCIÓN y no el fichero
+
+    La primera versión comparaba ficheros enteros y no servía, medido el 2026-08-25: los
+    `scripts/aceptacion.py` de capa-normativa y mcp_smart_context se parecen un **3 %**, porque el
+    grueso de cada uno es su tabla de promesas, que es distinta por definición. Comparándolos como
+    ficheros, o no son la misma pieza —y entonces no se mira nada— o el umbral se afloja tanto que
+    «misma ruta» pasa a ser el único filtro.
+
+    Pero **dentro** de esos ficheros al 3 % hay maquinaria idéntica: `_fabrica_inv` y
+    `_salida_resistente` coinciden al **1.00** en los tres repos. Ésa es la pieza compartida de
+    verdad, y es la que puede quedarse atrás.
+
+    ## Los dos desenlaces
+
+    - **sin propagar**: la función está en 2+ repos con cuerpos que coinciden, y falta en otro.
+    - **divergida**: está en todos, pero un cuerpo se ha ido por su cuenta. Medido el mismo día:
+      `_solo_el_comando` está en los tres y sólo coincide un 0,46 — y es justo la función del fallo
+      de esa noche. Ese caso el detector de ausencias no lo ve, y es más peligroso, porque desde
+      fuera parece propagado.
+    """
     repos = _repos_vivos()
 
     por_ruta: dict[str, list[Path]] = {}
@@ -104,33 +146,37 @@ def desfases() -> list[tuple[str, str, list[str], list[str]]]:
 
     fuera = []
     for rel, repos_con in sorted(compartidas.items()):
-        textos = {}
+        funcs: dict[str, dict[str, str]] = {}
         for repo in repos_con:
             try:
-                textos[repo.name] = (repo / rel).read_text(encoding="utf-8", errors="replace")
+                funcs[repo.name] = _funciones(
+                    (repo / rel).read_text(encoding="utf-8", errors="replace"))
             except OSError:
                 continue
-        if len(textos) < 2:
+        if len(funcs) < 2:
             continue
 
-        base = max(textos, key=lambda r: len(textos[r]))
-        parecidos = {base}
-        for nombre, t in textos.items():
-            if nombre == base:
+        for nombre in sorted(set().union(*[set(d) for d in funcs.values()])):
+            donde = sorted(r for r in funcs if nombre in funcs[r])
+            if len(donde) < 2:
+                # En un solo sitio no es una pieza que se quedo atras: es codigo propio.
                 continue
-            ratio = difflib.SequenceMatcher(
-                None, textos[base][:_TOPE_COMPARACION], t[:_TOPE_COMPARACION]).quick_ratio()
-            if ratio >= _PARECIDO:
-                parecidos.add(nombre)
-        if len(parecidos) < 2:
-            continue
+            base = donde[0]
+            ratios = {
+                otro: difflib.SequenceMatcher(
+                    None, funcs[base][nombre][:_TOPE_MUESTRA],
+                    funcs[otro][nombre][:_TOPE_MUESTRA]).ratio()
+                for otro in donde[1:]
+            }
 
-        defs = {r: set(_DEF.findall(textos[r])) for r in parecidos}
-        for funcion in sorted(set().union(*defs.values())):
-            tienen = {r for r in parecidos if funcion in defs[r]}
-            faltan = parecidos - tienen
-            if faltan and len(tienen) >= 2:
-                fuera.append((rel, funcion, sorted(tienen), sorted(faltan)))
+            iguales = [r for r, v in ratios.items() if v >= _COINCIDEN]
+            divergidas = sorted(r for r, v in ratios.items() if v < _PARECIDO)
+
+            faltan = sorted(set(funcs) - set(donde))
+            if faltan and len(iguales) + 1 >= 2:
+                fuera.append((rel, nombre, "sin propagar", donde, faltan))
+            if divergidas:
+                fuera.append((rel, nombre, "divergida", [base], divergidas))
     return fuera
 
 
@@ -141,16 +187,27 @@ def piezas_compartidas_al_dia() -> tuple[bool, str]:
         return False, f"no se pudo mirar ({e}). Eso NO es «todo al dia»."
 
     if not atrasadas:
-        return True, ("ninguna pieza compartida se ha quedado atras en ningun repo")
+        return True, "ninguna pieza compartida se ha quedado atras ni ha divergido"
 
-    porq: dict[str, int] = {}
-    for _, _, _, faltan in atrasadas:
-        for r in faltan:
-            porq[r] = porq.get(r, 0) + 1
-    detalle = ", ".join(f"{k} le faltan {v}" for k, v in sorted(porq.items(), key=lambda x: -x[1]))
-    return False, (f"{len(atrasadas)} pieza(s) compartida(s) sin propagar: {detalle}. "
-                   f"El repo que se queda atras NO se pone rojo por su cuenta: simplemente no "
-                   f"tiene el detector, asi que no detecta.")
+    sin_propagar = [x for x in atrasadas if x[2] == "sin propagar"]
+    divergidas = [x for x in atrasadas if x[2] == "divergida"]
+
+    partes = []
+    if sin_propagar:
+        porq: dict[str, int] = {}
+        for _, _, _, _, faltan in sin_propagar:
+            for r in faltan:
+                porq[r] = porq.get(r, 0) + 1
+        partes.append(f"{len(sin_propagar)} SIN PROPAGAR (" +
+                      ", ".join(f"{k} le faltan {v}" for k, v in
+                                sorted(porq.items(), key=lambda x: -x[1])) + ")")
+    if divergidas:
+        nombres = sorted({f"{f}" for _, f, _, _, _ in divergidas})
+        partes.append(f"{len(divergidas)} DIVERGIDA(S): " + ", ".join(nombres[:5]))
+
+    return False, (" · ".join(partes) + ". El repo que se queda atras NO se pone rojo por su "
+                   "cuenta: simplemente no tiene el detector, asi que no detecta. Y una funcion "
+                   "divergida es peor, porque desde fuera parece propagada.")
 
 
 if __name__ == "__main__":
@@ -158,8 +215,9 @@ if __name__ == "__main__":
     print(("VERDE: " if ok else "ROJO: ") + msg)
     if not ok and "--detalle" in sys.argv:
         print()
-        for rel, funcion, tienen, faltan in desfases():
-            print(f"  {rel} :: {funcion}")
-            print(f"      la tienen: {', '.join(tienen)}")
-            print(f"      le falta a: {', '.join(faltan)}")
+        for rel, funcion, que, tienen, otros in desfases():
+            print(f"  [{que}] {rel} :: {funcion}")
+            print(f"      la tienen igual: {', '.join(tienen)}")
+            print(f"      {'le falta a' if que == 'sin propagar' else 'divergida en'}: "
+                  f"{', '.join(otros)}")
     sys.exit(0 if ok else 1)
