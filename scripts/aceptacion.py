@@ -223,6 +223,25 @@ def _fabrica_bug(nombre: str, nodo: str, resumen: str):
 # EJECUTANDOLO que los 17 nacen ROJOS. Un comprobador verde el dia que se escribe no obliga a
 # nada; los que salian 0 se descartaron en vez de encolarse.
 _INV = {
+    # LA PROMESA DE G, 2026-08-25: «para que tenemos healthcheck si los tableros funcionan mejor».
+    # Nace al ver que el tablero se ataca a si mismo con `--verifica` y `healthcheck.py` no: un
+    # check suyo que no sepa dispararse se ve igual que uno que pasa. La aceptacion NO exige una
+    # conclusion concreta —«se queda como esta» es una respuesta legitima, porque los 30 min y el
+    # encolado automatico el tablero hoy no los hace— sino que el veredicto EXISTA y nombre a cada
+    # uno de los nueve checks, que son los que quedarian huerfanos si el healthcheck se retirase.
+    # Se lanza con el interprete del propio tablero: ni el venv de otro repo ni `python` del PATH.
+    'inv-para-que-el-healthcheck-si-el-tablero': (
+        # La ruta del guion va RELATIVA a proposito: el comando corre con `cwd=RAIZ`, y una
+        # absoluta haria que desde un worktree se preguntara por la copia del vecino — roja
+        # hiciera nadie lo que hiciera. Lo vigila
+        # test_ninguna_aceptacion_nombra_un_arbol_por_su_ruta_absoluta, y me cazó en el primer
+        # intento. `sys.executable` si va absoluto: cae FUERA del repo, y ahi es lo correcto.
+        '`' + sys.executable + ' scripts/aceptaciones/healthcheck_vs_tableros.py'
+        + '`   (HOY ROJO: no existe docs/decisiones/HEALTHCHECK_VS_TABLEROS.md. No lo aprueba un'
+          ' fichero vacio: exige que el texto nombre los NUEVE checks —HTTP Server, SQLite,'
+          ' LanceDB, Sync, Proyectos, Docs freshness, Ultimo reindex, Procesos, Fuga AppX— o sea'
+          ' que obliga a mirarlos uno por uno en vez de despachar el conjunto con una frase.)',
+        'decidir: para que sirve healthcheck.py si el tablero se verifica a si mismo y el no'),
     # Comando reescrito el 2026-08-23. El anterior hacia `cd <ruta absoluta al arbol
     # principal> && ... && ! ...`: dos fallos a la vez. La ruta absoluta hacia que desde un
     # worktree se juzgara el arbol de al lado, y el `!` lo expande cmd.exe y rompe el
@@ -657,6 +676,13 @@ CUMPLIDAS = {
 }
 
 SIN_MUTACION = {
+    "piezas-compartidas-al-dia":
+        "no se muta creando un fichero: compara los CINCO repos reales entre si, asi que una mutacion "
+        "tendria que ensuciar un repo de verdad. Su cambio de color lo cubre tests/test_piezas_compartidas_al_dia.py, "
+        "que monta repos de pega en un temporal: VERDE con tres copias identicas, ROJO cuando una se queda "
+        "atras (y comprobando que nombra QUE falta y DONDE), VERDE cuando algo existe en UNA sola copia "
+        "—que es codigo propio, no un desfase—, VERDE cuando dos ficheros solo comparten NOMBRE, y ROJO "
+        "cuando no se puede mirar, que es la trampa de aprobar en vacio.",
     "escaparate-sin-rutas-de-casa":
         "no se muta escribiendo un fichero: interroga a los repos PUBLICOS de verdad con `git ls-files`, "
         "asi que una mutacion tendria que ensuciar un repo real. Su cambio de color se verifico en las DOS "
@@ -687,7 +713,15 @@ SIN_MUTACION = {
         "y exige ROJO cuando se traga la carga envenenada y VERDE cuando grita — mas un test de "
         "que el hook de pega se ejecuta de verdad, para que el verde no sea por no haber corrido."),
     "tableros-corren-solos": ("no se muta creando un fichero: su rojo sale de preguntarle al Programador de tareas de Windows si algo ejecuta `aceptacion.py` y `--verifica`, y si esa ejecucion termino bien y es reciente. Su ROJO lo cubre tests/test_tableros_corren_solos.py, que le inyecta el mundo: sin tarea, con tarea que corre los tableros pero NO --verifica, registrada pero fallando, registrada pero de hace un mes, y cero tareas legibles (ROJO, para que no apruebe en vacio) — mas el control en verde."),
-    "revista-de-runtimes": ("no se muta creando un fichero: su rojo sale de INTERROGAR a cada interprete del sistema por la version que resuelve. Y su propia `--autoprueba` ya hace la verificacion por mutacion: inyecta una deriva y exige que el check se entere."),
+    "revista-de-runtimes": ("no se muta creando un fichero: su rojo sale de INTERROGAR a cada interprete del sistema por la version que resuelve. Y su propia `--autoprueba` ya hace la verificacion por mutacion, en CUATRO frentes (2026-08-25):"
+        " inyecta una deriva de version DECLARADA en el manifiesto y exige la frase de esa rama;"
+        " inyecta un interprete marcado como alias y exige la frase de la rama de alias;"
+        " y ejercita `_es_alias_appx` en las dos direcciones — un fichero de 0 bytes fabricado tiene"
+        " que dar True y `sys.executable` tiene que dar False."
+        " · COARTADA: las cuatro se verificaron rompiendo el fuente a proposito y viendo la autoprueba"
+        " ponerse ROJA en las cuatro. Las aserciones piden la FRASE de cada rama y no el nombre del"
+        " cebo: pedir el nombre daba verde por el motivo equivocado —un cebo tampoco esta declarado,"
+        " asi que el bucle lo denunciaba como intruso— y con eso una rama entera podia estar muerta."),
     "registro-sin-caducados": ("no se muta creando un fichero: su rojo depende de la FECHA de hoy contra las de REGISTRO.md, no de que exista nada. Se pone rojo el solo cuando algo caduca, y solo pasa retirando lo caducado o renovando su fecha con señal de uso real."
         " · COARTADA: tests/test_registro_sin_caducados.py apunta `REGISTRO` a ficheros de pega "
         "y exige ROJO con una entrada vencida sin retirar, VERDE con la MISMA ya retirada, y ROJO "
@@ -723,7 +757,22 @@ SIN_MUTACION = {
     'inv-capa-normativa-declarado-en-el': 'no se muta creando un fichero: su aceptacion interroga el estado real del sistema (tareas programadas, logs, config, indices). Nacio ROJO —comprobado ejecutandolo— y lo escribio un esceptico independiente, no quien hara el trabajo.',
     'inv-capa-normativa-sin-pre-commit': 'no se muta creando un fichero: su aceptacion es un comando que interroga el estado real del sistema. Nacio ROJO y se comprobo EJECUTANDOLO desde este arbol el 2026-08-23, al re-ubicarla desde pw-ralph — alli su arreglo caia fuera del worktree y no habia forma de cerrarla.',
 }
+#: Comprobadores que `--verifica` muta FABRICANDO su artefacto: rojo -> se crea -> verde -> se
+#: borra -> rojo otra vez. Es mas fuerte que una exencion de `SIN_MUTACION`, porque no se cree la
+#: palabra de nadie: ve al comprobador cambiar de color en las dos direcciones.
 ARTEFACTOS = {
+    # El stub nombra los nueve checks porque eso es justo lo que la aceptacion exige. Si algun dia
+    # se anade un check a healthcheck.py, la aceptacion NO se entera a proposito (lleva los nueve
+    # congelados dentro): la promesa es sobre la decision, no sobre mantener un registro al dia.
+    "inv-para-que-el-healthcheck-si-el-tablero": [
+        ((RAIZ / "docs" / "decisiones" / "HEALTHCHECK_VS_TABLEROS.md").as_posix(),
+         chr(10).join((
+             "# Veredicto de laboratorio (lo fabrica --verifica y lo borra al terminar)",
+             "",
+             "HTTP Server, SQLite, LanceDB, Sync, Proyectos, Docs freshness,",
+             "Ultimo reindex, Procesos, Fuga AppX.",
+             ""))),
+    ],
 }
 def escaparate_sin_rutas_de_casa() -> tuple[bool, str]:
     """Ningun repo PUBLICO versiona la ruta de casa de G.
@@ -755,7 +804,42 @@ def escaparate_sin_rutas_de_casa() -> tuple[bool, str]:
     return True, (salida[-1].replace("VERDE: ", "") if salida else "sin rutas de casa")
 
 
+def piezas_compartidas_al_dia() -> tuple[bool, str]:
+    """Una pieza que vive en varios repos no puede quedarse atras en uno solo.
+
+    Cinco repos independientes comparten COPIAS del mismo arnes. Nada sabe que son la misma cosa:
+    git no las relaciona y ningun tablero las compara, asi que el unico vinculo es que alguien se
+    acuerde de que existen en plural.
+
+    MEDIDO el 2026-08-25: una comprobacion arreglada ese dia en capa-normativa y mcp_smart_context
+    NO llego a los otros tres. La anterior de la misma familia si estaba en todos — o sea que la
+    propagacion funciona cuando alguien se acuerda, y falla en silencio cuando no.
+
+    Y falla hacia el lado peligroso: el repo que se queda atras NO se pone rojo. Simplemente no
+    tiene el detector, asi que no detecta, y su tablero sigue verde diciendo que todo esta bien.
+
+    La lista de piezas se DERIVA de los ficheros (misma ruta en 2+ repos, con contenido parecido),
+    no se escribe: una lista a mano envejeceria igual que el problema que intenta resolver.
+    Delega en scripts/aceptaciones/piezas_compartidas_al_dia.py.
+    """
+    import subprocess
+    import sys
+    guion = RAIZ / "scripts" / "aceptaciones" / "piezas_compartidas_al_dia.py"
+    if not guion.is_file():
+        return False, "no existe " + guion.name
+    try:
+        r = subprocess.run([sys.executable, str(guion)], capture_output=True,
+                           timeout=900, cwd=str(RAIZ))
+    except subprocess.TimeoutExpired:
+        return False, "la comprobacion se cuelga (>15 min)"
+    salida = (r.stdout + r.stderr).decode("utf-8", "replace").strip().splitlines()
+    if r.returncode != 0:
+        return False, (salida[-1] if salida else "falla sin mensaje")[:260]
+    return True, (salida[-1].replace("VERDE: ", "") if salida else "todas al dia")
+
+
 COMPROBADORES = {
+    "piezas-compartidas-al-dia": piezas_compartidas_al_dia,
     "escaparate-sin-rutas-de-casa": escaparate_sin_rutas_de_casa,
     "canario-de-los-hooks": canario_de_los_hooks,
     "guardia-de-commit": guardia_de_commit,
@@ -786,6 +870,7 @@ COMPROBADORES = {
     "bug-check-sale-con-1": _fabrica_bug("bug-check-sale-con-1", *_BUGS["bug-check-sale-con-1"]),
     "sondas-miran-su-arbol": sondas_miran_su_arbol,
     'inv-capa-normativa-sin-pre-commit': _fabrica_inv('inv-capa-normativa-sin-pre-commit', *_INV['inv-capa-normativa-sin-pre-commit']),
+    'inv-para-que-el-healthcheck-si-el-tablero': _fabrica_inv('inv-para-que-el-healthcheck-si-el-tablero', *_INV['inv-para-que-el-healthcheck-si-el-tablero']),
 }
 
 
