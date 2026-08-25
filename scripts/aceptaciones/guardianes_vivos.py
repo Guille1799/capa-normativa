@@ -65,6 +65,25 @@ _RESULTADOS_TOLERADOS = {
 #: paginacion es demasiado pequeño». Eso si es muerte: el guardian no llego a hacer su trabajo.
 _UMBRAL_INFRAESTRUCTURA = 0x80000000
 
+#: Los códigos de Windows que ya se han visto aquí, traducidos a qué hacer. Un hexadecimal a pelo
+#: obliga a buscarlo fuera, y mientras tanto un guardián que NO ARRANCA y uno que REVIENTA se ven
+#: idénticos en el tablero — que es exactamente lo que pasó el 2026-08-25.
+#:
+#: No se traduce el catálogo entero de Windows a propósito: sólo lo que se ha visto de verdad en
+#: esta máquina, con lo aprendido al diagnosticarlo. Una tabla copiada de internet envejece y no
+#: sabe nada de este caso concreto.
+_CAUSAS_CONOCIDAS = {
+    0x800710E0: (". Ese codigo NO es un fallo del programa: significa que Windows SE NEGO a "
+                 "lanzarla. La causa medida el 2026-08-25 en esta maquina es "
+                 "`DisallowStartIfOnBatteries`, el valor por DEFECTO al crear una tarea: a "
+                 "bateria no arranca. 10 de los 12 guardianes lo tenian puesto"),
+    0xC0000005: (". ACCESS_VIOLATION: reventon nativo. Sospechar de una libreria nativa tocando "
+                 "algo mientras otro proceso lo reescribe — o de `StopIfGoingOnBatteries`, que "
+                 "MATA la tarea a media ejecucion al desenchufar y deja su `finally` sin correr"),
+    0xC0000409: (". STACK_BUFFER_OVERRUN: el proceso se abortó a si mismo. Aqui lo produjo abrir "
+                 "LanceDB mientras se reescribia el indice"),
+}
+
 #: ⚠️ CORRECCION del 2026-08-24, medida el mismo dia que se escribio este comprobador.
 #:
 #: La primera version daba por MUERTO cualquier resultado distinto de 0, y con eso llamaba muertos
@@ -140,7 +159,8 @@ def muertos(tareas=None, hoy=None) -> list[tuple[str, str]]:
             continue
         if res >= _UMBRAL_INFRAESTRUCTURA:
             fuera.append((nombre, f"NO llego a terminar: {res} (0x{res & 0xFFFFFFFF:08X}) lo puso "
-                                  f"Windows, no el programa"))
+                                  f"Windows, no el programa"
+                                  + _CAUSAS_CONOCIDAS.get(res & 0xFFFFFFFF, "")))
         # Un codigo pequeño lo eligio el programa: es un hallazgo suyo, no su muerte.
     return fuera
 
