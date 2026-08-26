@@ -16,37 +16,49 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "src"))
 
 
 @pytest.fixture(autouse=True, scope="session")
-def _subprocesos_con_entrada_valida():
-    """Ningún subproceso de la suite hereda la entrada estándar del que lanzó pytest.
+def _subprocesos_con_descriptores_validos():
+    """Ningún subproceso de la suite hereda los descriptores del proceso que lanzó pytest.
 
-    ## El fallo, medido el 2026-08-25
+    ## El fallo, medido el 2026-08-25 y REMEDIDO el 2026-08-26
 
     La suite dio **60 fallos y 20 errores**. No había ninguna regresión: los 13 ficheros de tests
     que lanzan procesos morían todos con
 
         OSError: [WinError 6] The handle is invalid
 
-    antes de ejecutar nada. La consola desde la que se lanzó pytest tenía la entrada estándar en un
-    estado que Windows no puede duplicar para un hijo, y `subprocess` falla al preparar los
-    descriptores — o sea **antes** de arrancar el programa. Con una entrada válida: 634 pasan, 0
-    fallan.
+    en `Popen._make_inheritable`, o sea **antes** de arrancar el programa: Windows no puede
+    duplicar para el hijo un descriptor que el padre tiene en un estado raro.
 
-    Lo peligroso no es perder una hora: es que 60 rojos falsos y una regresión de verdad **se ven
-    exactamente igual**. Un instrumento que miente así entrena a desconfiar de los rojos, y ése es
-    el camino por el que una suite acaba ignorada.
+    ⚠️ La primera versión de este fixture (2026-08-25) sólo rellenaba `stdin`, y **no bastaba**.
+    Medido el 2026-08-26 sobre `tests/test_secretos.py`: **7 corridas rojas de 10**, con `stdin`
+    ya en DEVNULL y la traza señalando el duplicado de OTRO descriptor. Los tres se heredan; cerrar
+    uno deja los otros dos abiertos. La pista está en el reloj: las corridas malas duran 0,2-0,7 s
+    y las buenas 2,0 s — una suite ocho veces más rápida no está pasando más rápido, no está
+    corriendo.
+
+    ## Por qué esto es grave y no una molestia
+
+    El gate de `scripts/ralph.sh` es exactamente `pytest tests/ -q`, y **revierte el commit si no
+    pasa**. Con 7 de cada 10 corridas rojas por un artefacto, el bucle autónomo deshace trabajo
+    correcto la mayoría de las noches y lo apunta como «la tarea no vale». Un instrumento que
+    miente así no sólo pierde tiempo: fabrica conclusiones falsas sobre el trabajo hecho.
 
     ## Por qué aquí y no en cada llamada
 
-    Se podría poner `stdin=DEVNULL` en las trece. Pero entonces la regla vive en trece sitios y el
-    test número catorce que alguien escriba mañana no la tendrá — y fallará por esto, no por lo que
-    prueba. Aquí se arregla en un sitio y **no se puede olvidar**, que es la diferencia entre
-    detectar un fallo e impedirlo.
+    Se podría poner `stdin=DEVNULL, stdout=PIPE, stderr=PIPE` en las trece. Pero entonces la regla
+    vive en trece sitios y el test número catorce que alguien escriba mañana no la tendrá — y
+    fallará por esto, no por lo que prueba. Aquí se arregla en un sitio y **no se puede olvidar**.
 
-    ## Lo que NO toca
+    ## Lo que NO toca, y por qué `run` y `Popen` no se tratan igual
 
-    Si la llamada ya trae `stdin` o `input`, se respeta tal cual: hay tests que alimentan al
-    proceso a propósito —los del canario de hooks le dan cargas envenenadas— y pisarles la entrada
-    los rompería de verdad. Sólo se rellena cuando no se dijo nada.
+    Si la llamada ya trae `stdin`, `input`, `stdout`, `stderr` o `capture_output`, se respeta tal
+    cual: hay tests que alimentan al proceso a propósito —los del canario de hooks le dan cargas
+    envenenadas— y otros que leen su salida. Sólo se rellena lo que nadie dijo.
+
+    `run` recibe PIPE y `Popen` recibe DEVNULL, y la asimetría es deliberada: `run` lee las
+    tuberías él mismo, así que PIPE es seguro y además deja la salida dentro de
+    `CalledProcessError` cuando `check=True`. En `Popen` no hay quien las lea, y una tubería que
+    nadie vacía es un cuelgue esperando a un proceso hablador.
     """
     run_original = subprocess.run
     popen_original = subprocess.Popen
@@ -54,12 +66,19 @@ def _subprocesos_con_entrada_valida():
     def run(*a, **kw):
         if "stdin" not in kw and "input" not in kw:
             kw["stdin"] = subprocess.DEVNULL
+        if not ({"stdout", "stderr", "capture_output"} & set(kw)):
+            kw["stdout"] = subprocess.PIPE
+            kw["stderr"] = subprocess.PIPE
         return run_original(*a, **kw)
 
     class Popen(popen_original):
         def __init__(self, *a, **kw):
             if "stdin" not in kw:
                 kw["stdin"] = subprocess.DEVNULL
+            if "stdout" not in kw:
+                kw["stdout"] = subprocess.DEVNULL
+            if "stderr" not in kw:
+                kw["stderr"] = subprocess.DEVNULL
             super().__init__(*a, **kw)
 
     subprocess.run = run
