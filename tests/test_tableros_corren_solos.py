@@ -15,6 +15,14 @@ import datetime as dt
 import importlib.util
 from pathlib import Path
 
+import importlib.util as _ilu
+_spec = _ilu.spec_from_file_location('_ronda_suelo',
+    str(__import__('pathlib').Path(__file__).resolve().parent.parent / 'scripts'
+        / 'ronda_de_tableros.py'))
+_m = _ilu.module_from_spec(_spec); _spec.loader.exec_module(_m)
+#: El suelo se LEE de la ronda, no se copia: copiarlo es como nacieron estos fallos.
+SUELO = _m.SUELO_TABLEROS
+
 RAIZ = Path(__file__).resolve().parent.parent
 GUION = RAIZ / "scripts" / "aceptaciones" / "tableros_corren_solos.py"
 
@@ -77,14 +85,16 @@ def test_registrada_pero_de_hace_un_mes_es_rojo():
 
 
 def _informe_sano() -> dict:
-    """Un informe de ronda recien escrito por la tarea, con los siete tableros legibles."""
+    """Un informe de ronda recien escrito por la tarea, con TODOS los tableros legibles."""
     return {
         "terminado": dt.datetime.now().strftime("%Y-%m-%dT%H:%M:%S"),
         "lanzador": "tarea-programada",
-        "declarados": 7, "corridos": 7,
+        # Atados al SUELO real: el 2026-08-26 entro `jh-ralph` como octavo tablero y estos
+        # sietes tumbaron tres tests. Un fixture con el numero dentro envejece en silencio.
+        "declarados": SUELO, "corridos": SUELO,
         "tableros": [{"nombre": "t" + str(i), "estado": "ok", "verdes": 3, "rojos": [],
                       "verifica": {"exit": 0, "duracion_s": 1.0, "resumen": "ok"}}
-                     for i in range(7)],
+                     for i in range(SUELO)],
         "huerfanos": [], "ausentes": [],
     }
 

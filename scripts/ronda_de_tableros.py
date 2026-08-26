@@ -83,7 +83,7 @@ VENTANA_H = 48
 #: Cuántos tableros tiene que haber corrido la ronda para que valga. Es un SUELO, no un adorno:
 #: sin él, una ronda que descubre cero tableros escribe «0 rojos» y saldría verde. Aprobar en
 #: vacío es el modo de fallo más caro de un guarda, porque su silencio se lee como buenas noticias.
-SUELO_TABLEROS = 7
+SUELO_TABLEROS = 8
 
 #: Tiempo máximo por tablero. El de `capa-normativa` corre doce nodos de pytest, así que hay que
 #: ser generoso; pero un tablero colgado no puede secuestrar la ronda entera.
@@ -110,6 +110,11 @@ _TABLEROS = (
     ("mcp_smart_context", "mcp_smart_context", "venv/Scripts/python.exe"),
     ("ponerse_wenorro", "ponerse_wenorro/backend", "venv/Scripts/python.exe"),
     ("pw-ralph", "pw-ralph/backend", "venv/Scripts/python.exe"),
+    # Anadido el 2026-08-26. Faltaba, y no era inocuo: `jh-ralph` lleva corriendo cada
+    # noche a las 02:00 desde hace dias, con 8 comprobadores propios que NADIE miraba.
+    # Se declara el worktree del BUCLE, no el checkout humano, igual que `eu-ralph` y
+    # `pw-ralph`. Sin interprete propio: `jh-ralph` no tiene venv.
+    ("jh-ralph", "jh-ralph", None),
 )
 
 #: Repos enteros que quedan fuera de la ronda, **con todos sus worktrees**. Se excluye por REPO y
@@ -119,8 +124,16 @@ _TABLEROS = (
 #: de carpeta habría producido un rojo falso cada vez que alguien abre una rama de trabajo, y un
 #: rojo falso recurrente es exactamente cómo se aprende a ignorar los avisos.
 _REPOS_NO_VIGILADOS = {
-    "JobHunter": ("proyecto sin bucle ni Ralph vigilándolo; G no lo incluyó en los siete. Abre "
-                  "worktrees a menudo (5 el 2026-08-23), y todos traen el tablero dentro."),
+    "JobHunter": ("su tablero lo corre `jh-ralph`, que es el worktree del bucle y el que entra "
+                  "en la ronda — igual que `eu-ralph` y `pw-ralph`. El REPO sigue excluido para "
+                  "que los `JobHunter-*` que G abre a menudo (5 el 2026-08-23) no salgan como "
+                  "huérfanos; declarar un tablero no choca con excluir su repo, porque "
+                  "`vigilados` sale de _TABLEROS sin consultar esta lista y el barrido de "
+                  "huérfanos salta lo declarado. ⚠️ El motivo anterior decía «proyecto sin bucle "
+                  "ni Ralph vigilándolo» y era FALSO desde que nació `ralph_jh.cmd`: la frase "
+                  "sobrevivió al hecho. Medido el 2026-08-26 — tarea programada `ralph-jh` a las "
+                  "02:00, 7 commits esa noche, MAX=6 con racha segura CERO, y ninguna de las tres "
+                  "guardas mirándolo."),
 }
 
 #: Carpetas sueltas que quedan fuera aunque su repo SÍ esté vigilado por otra carpeta. Aquí no

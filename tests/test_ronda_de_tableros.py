@@ -73,12 +73,15 @@ def _informe(**cambios) -> dict:
         "terminado": (AHORA - timedelta(minutes=10)).strftime("%Y-%m-%dT%H:%M:%S"),
         "lanzador": "tarea-programada",
         "duracion_s": 1800.0,
-        "declarados": 7,
-        "corridos": 7,
+        # Atados al SUELO real y no a un 7 escrito a mano: el 2026-08-26 entro `jh-ralph` como
+        # octavo tablero y estos tres sietes tumbaron ONCE tests a la vez. Un fixture con el
+        # numero dentro es otra lista que envejece en silencio.
+        "declarados": RONDA.SUELO_TABLEROS,
+        "corridos": RONDA.SUELO_TABLEROS,
         "tableros": [{"nombre": "t" + str(i), "estado": "ok", "verdes": 3, "rojos": ["r" + str(i)],
                       "cumplidas": [], "exit": 1, "duracion_s": 10.0, "detalle": "",
                       "verifica": {"exit": 0, "duracion_s": 2.0, "resumen": "3/3 verificados"}}
-                     for i in range(7)],
+                     for i in range(RONDA.SUELO_TABLEROS)],
         "huerfanos": [],
         "ausentes": [],
         "nuevos_rojos": {},
@@ -97,7 +100,7 @@ def test_verde_cuando_todo_esta_en_su_sitio():
     """Sin este, los demás no prueban nada: un comprobador que jamás se pone verde no mide."""
     ok, motivo = RONDA.veredicto(_informe(), AHORA, ARRANQUE_FRESCO)
     assert ok, motivo
-    assert "7 tableros" in motivo
+    assert str(RONDA.SUELO_TABLEROS) + " tableros" in motivo
 
 
 def test_rojo_sin_informe():
@@ -177,7 +180,8 @@ def test_verde_aunque_todos_los_tableros_esten_rojos():
         t["rojos"] = ["a", "b", "c"]
     ok, motivo = RONDA.veredicto(muy_rojo, AHORA, ARRANQUE_FRESCO)
     assert ok, motivo
-    assert "21 rojo(s) recogidos" in motivo
+    # 3 rojos por tablero: el total sale del SUELO, no de un 21 escrito a mano.
+    assert str(3 * RONDA.SUELO_TABLEROS) + " rojo(s) recogidos" in motivo
 
 
 def test_rojo_si_no_llego_a_correr_verifica():
@@ -482,7 +486,8 @@ def test_un_tablero_declarado_que_desaparece_sale_como_ausente(tmp_path):
     raiz = _arbol_de_mentira(tmp_path, subrutas)
     m = _cargar(RONDA_PROYECTOS=raiz)
     vigilados, ausentes, _ = m.descubrir()
-    assert len(vigilados) == 6
+    # Se quita UNO de los declarados, asi que quedan todos menos ese.
+    assert len(vigilados) == len(RONDA._TABLEROS) - 1
     assert ausentes == ["cn-ralph (cn-ralph)"]
 
 
@@ -637,11 +642,11 @@ def _ronda_de_mentira(tmp_path, rojos, siguen_rojos):
 
 
 def test_la_ronda_entera_confirma_un_rojo_nuevo_y_avisa(tmp_path):
-    """Camino completo: 7 tableros, aparece un rojo, se repregunta, insiste, se avisa."""
+    """Camino completo: TODOS los tableros, aparece un rojo, se repregunta, insiste, se avisa."""
     codigo, informe, avisos = _ronda_de_mentira(
         tmp_path, rojos=["nuevo"], siguen_rojos=["nuevo"])
     assert codigo == 0, "que haya rojos no es un fallo de la ronda"
-    assert informe["corridos"] == 7
+    assert informe["corridos"] == len(RONDA._TABLEROS)
     assert informe["nuevos_rojos"] == {n: ["nuevo"] for n, _, _ in RONDA._TABLEROS}
     assert not informe["inestables"]
     assert len(avisos) == 1 and "ROJO(S) NUEVO(S)" in avisos[0][0]
