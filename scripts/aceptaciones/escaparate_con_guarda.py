@@ -122,15 +122,59 @@ def _guarda_de(repo: Path) -> Path | None:
 
 
 def _arranca(repo: Path, guarda: Path) -> tuple[bool, str]:
-    """La guarda se EJECUTA de verdad. Que el fichero exista no prueba que corra."""
-    r = subprocess.run([_shell(), str(guarda.resolve())], cwd=str(repo), capture_output=True,
-                       text=True, encoding="utf-8", errors="replace", timeout=300)
-    salida = (r.stdout + r.stderr)
-    if r.returncode == 127 or "not found" in salida.lower():
-        return False, f"no llega a arrancar (exit {r.returncode})"
-    if "falta" in salida and "escaparate" in salida.lower():
-        return False, "arranca pero no encuentra el guion compartido"
-    return True, ""
+    """La guarda se EJECUTA de verdad. Que el fichero exista no prueba que corra.
+
+    ## No condenar en vacío — el espejo de «no aprobar en vacío»
+
+    Este comprobador salió señalado el 2026-08-29 en el informe de la ronda: *«sale rojo y al
+    repreguntar está verde»*. Un comprobador que cambia de color según la carga está roto aunque
+    su promesa esté bien, porque entonces su rojo deja de ser información.
+
+    La causa está en el mismo sitio que el resto de sustos de estos días: **en esta máquina, bajo
+    carga, un proceso puede no llegar a lanzarse**. La ronda corre siete tableros a la vez y éste
+    lanza un shell por cada repo público. Cuando el lanzamiento falla, `subprocess` levanta un
+    `OSError` ANTES de ejecutar nada.
+
+    Y la versión anterior traducía eso a «la guarda no llega a arrancar»: una acusación contra la
+    guarda por un fallo del que la mide.
+
+    La regla, escrita al revés de como suele decirse: **no haber podido medir no es «está mal»,
+    igual que no es «está bien».** Las dos traducciones mienten; hay que decir que no se midió.
+
+    ## Por qué se reintenta antes de condenar
+
+    Un fallo transitorio de lanzamiento no es evidencia sobre la guarda, así que no puede
+    convertirse en veredicto a la primera. Se reintenta una vez y sólo se condena si falla las
+    dos. Mismo patrón que ya usa el censo de guardianes con `Get-ScheduledTask`, que devuelve «A
+    general error occurred» de vez en cuando sin que pase nada.
+    """
+    ultimo = ""
+    for _ in (1, 2):
+        try:
+            r = subprocess.run([_shell(), str(guarda.resolve())], cwd=str(repo),
+                               capture_output=True, text=True, encoding="utf-8",
+                               errors="replace", timeout=300, stdin=subprocess.DEVNULL)
+        except OSError as e:
+            # No llego a EJECUTARSE. Eso no dice nada sobre la guarda.
+            ultimo = f"no se pudo lanzar el shell ({type(e).__name__}: {e})"
+            continue
+        except subprocess.TimeoutExpired:
+            ultimo = "la guarda se cuelga (>5 min)"
+            continue
+
+        salida = (r.stdout + r.stderr)
+        if r.returncode == 127 or "not found" in salida.lower():
+            ultimo = f"no llega a arrancar (exit {r.returncode})"
+            continue
+        if "falta" in salida and "escaparate" in salida.lower():
+            # Este SI es un veredicto sobre la guarda: arranco, y dijo que le falta su guion.
+            # Reintentar no cambiaria nada, asi que se responde a la primera.
+            return False, "arranca pero no encuentra el guion compartido"
+        return True, ""
+
+    if ultimo.startswith("no se pudo lanzar"):
+        raise NoSePudoMirar(f"{repo.name}: {ultimo}, en dos intentos")
+    return False, f"{ultimo} (dos intentos)"
 
 
 def escaparate_con_guarda() -> tuple[bool, str]:
@@ -141,6 +185,12 @@ def escaparate_con_guarda() -> tuple[bool, str]:
         pubs = publicos()
     except NoSePudoMirar as e:
         return False, f"no se pudo mirar ({e}). Eso NO es «todos tienen guarda»."
+    except OSError as e:
+        # No es solo `_arranca` quien lanza procesos: ENUMERAR los repos tambien pregunta a `git`
+        # y a `gh` una vez por repo. Bajo carga, cualquiera de esas llamadas puede no llegar a
+        # lanzarse — y entonces esto reventaba con una traza en vez de dar un veredicto.
+        return False, (f"no se pudo ni enumerar los repos ({type(e).__name__}: {e}). "
+                       "Eso NO es «todos tienen guarda»: es no haber podido mirar.")
     if not pubs:
         return False, "cero repos publicos detectados: sospechoso, no limpio"
 
@@ -158,6 +208,9 @@ def escaparate_con_guarda() -> tuple[bool, str]:
         # Un comprobador que lanza no dice nada: el tablero enseña una traza donde deberia haber un
         # veredicto. Aqui se traduce a ROJO CON MOTIVO, que es lo unico accionable.
         return False, f"no se pudo ejecutar las guardas ({e}). Eso NO es «todas arrancan»."
+    except OSError as e:
+        return False, (f"no se pudo ejecutar las guardas ({type(e).__name__}: {e}). "
+                       "Eso NO es «todas arrancan»: es no haber podido mirar.")
 
     if sin or rotas:
         partes = []
