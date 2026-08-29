@@ -63,6 +63,31 @@ _REPOS = ("capa-normativa", "mcp_smart_context", "eu-political-observatory",
 #: de estilo: es de comportamiento, y se reporta sin grados.
 
 
+#: Divergencias DELIBERADAS, con su motivo escrito. Mismo trato que `SIN_MUTACION`: una exención
+#: escrita se revisa; una implícita se hereda.
+#:
+#: Existe porque sin ella hay rojos que no se pueden cerrar NUNCA. Y un rojo permanente no informa:
+#: entrena a mirar para otro lado, que es como muere un tablero.
+#:
+#: ⚠️ Lo que NO vale aquí es «son distintos y ya». Hace falta decir **por qué las dos versiones son
+#: correctas**, o si una lo es y la otra no, arreglarla en vez de apuntarla.
+_DIVERGENCIAS_ACEPTADAS = {
+    "_verifica": (
+        "la misma invariante, en dos sitios distintos y a proposito. mcp_smart_context la mete "
+        "DENTRO del gate: `_verifica` exige que el motivo de cada exencion nombre un .py que "
+        "exista. capa-normativa la saca a la SUITE, y mas estricta — `tests/"
+        "test_coartada_de_los_no_mutables.py` la parte en tres exigencias (que nombre una "
+        "coartada, que la coartada EXISTA, y que HABLE del mecanismo que cubre) y ademas vigila "
+        "que la lista no nombre fantasmas ni la cuenta salga negativa. "
+        "Portar la version de mcp aqui duplicaria una guarda que ya esta, y en el sitio donde se "
+        "ejecuta con todo lo demas. Medido el 2026-08-29: de las 31 exenciones de capa-normativa, "
+        "la comprobacion de mcp tumbaria UNA (`revista-de-runtimes`, cuya coartada es una "
+        "autoprueba dentro del propio guion y no un fichero .py), y las de capa-normativa la dan "
+        "por buena a proposito."
+    ),
+}
+
+
 class NoSePudoMirar(Exception):
     """No se pudo leer algo. Nunca se traduce a «está todo al día»."""
 
@@ -228,7 +253,10 @@ def desfases() -> list[tuple[str, str, str, list[str], list[str]]]:
                 #
                 # Cuando SI hay mayoria se nombra el grupo entero, no un representante: saber que
                 # dos repos coinciden y otros dos se salieron dice de que lado esta el arreglo.
-                clase = "divergida" if len(mayoria) >= 2 else "sin referencia"
+                if nombre in _DIVERGENCIAS_ACEPTADAS:
+                    clase = "divergencia aceptada"
+                else:
+                    clase = "divergida" if len(mayoria) >= 2 else "sin referencia"
                 fuera.append((rel, nombre, clase, sorted(mayoria), divergidas))
     return fuera
 
@@ -244,7 +272,8 @@ def piezas_compartidas_al_dia() -> tuple[bool, str]:
     # `sin adoptar` y `sin referencia` comparten destino —se informan, no ponen rojo— pero por
     # motivos distintos, y por eso se cuentan aparte: una es «este repo no usa esa facilidad» y la
     # otra es «hay dos versiones y nadie ha decidido cual vale». Fundirlas escondería la segunda.
-    sin_adoptar = [x for x in atrasadas if x[2] in ("sin adoptar", "sin referencia")]
+    sin_adoptar = [x for x in atrasadas if x[2] in ("sin adoptar", "sin referencia",
+                                                    "divergencia aceptada")]
 
     # `sin adoptar` se INFORMA pero no pone rojo: es una diferencia de diseño entre repos, y
     # decidir si uno adopta una facilidad del otro es criterio. Un rojo que no se puede cerrar sin
@@ -287,7 +316,8 @@ if __name__ == "__main__":
         for rel, funcion, que, tienen, otros in desfases():
             print(f"  [{que}] {rel} :: {funcion}")
             print(f"      la tienen igual: {', '.join(tienen)}")
-            etiqueta = {"sin referencia": "otra version en",
+            etiqueta = {"divergencia aceptada": "distinta A PROPOSITO en",
+                        "sin referencia": "otra version en",
                         "sin propagar": "le falta a",
                         "sin adoptar": "no usa esa facilidad",
                         "divergida": "divergida en"}[que]

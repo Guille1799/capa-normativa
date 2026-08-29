@@ -146,6 +146,44 @@ def test_mismo_nombre_pero_otro_fichero_no_es_la_misma_pieza(tmp_path):
     assert ok, "dos ficheros que solo comparten NOMBRE se han comparado como si fueran la pieza"
 
 
+def test_una_divergencia_ACEPTADA_no_pone_rojo(tmp_path):
+    """Sin esto hay rojos que no se pueden cerrar nunca, y un rojo permanente entrena a mirar para
+    otro lado — que es como muere un tablero.
+
+    El caso real del 2026-08-29: `_verifica` difiere entre capa-normativa y mcp porque cada uno
+    pone la MISMA invariante en un sitio distinto (mcp dentro del gate, capa-normativa en tres
+    tests de la suite). Las dos versiones son correctas.
+    """
+    mod = _modulo()
+    distinta = _CUERPO.replace("return 2", 'return 2 + len("otra version deliberada")')
+    _montar(mod, tmp_path, {"uno": _CUERPO, "dos": _CUERPO, "tres": distinta})
+
+    ok, _ = mod.piezas_compartidas_al_dia()
+    assert not ok, "sin declararla, la divergencia tiene que poner ROJO"
+
+    mod._DIVERGENCIAS_ACEPTADAS = {"comun_dos": "las dos son correctas, por este motivo escrito"}
+    ok, msg = mod.piezas_compartidas_al_dia()
+    assert ok, f"declarada como aceptada, no deberia poner rojo: {msg}"
+    assert "sin poner rojo" in msg, "y aun asi tiene que SEGUIR APARECIENDO, no desaparecer"
+
+
+def test_las_divergencias_aceptadas_no_nombran_fantasmas():
+    """Una exencion a una funcion que ya no diverge —o que ya no existe— no protege nada y
+    despista. Mismo trato que el resto de listas de tolerancia de la casa."""
+    mod = _modulo()
+    declaradas = set(getattr(mod, "_DIVERGENCIAS_ACEPTADAS", {}))
+    if not declaradas:
+        pytest.skip("no hay divergencias aceptadas que comprobar")
+    try:
+        vivas = {f for _, f, que, _, _ in mod.desfases() if que == "divergencia aceptada"}
+    except mod.NoSePudoMirar as e:
+        pytest.skip(f"no se pudo mirar los repos reales: {e}")
+    fantasmas = sorted(declaradas - vivas)
+    assert not fantasmas, (
+        "declaradas como divergencia aceptada pero ya no divergen (o ya no estan): "
+        + ", ".join(fantasmas) + ". Se retiran: una exencion que sobra parece revisada.")
+
+
 def test_si_no_se_puede_mirar_es_rojo(tmp_path):
     """No haber podido mirar nunca es «todo al dia». La trampa de aprobar en vacio."""
     mod = _modulo()
