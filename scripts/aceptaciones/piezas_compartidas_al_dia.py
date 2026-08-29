@@ -85,6 +85,16 @@ _DIVERGENCIAS_ACEPTADAS = {
         "autoprueba dentro del propio guion y no un fichero .py), y las de capa-normativa la dan "
         "por buena a proposito."
     ),
+    "main": (
+        "capa-normativa imprime con un ✅ las promesas ya CUMPLIDAS y retiradas del tablero, para "
+        "que retirar una no sea lo mismo que borrarla. Los otros repos no tienen esa diferencia "
+        "porque NO TIENEN la tabla `CUMPLIDAS` — medido el 2026-08-29: cero entradas en eu y en "
+        "mcp. Asi que no es que su `main` se haya quedado atras: es que no han adoptado la "
+        "facilidad, y copiar las tres lineas alli solo añadiria codigo que nunca entra. "
+        "⚠️ Esto NO es «da igual»: que una promesa cumplida siga visible es util, y adoptarlo en "
+        "los otros dos merece la pena. Pero es ADOPTAR una facilidad, con su tabla, no propagar "
+        "una linea — y eso es una decision de cada tablero."
+    ),
 }
 
 
