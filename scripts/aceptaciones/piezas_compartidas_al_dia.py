@@ -43,11 +43,28 @@ divergía, así que cerrarlo costó **cero rojos nuevos**. Muerde el día que do
 umbral con distinto número — un `_TOPE_SIN_COMPROBADOR` a 28 aquí y a 40 allí —, que es justo la
 clase de desfase que no pone rojo a nadie por su cuenta.
 
-## La trampa prohibida
+## La trampa prohibida, y su versión silenciosa
 
-Si no se puede leer un repo, esto es **ROJO por no haber podido mirar**. Y si no se descubre
-ninguna pieza compartida, también: los cinco repos comparten el arnés, así que cero es un
-resultado sospechoso, no una máquina limpia.
+Si no se puede leer un repo entero, esto es **MUDO**: no se ha mirado, y no mirar no es «todo al
+día». Si no se descubre ninguna pieza compartida, en cambio, es **ROJO** — los cinco repos
+comparten el arnés, así que cero es un resultado imposible, o sea haber mirado y ver algo que no
+cuadra.
+
+Y hay una versión mucho peor de la misma trampa, tapada hasta el 2026-08-30: **saltarse una copia
+suelta en silencio**. Había dos rendijas, y las dos empujaban al verde —
+
+- `except OSError: continue` sacaba esa copia de la comparación sin decirlo;
+- `_funciones()` traducía un `SyntaxError` a `{}`, o sea *«este módulo no tiene funciones»*: una
+  mentira con forma de dato.
+
+Menos copias comparadas ⇒ menos desacuerdos encontrados ⇒ más verde. Y no hacía falta ningún caso
+exótico: un fichero a medio escribir por otro proceso, uno sin permisos o uno con la codificación
+rota caían todos por ahí. Ahora se cuentan, y si no hay ningún desfase **pero** quedaron copias sin
+leer, el veredicto es MUDO y dice cuáles.
+
+El orden entre las dos cosas importa: **un desfase real manda sobre una copia no leída** —si ya hay
+una pieza divergida, que además falten copias no rebaja nada—, **pero la duda manda sobre el
+verde**.
 """
 from __future__ import annotations
 
@@ -249,7 +266,7 @@ def _ajustes(texto: str) -> dict[str, str]:
     return fuera
 
 
-def desfases() -> list[tuple[str, str, str, list[str], list[str]]]:
+def desfases() -> tuple[list, list]:
     """(ruta, función, qué pasa, quién la tiene, a quién le falta o quién divergió).
 
     ## Por qué la unidad es la FUNCIÓN y no el fichero
@@ -285,6 +302,15 @@ def desfases() -> list[tuple[str, str, str, list[str], list[str]]]:
                             "el arnes, asi que cero es sospechoso")
 
     fuera = []
+    #: Copias que NO se han podido leer o parsear. MEDIDO el 2026-08-30: sin esta lista, un
+    #: `except OSError: continue` dejaba la copia fuera de la comparacion en silencio, y
+    #: `_funciones()` devolvia `{}` ante un fichero que no compila — o sea «este modulo no tiene
+    #: funciones», que es una MENTIRA con forma de dato. Las dos rendijas empujaban hacia el
+    #: verde: menos copias comparadas, menos desacuerdos encontrados.
+    #:
+    #: Y no hacia falta ningun caso exotico para provocarlo. Un fichero a medio escribir por otro
+    #: proceso, uno con permisos, o uno con la codificacion rota caen todos por aqui.
+    ciegos: list[str] = []
     for rel, repos_con in sorted(compartidas.items()):
         funcs: dict[str, dict[str, str]] = {}
         # Que nombres de esta ruta son AJUSTES y no funciones. Hace falta mas abajo, porque la
@@ -293,7 +319,15 @@ def desfases() -> list[tuple[str, str, str, list[str], list[str]]]:
         for repo in repos_con:
             try:
                 texto = (repo / rel).read_text(encoding="utf-8", errors="replace")
-            except OSError:
+            except OSError as e:
+                ciegos.append(f"{repo.name}/{rel} ({type(e).__name__})")
+                continue
+            # Se comprueba que compila ANTES de extraer nada: `_funciones()` traduce un
+            # SyntaxError a `{}`, y ahi es indistinguible de un modulo legitimamente vacio.
+            try:
+                ast.parse(texto)
+            except SyntaxError as e:
+                ciegos.append(f"{repo.name}/{rel} (no compila, linea {e.lineno})")
                 continue
             # Un modulo no puede tener una funcion y un ajuste con el mismo nombre —el segundo
             # pisaria al primero—, asi que fundirlos en un solo diccionario no puede perder nada.
@@ -380,14 +414,16 @@ def desfases() -> list[tuple[str, str, str, list[str], list[str]]]:
                 else:
                     clase = "divergida" if len(mayoria) >= 2 else "sin decidir"
                 fuera.append((rel, nombre, clase, sorted(mayoria), divergidas))
-    return fuera
+    return fuera, ciegos
 
 
-def piezas_compartidas_al_dia() -> tuple[bool, str]:
+def piezas_compartidas_al_dia() -> tuple[bool | None, str]:
+    """VERDE / ROJO / MUDO. Un desfase real manda sobre una copia no leida; la duda, sobre el
+    verde."""
     try:
-        atrasadas = desfases()
+        atrasadas, ciegos = desfases()
     except NoSePudoMirar as e:
-        return False, f"no se pudo mirar ({e}). Eso NO es «todo al dia»."
+        return None, f"no se pudo mirar ({e}). Eso NO es «todo al dia»."
 
     sin_propagar = [x for x in atrasadas if x[2] == "sin propagar"]
     # `divergida` y `sin decidir` van JUNTAS al rojo: en las dos la pieza EXISTE en dos o mas
@@ -414,8 +450,17 @@ def piezas_compartidas_al_dia() -> tuple[bool, str]:
         cola = (f" (aparte, sin poner rojo: {len(sin_adoptar)} pieza(s) que piden criterio y no "
                 f"automatismo{detalle_ref} — {', '.join(nombres[:4])})")
 
+    # El ORDEN importa y es la misma decision que en `escaparate-sin-rutas-de-casa`: un desfase
+    # REAL manda sobre una copia que no se pudo leer —si ya hay una pieza divergida, que ademas
+    # queden copias sin mirar no rebaja nada—, pero la duda manda sobre el VERDE.
+    if not sin_propagar and not divergidas and ciegos:
+        return None, (f"no se pudieron leer {len(ciegos)} copia(s), asi que NO se puede decir que "
+                      f"ninguna pieza se haya quedado atras — solo que no se vio en lo que si se "
+                      f"leyo: {'; '.join(ciegos[:4])}" + cola)
+
     if not sin_propagar and not divergidas:
-        return True, ("ninguna pieza compartida se ha quedado atras ni ha divergido" + cola)
+        return True, ("ninguna pieza compartida se ha quedado atras ni ha divergido, y se "
+                      "pudieron leer todas las copias" + cola)
 
     partes = []
     if sin_propagar:
@@ -446,10 +491,10 @@ def piezas_compartidas_al_dia() -> tuple[bool, str]:
 
 if __name__ == "__main__":
     ok, msg = piezas_compartidas_al_dia()
-    print(("VERDE: " if ok else "ROJO: ") + msg)
+    print(("MUDO: " if ok is None else "VERDE: " if ok else "ROJO: ") + msg)
     if not ok and "--detalle" in sys.argv:
         print()
-        for rel, funcion, que, tienen, otros in desfases():
+        for rel, funcion, que, tienen, otros in desfases()[0]:
             print(f"  [{que}] {rel} :: {funcion}")
             print(f"      la tienen igual: {', '.join(tienen)}")
             etiqueta = {"divergencia aceptada": "distinta A PROPOSITO en",
@@ -458,4 +503,4 @@ if __name__ == "__main__":
                         "sin adoptar": "no usa esa facilidad",
                         "divergida": "divergida en"}[que]
             print(f"      {etiqueta}: {', '.join(otros)}")
-    sys.exit(0 if ok else 1)
+    sys.exit(3 if ok is None else 0 if ok else 1)

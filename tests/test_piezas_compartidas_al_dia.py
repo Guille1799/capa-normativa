@@ -82,7 +82,7 @@ def test_rojo_cuando_un_TEST_se_queda_atras(tmp_path):
     assert not ok, "un test se ha quedado atras y ha salido VERDE"
     assert "tres" in msg
 
-    atrasadas = mod.desfases()
+    atrasadas = mod.desfases()[0]
     assert any(f == "test_solo_en_dos" and que == "sin propagar" and otros == ["tres"]
                for _, f, que, _, otros in atrasadas), \
         f"no nombra QUE falta ni DONDE: {atrasadas}"
@@ -101,7 +101,7 @@ def test_maquinaria_que_un_repo_no_usa_se_informa_pero_NO_pone_rojo(tmp_path):
     ok, msg = mod.piezas_compartidas_al_dia()
     assert ok, f"una pieza de maquinaria que un repo no usa ha puesto ROJO: {msg}"
     assert "sin poner rojo" in msg, f"tampoco la informa, o sea que se pierde: {msg}"
-    assert any(f == "solo_en_dos" and que == "sin adoptar" for _, f, que, _, _ in mod.desfases())
+    assert any(f == "solo_en_dos" and que == "sin adoptar" for _, f, que, _, _ in mod.desfases()[0])
 
 
 def test_rojo_cuando_una_copia_DIVERGE(tmp_path):
@@ -123,7 +123,7 @@ def test_rojo_cuando_una_copia_DIVERGE(tmp_path):
     assert not ok, "una copia ha divergido y ha salido VERDE"
     assert "DIVERGIDA" in msg.upper(), f"no distingue divergir de faltar: {msg}"
 
-    assert any(f == "comun_dos" and que == "divergida" for _, f, que, _, _ in mod.desfases()), \
+    assert any(f == "comun_dos" and que == "divergida" for _, f, que, _, _ in mod.desfases()[0]), \
         "no nombra la funcion que divergio"
 
 
@@ -165,7 +165,7 @@ def test_dos_copias_con_dos_versiones_es_ROJO_aunque_no_haya_mayoria(tmp_path):
     ok, msg = mod.piezas_compartidas_al_dia()
     assert not ok, f"dos versiones sin mayoria han salido VERDE: {msg}"
     assert "comun_dos" in msg, f"no nombra la pieza, asi que no hay nada que mirar: {msg}"
-    assert any(f == "comun_dos" and que == "sin decidir" for _, f, que, _, _ in mod.desfases()), \
+    assert any(f == "comun_dos" and que == "sin decidir" for _, f, que, _, _ in mod.desfases()[0]), \
         "no la clasifica como pendiente de decision"
 
 
@@ -237,7 +237,7 @@ def test_las_divergencias_aceptadas_no_nombran_fantasmas():
     if not declaradas:
         pytest.skip("no hay divergencias aceptadas que comprobar")
     try:
-        vivas = {f for _, f, que, _, _ in mod.desfases() if que == "divergencia aceptada"}
+        vivas = {f for _, f, que, _, _ in mod.desfases()[0] if que == "divergencia aceptada"}
     except mod.NoSePudoMirar as e:
         pytest.skip(f"no se pudo mirar los repos reales: {e}")
     fantasmas = sorted(declaradas - vivas)
@@ -283,8 +283,8 @@ def test_rojo_cuando_un_AJUSTE_compartido_lleva_otro_numero(tmp_path):
     assert not ok, f"un tope compartido con otro numero ha salido VERDE: {msg}"
     assert "_TOPE" in msg, f"no nombra el ajuste, asi que no hay nada que mirar: {msg}"
     assert any(f == "_TOPE" and que == "divergida" and otros == ["tres"]
-               for _, f, que, _, otros in mod.desfases()), \
-        f"no dice QUE ajuste ni DONDE se desvio: {mod.desfases()}"
+               for _, f, que, _, otros in mod.desfases()[0]), \
+        f"no dice QUE ajuste ni DONDE se desvio: {mod.desfases()[0]}"
 
 
 def test_un_REGISTRO_que_diverge_LEGITIMAMENTE_no_puede_ponerse_rojo(tmp_path):
@@ -312,7 +312,7 @@ def test_un_REGISTRO_que_diverge_LEGITIMAMENTE_no_puede_ponerse_rojo(tmp_path):
     ok, msg = mod.piezas_compartidas_al_dia()
     assert ok, ("un REGISTRO que diverge a proposito ha puesto ROJO: " + msg +
                 ". Es el falso positivo que hunde el tablero — el criterio esta mal.")
-    assert not any(f == "COMPROBADORES" for _, f, _, _, _ in mod.desfases()), \
+    assert not any(f == "COMPROBADORES" for _, f, _, _, _ in mod.desfases()[0]), \
         "ni siquiera deberia entrar en la lista: un dict es contenido, no un ajuste"
 
 
@@ -345,7 +345,7 @@ def test_un_AJUSTE_que_falta_se_informa_pero_NO_pone_rojo(tmp_path):
     ok, msg = mod.piezas_compartidas_al_dia()
     assert ok, f"un ajuste que un repo no usa ha puesto ROJO: {msg}"
     assert "sin poner rojo" in msg, f"tampoco lo informa, o sea que se pierde: {msg}"
-    assert any(f == "_TOPE" and que == "sin adoptar" for _, f, que, _, _ in mod.desfases()), \
+    assert any(f == "_TOPE" and que == "sin adoptar" for _, f, que, _, _ in mod.desfases()[0]), \
         "un ajuste ausente nunca es «sin propagar»: no hay sitio donde se le llame que lo exija"
 
 
@@ -377,5 +377,58 @@ def test_un_AJUSTE_llamado_test_algo_NO_se_trata_como_un_test(tmp_path):
                             "tres": _CUERPO})
     ok, msg = mod.piezas_compartidas_al_dia()
     assert ok, f"un ajuste ausente ha puesto ROJO solo por llamarse test_*: {msg}"
-    assert any(f == "test_datos" and que == "sin adoptar" for _, f, que, _, _ in mod.desfases()), \
+    assert any(f == "test_datos" and que == "sin adoptar" for _, f, que, _, _ in mod.desfases()[0]), \
         "el prefijo del nombre no puede decidir la clase de una pieza que es un ajuste"
+
+
+# ── las dos rendijas por las que se colaba un VERDE falso ────────────────────────────────────
+
+def test_una_copia_que_NO_COMPILA_da_MUDO_y_no_verde(tmp_path):
+    """MEDIDO el 2026-08-30: `_funciones()` traducia un SyntaxError a `{}`.
+
+    O sea «este modulo no tiene funciones» — una MENTIRA con forma de dato. Y empujaba al verde por
+    partida doble: menos funciones descubiertas, menos desacuerdos posibles. Un fichero a medio
+    escribir por otro proceso cae exactamente por ahi.
+    """
+    mod = _modulo()
+    _montar(mod, tmp_path, {"uno": _CUERPO, "dos": _CUERPO, "tres": _CUERPO})
+    (tmp_path / "tres" / "scripts" / "pieza.py").write_text(
+        "def comun_uno(:\n    esto no compila\n", encoding="utf-8")
+
+    ok, msg = mod.piezas_compartidas_al_dia()
+    assert ok is not True, "una copia ilegible se ha contado como copia al dia"
+    assert ok is None, f"deberia ser MUDO: no se ha podido comparar, no es que difiera. {msg}"
+    assert "no compila" in msg and "tres" in msg, (
+        f"tiene que decir CUAL no se pudo leer, o no hay nada que arreglar: {msg}")
+
+
+def test_una_copia_QUE_NO_SE_DEJA_LEER_da_MUDO(tmp_path, monkeypatch):
+    """La otra rendija: `except OSError: continue` sacaba la copia de la comparacion en silencio."""
+    mod = _modulo()
+    _montar(mod, tmp_path, {"uno": _CUERPO, "dos": _CUERPO, "tres": _CUERPO})
+
+    real = Path.read_text
+
+    def tres_no_se_deja(self, *a, **k):
+        if "tres" in str(self):
+            raise PermissionError("bloqueado por otro proceso")
+        return real(self, *a, **k)
+
+    monkeypatch.setattr(Path, "read_text", tres_no_se_deja)
+    ok, msg = mod.piezas_compartidas_al_dia()
+    assert ok is None, f"una copia que no se deja leer ha salido como todo al dia: {msg}"
+    assert "PermissionError" in msg
+
+
+def test_un_DESFASE_REAL_manda_sobre_una_copia_no_leida(tmp_path):
+    """El orden de las dos ramas. Si ya hay una pieza divergida, que ademas queden copias sin
+    mirar NO rebaja nada — al reves seria tapar un hallazgo probado con un «no estoy seguro»."""
+    mod = _modulo()
+    extra = _EXTRA.replace("solo_en_dos", "test_solo_en_dos")
+    _montar(mod, tmp_path, {"uno": _CUERPO + extra, "dos": _CUERPO + extra,
+                            "tres": _CUERPO, "cuatro": _CUERPO})
+    (tmp_path / "cuatro" / "scripts" / "pieza.py").write_text(
+        "def roto(:\n", encoding="utf-8")
+
+    ok, msg = mod.piezas_compartidas_al_dia()
+    assert ok is False, f"un desfase real no puede quedar tapado por una duda: {msg}"

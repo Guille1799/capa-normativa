@@ -92,3 +92,69 @@ def test_el_usuario_se_deriva_y_no_esta_escrito():
     fuente = GUION.read_text(encoding="utf-8")
     cuerpo = fuente.split('"""', 2)[-1]  # sin el docstring, que SI cita el caso medido
     assert "Path.home().name" in cuerpo, "el usuario tiene que derivarse de Path.home()"
+
+
+# ── el fichero que no se pudo leer: la rendija por la que se colaba un VERDE falso ───────────
+
+def test_un_fichero_que_NO_se_puede_leer_da_MUDO_y_no_verde(mod_y_repo, monkeypatch):
+    """MEDIDO el 2026-08-30: se saltaba con un `continue` en silencio.
+
+    Y un fichero saltado no puede aportar ningun hallazgo, o sea que aportaba VERDE. El veredicto
+    decia «ninguno de los N repos lleva la ruta de casa» sin mencionar que a M ficheros ni se les
+    habia mirado: aprobar en vacio, fichero a fichero, escondido dentro de un `continue`.
+    """
+    mod, tmp = mod_y_repo
+    repo = _repo_falso(tmp, "SIN_RUTAS = 1\n")
+    monkeypatch.setattr(mod, "publicos", lambda: [repo])
+
+    real = Path.read_text
+
+    def no_se_deja_leer(self, *a, **k):
+        if self.name == "codigo.py":
+            raise PermissionError("bloqueado por otro proceso")
+        return real(self, *a, **k)
+
+    monkeypatch.setattr(Path, "read_text", no_se_deja_leer)
+    ok, msg = mod.escaparate_sin_rutas_de_casa()
+    assert ok is not True, "un fichero que no se pudo leer ha salido como VERDE limpio"
+    assert ok is None, f"deberia ser MUDO: no se ha mirado, no es que este mal. {msg}"
+    assert "no se pudo leer" in msg and "PermissionError" in msg, (
+        f"el motivo tiene que decir CUANTOS y POR QUE, o no hay nada que arreglar: {msg}")
+
+
+def test_un_hallazgo_REAL_manda_sobre_un_fichero_no_mirado(mod_y_repo, monkeypatch):
+    """El orden de las dos ramas, y no es cosmetico.
+
+    Si ya hay una ruta de casa confirmada, que ademas queden ficheros sin leer NO rebaja nada: el
+    rojo sigue siendo rojo. Al reves seria tapar una infraccion probada con un «no estoy seguro».
+    """
+    mod, tmp = mod_y_repo
+    usuario = Path.home().name
+    repo = _repo_falso(tmp, f'RUTA = r"C:/Users/{usuario}/proyectos/algo"\n')
+    (repo / "otro.py").write_text("x = 1\n", encoding="utf-8")
+    subprocess.run(["git", "add", "otro.py"], cwd=str(repo), capture_output=True, timeout=120)
+    monkeypatch.setattr(mod, "publicos", lambda: [repo])
+
+    real = Path.read_text
+
+    def solo_el_otro_falla(self, *a, **k):
+        if self.name == "otro.py":
+            raise OSError("no se deja")
+        return real(self, *a, **k)
+
+    monkeypatch.setattr(Path, "read_text", solo_el_otro_falla)
+    ok, msg = mod.escaparate_sin_rutas_de_casa()
+    assert ok is False, f"un hallazgo real no puede quedar tapado por una duda: {msg}"
+
+
+def test_un_fichero_DEMASIADO_GRANDE_tambien_se_dice(mod_y_repo, monkeypatch):
+    """El tope de tamano se respeta —rastrear un binario de 50 MB no tiene sentido— pero
+    saltarselo se DICE. Eso es lo unico que cambia, y es todo lo que hacia falta."""
+    mod, tmp = mod_y_repo
+    repo = _repo_falso(tmp, "SIN_RUTAS = 1\n")
+    monkeypatch.setattr(mod, "publicos", lambda: [repo])
+    monkeypatch.setattr(mod, "_TOPE_BYTES", 1)      # todo pasa a ser "demasiado grande"
+
+    ok, msg = mod.escaparate_sin_rutas_de_casa()
+    assert ok is None, f"un fichero saltado por tamano se ha contado como limpio: {msg}"
+    assert "KB" in msg, f"y no dice que fue por tamano: {msg}"

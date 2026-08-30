@@ -97,21 +97,41 @@ def _publicado_hasta(repo: Path) -> str | None:
     return ref if r.returncode == 0 and ref else None
 
 
-def _con_ruta(repo: Path) -> tuple[list[str], list[str]]:
-    """(ya publicados, aún no empujados) — los ficheros seguidos que llevan la ruta de casa."""
+def _con_ruta(repo: Path) -> tuple[list[str], list[str], list[str]]:
+    """(ya publicados, aún no empujados, NO MIRADOS) — ficheros seguidos con la ruta de casa.
+
+    ⚠️ La tercera lista es la que faltaba, y faltaba de la peor manera posible.
+
+    MEDIDO el 2026-08-30: un fichero que no se podía leer se saltaba con un `continue` **en
+    silencio**. Y un fichero saltado no puede aportar ningún hallazgo, o sea que aportaba VERDE:
+    el veredicto final decía «ninguno de los N repos lleva la ruta de casa» sin mencionar que a M
+    ficheros ni se les había mirado. Eso es **aprobar en vacío, fichero a fichero**, escondido
+    dentro de un `continue`.
+
+    Y no hacía falta ningún caso exótico: un fichero por encima del tope de tamaño, uno sin
+    permisos, o uno a medio escribir por otro proceso caían todos por la misma rendija.
+
+    El tope de tamaño se sigue respetando —rastrear un binario de 50 MB buscando texto no tiene
+    sentido—, pero **saltárselo se DICE**. Eso es lo único que cambia, y es todo lo que hacía falta.
+    """
     upstream = _publicado_hasta(repo)
     fuera_publicados: list[str] = []
     fuera_locales: list[str] = []
+    no_mirados: list[str] = []
 
     for rel in _git("ls-files", cwd=repo).splitlines():
         if not rel or Path(rel).suffix.lower() in _EXTENSIONES_MUDAS:
             continue
         f = repo / rel
         try:
-            if not f.is_file() or f.stat().st_size > _TOPE_BYTES:
+            if not f.is_file():
+                continue          # borrado del disco pero aun seguido: no hay nada que leer
+            if f.stat().st_size > _TOPE_BYTES:
+                no_mirados.append(rel + " (mas de " + str(_TOPE_BYTES // 1024) + " KB)")
                 continue
             texto = f.read_text(encoding="utf-8", errors="replace")
-        except OSError:
+        except OSError as e:
+            no_mirados.append(rel + " (" + type(e).__name__ + ")")
             continue
         if not _RUTA_DE_CASA.search(texto):
             continue
@@ -123,29 +143,46 @@ def _con_ruta(repo: Path) -> tuple[list[str], list[str]]:
         publicado = _git("show", f"{upstream}:{rel}", cwd=repo)
         (fuera_publicados if _RUTA_DE_CASA.search(publicado) else fuera_locales).append(rel)
 
-    return fuera_publicados, fuera_locales
+    return fuera_publicados, fuera_locales, no_mirados
 
 
-def escaparate_sin_rutas_de_casa() -> tuple[bool, str]:
+def escaparate_sin_rutas_de_casa() -> tuple[bool | None, str]:
+    """VERDE / ROJO / MUDO. Un hallazgo manda sobre un fichero no mirado; la duda manda sobre el
+    verde."""
     try:
         pubs = publicos()
     except NoSePudoMirar as e:
-        return False, f"no se pudo mirar ({e}). Eso NO es «no hay rutas de casa»."
+        return None, f"no se pudo mirar ({e}). Eso NO es «no hay rutas de casa»."
     if not pubs:
+        # gh ha contestado, y ha contestado algo imposible: eso es haber mirado, no lo contrario.
         return False, "cero repos publicos detectados: sospechoso, no limpio"
 
     publicados: dict[str, int] = {}
     locales: dict[str, int] = {}
+    ciegos: dict[str, list[str]] = {}
     for repo in pubs:
-        pub, loc = _con_ruta(repo)
+        pub, loc, ciego = _con_ruta(repo)
         if pub:
             publicados[repo.name] = len(pub)
         if loc:
             locales[repo.name] = len(loc)
+        if ciego:
+            ciegos[repo.name] = ciego
+
+    # El ORDEN de estas dos ramas es la decision entera, y va asi por un motivo: un hallazgo REAL
+    # manda sobre la duda —si ya hay una ruta de casa publicada, que ademas quedaran ficheros sin
+    # mirar no rebaja nada—, pero la duda manda sobre el VERDE. Al reves seria tapar una infraccion
+    # confirmada con un «no estoy seguro», y tambien seria aprobar sin haber mirado del todo.
+    if not publicados and not locales and ciegos:
+        cuantos = sum(len(v) for v in ciegos.values())
+        muestra = "; ".join(k + ": " + ", ".join(v[:3]) for k, v in sorted(ciegos.items()))
+        return None, (f"no se pudo leer {cuantos} fichero(s), asi que NO se puede decir que no "
+                      f"haya rutas de casa — solo que no se han visto en lo que si se leyo. "
+                      f"{muestra[:300]}")
 
     if not publicados and not locales:
         return True, (f"ninguno de los {len(pubs)} repos publicos lleva la ruta de casa "
-                      f"(`…/Users/{_USUARIO}`) en lo que versiona")
+                      f"(`…/Users/{_USUARIO}`) en lo que versiona, y se pudieron leer todos")
 
     partes = []
     if locales:
@@ -159,14 +196,14 @@ def escaparate_sin_rutas_de_casa() -> tuple[bool, str]:
 
 if __name__ == "__main__":
     ok, msg = escaparate_sin_rutas_de_casa()
-    print(("VERDE: " if ok else "ROJO: ") + msg)
+    print(("MUDO: " if ok is None else "VERDE: " if ok else "ROJO: ") + msg)
     if not ok and "--detalle" in sys.argv:
         for repo in publicos():
-            pub, loc = _con_ruta(repo)
+            pub, loc, _ciego = _con_ruta(repo)
             if pub or loc:
                 print(f"\n  {repo.name}")
                 for x in loc:
                     print(f"     [barato]   {x}")
                 for x in pub:
                     print(f"     [publicado] {x}")
-    sys.exit(0 if ok else 1)
+    sys.exit(3 if ok is None else 0 if ok else 1)

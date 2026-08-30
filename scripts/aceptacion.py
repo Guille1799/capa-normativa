@@ -506,12 +506,16 @@ def _delega(guion: str, verde: str, timeout: int = 900, corte: int = 240,
     except OSError as e:
         return None, "no se pudo lanzar (" + type(e).__name__ + ": " + str(e)[:80] + ")"
     salida = (r.stdout + r.stderr).decode("utf-8", "replace").strip().splitlines()
+    # Se quitan los TRES prefijos y no solo el del verde: el tablero ya pinta el color con su
+    # emoji, y dejarlo daba lineas como «🔴 nombre ROJO: ...», que dicen el color dos veces.
     ultima = (salida[-1] if salida else "")[:corte]
+    for prefijo in ("VERDE: ", "ROJO: ", "MUDO: "):
+        ultima = ultima.replace(prefijo, "", 1)
     if r.returncode == 3:
-        return None, ultima.replace("MUDO: ", "") or "no se pudo medir"
+        return None, ultima or "no se pudo medir"
     if r.returncode != 0:
         return False, ultima or "falla sin mensaje"
-    return True, ((ultima.replace("VERDE: ", "") or verde) if usa_salida else verde)
+    return True, ((ultima or verde) if usa_salida else verde)
 
 
 def tableros_corren_solos() -> tuple:
