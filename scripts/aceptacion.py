@@ -296,6 +296,30 @@ def _solo_el_comando(bruto: str) -> str:
     return t[1:fin].strip() if fin > 1 else t
 
 
+#: Los TRES colores que un comprobador puede devolver, y el contrato entero en un sitio.
+#:
+#: Hasta el 2026-08-30 solo habia dos: `tuple[bool, str]`. Y entonces «no he podido mirar» no
+#: tenia donde ir. Como aqui esta prohibido aprobar en vacio, se veia obligado a decir ROJO — y
+#: eso mete en la misma casilla dos frases que no se parecen en nada:
+#:
+#:     «he mirado y esta mal»   vs   «no he podido mirar»
+#:
+#: MEDIDO ese dia: 10 comprobadores de la familia mcp salian rojos durante la ronda y verdes al
+#: repreguntarles a solas. No mentian sobre su promesa: mentian sobre haber podido medirla. Y el
+#: «repreguntar» de `ronda_de_tableros.py` existe SOLO para tapar esto — es un parche a una
+#: casilla que faltaba, y ademas solo repregunta a los rojos NUEVOS: uno que lleve semanas rojo
+#: por no poder medirse se queda rojo para siempre sin que nadie lo sepa.
+#:
+#: La casilla nueva NO es un descanso, y esto es lo que la hace legitima: un MUDO suelto es
+#: normal (la maquina iba ahogada), pero un MUDO que INSISTE tiene que acabar en ROJO — no por
+#: la promesa que vigila, sino por el vigilante: uno que nunca consigue medir esta muerto aunque
+#: jamas haya dicho una mentira. Eso lo cuenta la ronda, que es quien ve varias corridas.
+#:
+#: Compatible hacia atras a proposito: True/False significan lo mismo que siempre y None es
+#: opcional. Un comprobador que no lo use no se entera de que esto ha cambiado.
+VERDE, ROJO, MUDO = chr(0x1F7E2), chr(0x1F534), chr(0x26AA)
+
+
 def _fabrica_inv(nombre, comando, resumen):
     """Corre el comando de aceptacion del inventario y lee su EXIT CODE.
 
@@ -1100,7 +1124,7 @@ def main(argv: list[str]) -> int:
             return 2
         return _verifica(solo)
     nombres = argv or list(COMPROBADORES)
-    fallos = 0
+    fallos = mudos = 0
     for n in nombres:
         fn = COMPROBADORES.get(n)
         if fn is None and n in CUMPLIDAS:
@@ -1113,11 +1137,21 @@ def main(argv: list[str]) -> int:
             ok, motivo = fn()
         except Exception as e:  # noqa: BLE001 — un comprobador roto es un rojo, no una excepción
             ok, motivo = False, f"el comprobador falló: {type(e).__name__}: {e}"
-        print(f"  {'🟢' if ok else '🔴'} {n:24} {motivo}")
-        fallos += not ok
+        print(f"  {MUDO if ok is None else (VERDE if ok else ROJO)} {n:24} {motivo}")
+        if ok is None:
+            mudos += 1
+        else:
+            fallos += not ok
     if not argv:
-        print(f"\n  {len(nombres) - fallos}/{len(nombres)} promesas cumplidas.")
-    return 1 if fallos else 0
+        # Los mudos NO cuentan como cumplidas: no saber es lo contrario de saber que si.
+        cola = f", {mudos} sin poder medirse" if mudos else ""
+        print()
+        print(f"  {len(nombres) - fallos - mudos}/{len(nombres)} promesas cumplidas{cola}.")
+    if fallos:
+        return 1
+    # 3 = NO CONCLUYENTE. El mismo codigo que uso la otra sesion al arreglar el Ralph que
+    # salia con EXITO habiendo fallado por dentro: ni es un aprobado, ni es una infraccion.
+    return 3 if mudos else 0
 
 
 if __name__ == "__main__":
