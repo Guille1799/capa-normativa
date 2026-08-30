@@ -33,3 +33,38 @@ packages = ["src/capa_normativa"]
 # PEP 561: sin este marcador en el WHEEL, las anotaciones del paquete se ignoran en
 # silencio en los proyectos que lo usan. `packages` no lo incluye por si solo.
 force-include = { "src/capa_normativa/py.typed" = "capa_normativa/py.typed" }
+
+# ── Cobertura: que se vea también el arnés, no sólo el producto ────────────────────────────
+#
+# MEDIDO el 2026-08-30: el informe decía 80 %, y ese número era del PRODUCTO. `canario_hooks.py`
+# salía al **0 %** teniendo seis tests, porque sus tests lo lanzan como PROCESO APARTE y coverage
+# no ve dentro de un hijo. Con esta configuración sale al 86 %, y aparecen once ficheros de
+# `scripts/` que antes ni figuraban en el informe.
+#
+# No era falta de tests: era no saber qué parte estaba probada. Y eso pesa más aquí que en otro
+# sitio, porque este proyecto existe para impedir que un guardián que parece funcionar y no
+# funciona pase por bueno — y sus propios guardianes estaban justo en esa situación.
+#
+# `parallel` es lo que lo hace posible: cada proceso escribe su propio fichero de datos y luego se
+# combinan. Sin él, el hijo pisa el del padre y se pierden los dos.
+#
+# ⚠️ ESTO SOLO NO BASTA. El `.pth` que arranca la medición en cada intérprete hijo se activa
+# únicamente si la variable `COVERAGE_PROCESS_START` apunta a esta configuración. Por eso existe
+# `scripts/cobertura.py`, que la pone: correr `pytest --cov` a pelo vuelve a dar el 0 % de antes
+# y no avisa de nada.
+#
+# Cuesta 2,6× de tiempo (75 s → 195 s), y por eso no es el modo por defecto de la suite.
+[tool.coverage.run]
+parallel = true
+sigterm = true
+source = ["src", "scripts"]
+# La ÚNICA exclusión, y con motivo escrito para que se pueda revisar: `cobertura.py` es el guion
+# que LANZA esta medición, así que nunca aparece dentro de ella y sale al 0 % siempre. Un 0 %
+# permanente encabezando la lista de «peor cubiertos» tapa los que sí importan.
+# ⚠️ No se añade nada más aquí sin decir por qué: una lista de exclusiones es el sitio donde un
+# porcentaje se maquilla sin que nadie lo note.
+omit = ["scripts/cobertura.py"]
+
+[tool.coverage.report]
+skip_covered = true
+show_missing = true
