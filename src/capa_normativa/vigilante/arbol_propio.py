@@ -82,6 +82,18 @@ _ABRIO, _CONSULTO, _EJECUTO = "abrio", "consulto", "ejecuto"
 _PUERTAS = [
     (builtins, "open", _ABRIO),
     (io, "open", _ABRIO),
+    # ⚠️ `Path.open` NO es redundante con `io.open`, y sólo se nota en Python 3.10.
+    #
+    # En 3.11+ `pathlib.Path.open()` llama a `io.open` por su nombre de módulo, así que el parche
+    # de arriba lo caza. En 3.10 pasa antes por el *accessor* interno de pathlib —una capa que
+    # desapareció en 3.11— y NO toca `io.open`: el detector se quedaba ciego a la forma más
+    # habitual de abrir un fichero en código moderno.
+    #
+    # MEDIDO el 2026-08-30, el día en que la CI empezó a probar 3.10 de verdad:
+    # `test_se_ve_a_traves_de_pathlib` esperaba 1 hallazgo y encontraba 0. Y 3.10 no es una
+    # versión cualquiera aquí: es la que `requires-python = ">=3.10"` PROMETE, o sea que el
+    # detector llevaba ciego desde siempre en la versión mínima que el paquete declara soportar.
+    (Path, "open", _ABRIO),
     (os, "stat", _CONSULTO),
     (os, "lstat", _CONSULTO),
     (os, "listdir", _CONSULTO),
