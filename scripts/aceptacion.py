@@ -674,6 +674,14 @@ CUMPLIDAS = {
 }
 
 SIN_MUTACION = {
+    "exenciones-no-suben":
+        "no se muta creando un fichero: su veredicto sale de leer SIN_MUTACION EN MEMORIA, asi que "
+        "un artefacto en disco no le cambia de color. Y si — se cuenta a si mismo entre los exentos, que "
+        "es exactamente la deuda que existe para bajar; disimularlo seria el primer sitio donde este trinquete "
+        "empezaria a mentir. Su cambio de color lo cubre tests/test_exenciones_no_suben.py, que le monta lineas "
+        "base de pega en un temporal: VERDE cuando nada sube, ROJO con una exencion NUEVA, ROJO cuando una "
+        "coartada apunta a OTRO test, ROJO con el tope flojo, y ROJO cuando no se puede leer el tablero — que "
+        "es la trampa de aprobar en vacio.",
     "piezas-compartidas-al-dia":
         "no se muta creando un fichero: compara los CINCO repos reales entre si, asi que una mutacion "
         "tendria que ensuciar un repo de verdad. Su cambio de color lo cubre tests/test_piezas_compartidas_al_dia.py, "
@@ -846,7 +854,40 @@ def piezas_compartidas_al_dia() -> tuple[bool, str]:
     return True, (salida[-1].replace("VERDE: ", "") if salida else "todas al dia")
 
 
+def exenciones_no_suben() -> tuple[bool, str]:
+    """La lista de exentos del pase de mutacion solo puede DECRECER.
+
+    MEDIDO el 2026-08-30: `--verifica` imprimia «0/0 verificados por mutacion (31 declarados no
+    mutables)» y pasaba. El pase adversarial que existe para atacar a los comprobadores no atacaba
+    a ninguno, y un 0 de 0 es un 100 %. La unica guarda sobre ese numero era que no fuera negativo.
+
+    No se vacio por dejadez: los comprobadores se hicieron MEJORES que el simulacro. La mutacion
+    sabe un solo truco —crear un fichero— y ellos fueron pasando a interrogar el mundo real, contra
+    lo que ese truco no hace nada. Treinta de las treinta y una exenciones empiezan literalmente
+    por «no se muta creando un fichero».
+
+    Se usa el trinquete del PROPIO paquete (`capa_normativa.vigilante.trinquete`) en vez de escribir
+    una comprobacion nueva: su interfaz toma un diccionario nombre->valor, que es exactamente lo que
+    es SIN_MUTACION. Delega en scripts/aceptaciones/exenciones_no_suben.py.
+    """
+    import subprocess
+    import sys
+    guion = RAIZ / "scripts" / "aceptaciones" / "exenciones_no_suben.py"
+    if not guion.is_file():
+        return False, "no existe " + guion.name
+    try:
+        r = subprocess.run([sys.executable, str(guion)], capture_output=True,
+                           timeout=600, cwd=str(RAIZ), stdin=subprocess.DEVNULL)
+    except subprocess.TimeoutExpired:
+        return False, "la comprobacion se cuelga (>10 min)"
+    salida = (r.stdout + r.stderr).decode("utf-8", "replace").strip().splitlines()
+    if r.returncode != 0:
+        return False, (salida[-1] if salida else "falla sin mensaje")[:240]
+    return True, (salida[-1].replace("VERDE: ", "") if salida else "el tope aguanta")
+
+
 COMPROBADORES = {
+    "exenciones-no-suben": exenciones_no_suben,
     "piezas-compartidas-al-dia": piezas_compartidas_al_dia,
     "escaparate-sin-rutas-de-casa": escaparate_sin_rutas_de_casa,
     "canario-de-los-hooks": canario_de_los_hooks,

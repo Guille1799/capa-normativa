@@ -1,0 +1,162 @@
+{
+  "exenciones-no-suben": {
+    "value": "tests/test_exenciones_no_suben.py",
+    "clase": "test-nombrado",
+    "reason": "no se muta creando un fichero: su veredicto sale de leer SIN_MUTACION EN MEMORIA, asi que un artefacto en disco no le cambia de color. Y si — se cuenta a si mismo entre los exentos, que es exactamente"
+  },
+  "piezas-compartidas-al-dia": {
+    "value": "tests/test_piezas_compartidas_al_dia.py",
+    "clase": "test-nombrado",
+    "reason": "no se muta creando un fichero: compara los CINCO repos reales entre si, asi que una mutacion tendria que ensuciar un repo de verdad. Su cambio de color lo cubre tests/test_piezas_compartidas_al_dia.py"
+  },
+  "escaparate-sin-rutas-de-casa": {
+    "value": "tests/test_escaparate_sin_rutas_de_casa.py",
+    "clase": "test-nombrado",
+    "reason": "no se muta escribiendo un fichero: interroga a los repos PUBLICOS de verdad con `git ls-files`, asi que una mutacion tendria que ensuciar un repo real. Su cambio de color se verifico en las DOS direcc"
+  },
+  "escaparate-con-guarda": {
+    "value": "tests/test_escaparate.py",
+    "clase": "test-nombrado",
+    "reason": "no se muta creando un fichero: pregunta a GitHub que repos son publicos y EJECUTA la guarda de cada uno, y eso no se fabrica con un artefacto. Su rojo SI esta cubierto por tests que lo ejercitan — tes"
+  },
+  "guardianes-vivos": {
+    "value": "tests/test_guardianes_vivos.py",
+    "clase": "test-nombrado",
+    "reason": "no se muta creando un fichero: pregunta al Programador de tareas de Windows por el estado y el ultimo resultado de cada tarea, y eso no se fabrica con un fichero. Su rojo SI esta cubierto por tests qu"
+  },
+  "canario-de-los-hooks": {
+    "value": "tests/test_canario_de_los_hooks.py",
+    "clase": "test-nombrado",
+    "reason": "no se muta creando un fichero: interroga a los hooks REALES registrados en settings.json, dandoles cargas por stdin y leyendo su exit code. Su rojo de hoy son 9 hooks sin caso envenenado declarado, y "
+  },
+  "guardia-de-commit": {
+    "value": "tests/test_guardia_de_commit.py",
+    "clase": "test-nombrado",
+    "reason": "no se muta creando un fichero: su condicion que importa es que el hook GRITE ante una carga envenenada, y eso lo prueba montando un repo de pega e intentando un commit real. Un touch pasa las dos prim"
+  },
+  "tableros-corren-solos": {
+    "value": "tests/test_tableros_corren_solos.py",
+    "clase": "test-nombrado",
+    "reason": "no se muta creando un fichero: su rojo sale de preguntarle al Programador de tareas de Windows si algo ejecuta `aceptacion.py` y `--verifica`, y si esa ejecucion termino bien y es reciente. Su ROJO lo"
+  },
+  "revista-de-runtimes": {
+    "value": "autoprueba",
+    "clase": "autoprueba",
+    "reason": "no se muta creando un fichero: su rojo sale de INTERROGAR a cada interprete del sistema por la version que resuelve. Y su propia `--autoprueba` ya hace la verificacion por mutacion, en CUATRO frentes "
+  },
+  "registro-sin-caducados": {
+    "value": "tests/test_registro_sin_caducados.py",
+    "clase": "test-nombrado",
+    "reason": "no se muta creando un fichero: su rojo depende de la FECHA de hoy contra las de REGISTRO.md, no de que exista nada. Se pone rojo el solo cuando algo caduca, y solo pasa retirando lo caducado o renovan"
+  },
+  "sondas-miran-su-arbol": {
+    "value": "tests/test_arbol_propio.py, tests/test_sondas_miran_su_arbol.py",
+    "clase": "test-nombrado",
+    "reason": "no se muta creando un fichero: su rojo no depende de que exista nada, sino de lo que TOCAN las demas sondas al ejecutarse. Se verifica al reves — apuntando una sonda a un arbol hermano y exigiendo que"
+  },
+  "bug-git-como-subcadena-apaga": {
+    "value": "tests/test_fabricas_del_tablero.py",
+    "clase": "test-nombrado",
+    "reason": "no se muta creando un fichero: exige que un TEST NOMBRADO exista y PASE. Un stub vacio sale 4 (sin escribir), no 0 — y el comprobador distingue esos dos rojos. Su ROJO es su estado natural hoy: el def"
+  },
+  "bug-versionados-descarta-en-silencio": {
+    "value": "tests/test_fabricas_del_tablero.py",
+    "clase": "test-nombrado",
+    "reason": "no se muta creando un fichero: exige que un TEST NOMBRADO exista y PASE. Un stub vacio sale 4 (sin escribir), no 0 — y el comprobador distingue esos dos rojos. Su ROJO es su estado natural hoy: el def"
+  },
+  "bug-emit-check-grita-deriva": {
+    "value": "tests/test_fabricas_del_tablero.py",
+    "clase": "test-nombrado",
+    "reason": "no se muta creando un fichero: exige que un TEST NOMBRADO exista y PASE. Un stub vacio sale 4 (sin escribir), no 0 — y el comprobador distingue esos dos rojos. Su ROJO es su estado natural hoy: el def"
+  },
+  "bug-el-pip-install-del": {
+    "value": "tests/test_fabricas_del_tablero.py",
+    "clase": "test-nombrado",
+    "reason": "no se muta creando un fichero: exige que un TEST NOMBRADO exista y PASE. Un stub vacio sale 4 (sin escribir), no 0 — y el comprobador distingue esos dos rojos. Su ROJO es su estado natural hoy: el def"
+  },
+  "bug-el-barrido-dice-4": {
+    "value": "tests/test_fabricas_del_tablero.py",
+    "clase": "test-nombrado",
+    "reason": "no se muta creando un fichero: exige que un TEST NOMBRADO exista y PASE. Un stub vacio sale 4 (sin escribir), no 0 — y el comprobador distingue esos dos rojos. Su ROJO es su estado natural hoy: el def"
+  },
+  "bug-init-reparte-un-expires": {
+    "value": "tests/test_fabricas_del_tablero.py",
+    "clase": "test-nombrado",
+    "reason": "no se muta creando un fichero: exige que un TEST NOMBRADO exista y PASE. Un stub vacio sale 4 (sin escribir), no 0 — y el comprobador distingue esos dos rojos. Su ROJO es su estado natural hoy: el def"
+  },
+  "bug-el-usage-del-vigilante": {
+    "value": "tests/test_fabricas_del_tablero.py",
+    "clase": "test-nombrado",
+    "reason": "no se muta creando un fichero: exige que un TEST NOMBRADO exista y PASE. Un stub vacio sale 4 (sin escribir), no 0 — y el comprobador distingue esos dos rojos. Su ROJO es su estado natural hoy: el def"
+  },
+  "bug-una-rama-sin-la": {
+    "value": "tests/test_fabricas_del_tablero.py",
+    "clase": "test-nombrado",
+    "reason": "no se muta creando un fichero: exige que un TEST NOMBRADO exista y PASE. Un stub vacio sale 4 (sin escribir), no 0 — y el comprobador distingue esos dos rojos. Su ROJO es su estado natural hoy: el def"
+  },
+  "bug-un-operador-de-comparacion": {
+    "value": "tests/test_fabricas_del_tablero.py",
+    "clase": "test-nombrado",
+    "reason": "no se muta creando un fichero: exige que un TEST NOMBRADO exista y PASE. Un stub vacio sale 4 (sin escribir), no 0 — y el comprobador distingue esos dos rojos. Su ROJO es su estado natural hoy: el def"
+  },
+  "bug-branch-note-se-parsea": {
+    "value": "tests/test_fabricas_del_tablero.py",
+    "clase": "test-nombrado",
+    "reason": "no se muta creando un fichero: exige que un TEST NOMBRADO exista y PASE. Un stub vacio sale 4 (sin escribir), no 0 — y el comprobador distingue esos dos rojos. Su ROJO es su estado natural hoy: el def"
+  },
+  "bug-emit-pierde-el-provenance": {
+    "value": "tests/test_fabricas_del_tablero.py",
+    "clase": "test-nombrado",
+    "reason": "no se muta creando un fichero: exige que un TEST NOMBRADO exista y PASE. Un stub vacio sale 4 (sin escribir), no 0 — y el comprobador distingue esos dos rojos. Su ROJO es su estado natural hoy: el def"
+  },
+  "bug-check-sale-con-1": {
+    "value": "tests/test_fabricas_del_tablero.py",
+    "clase": "test-nombrado",
+    "reason": "no se muta creando un fichero: exige que un TEST NOMBRADO exista y PASE. Un stub vacio sale 4 (sin escribir), no 0 — y el comprobador distingue esos dos rojos. Su ROJO es su estado natural hoy: el def"
+  },
+  "inv-revista-de-runtimes-quien-corre": {
+    "value": "tests/test_fabricas_del_tablero.py",
+    "clase": "test-nombrado",
+    "reason": "no se muta creando un fichero: su aceptacion interroga el estado real del sistema (tareas programadas, logs, config, indices). Nacio ROJO —comprobado ejecutandolo— y lo escribio un esceptico independi"
+  },
+  "inv-test-hechos-que-caducan-barre": {
+    "value": "tests/test_fabricas_del_tablero.py",
+    "clase": "test-nombrado",
+    "reason": "no se muta creando un fichero: su aceptacion interroga el estado real del sistema (tareas programadas, logs, config, indices). Nacio ROJO —comprobado ejecutandolo— y lo escribio un esceptico independi"
+  },
+  "inv-capa-normativa-es-el-unico": {
+    "value": "tests/test_fabricas_del_tablero.py",
+    "clase": "test-nombrado",
+    "reason": "no se muta creando un fichero: su aceptacion interroga el estado real del sistema (tareas programadas, logs, config, indices). Nacio ROJO —comprobado ejecutandolo— y lo escribio un esceptico independi"
+  },
+  "inv-audit-settings-source-sh-no": {
+    "value": "tests/test_fabricas_del_tablero.py",
+    "clase": "test-nombrado",
+    "reason": "no se muta creando un fichero: su aceptacion interroga el estado real del sistema (tareas programadas, logs, config, indices). Nacio ROJO —comprobado ejecutandolo— y lo escribio un esceptico independi"
+  },
+  "inv-autohealth-monitor-py-con-guion": {
+    "value": "tests/test_fabricas_del_tablero.py",
+    "clase": "test-nombrado",
+    "reason": "no se muta creando un fichero: su aceptacion interroga el estado real del sistema (tareas programadas, logs, config, indices). Nacio ROJO —comprobado ejecutandolo— y lo escribio un esceptico independi"
+  },
+  "inv-registro-md-session-start-sh": {
+    "value": "tests/test_censo_de_guardianes.py, tests/test_fabricas_del_tablero.py",
+    "clase": "test-nombrado",
+    "reason": "no se muta creando un fichero: enumera el estado real de la maquina (Programador de tareas, settings, repos). Su rojo SI esta cubierto por tests que lo ejercitan — tests/test_censo_de_guardianes.py co"
+  },
+  "inv-canario-py-aceptacion-py-verifica": {
+    "value": "tests/test_fabricas_del_tablero.py",
+    "clase": "test-nombrado",
+    "reason": "no se muta creando un fichero: su aceptacion interroga el estado real del sistema (tareas programadas, logs, config, indices). Nacio ROJO —comprobado ejecutandolo— y lo escribio un esceptico independi"
+  },
+  "inv-capa-normativa-declarado-en-el": {
+    "value": "tests/test_fabricas_del_tablero.py",
+    "clase": "test-nombrado",
+    "reason": "no se muta creando un fichero: su aceptacion interroga el estado real del sistema (tareas programadas, logs, config, indices). Nacio ROJO —comprobado ejecutandolo— y lo escribio un esceptico independi"
+  },
+  "inv-capa-normativa-sin-pre-commit": {
+    "value": "tests/test_fabricas_del_tablero.py",
+    "clase": "test-nombrado",
+    "reason": "no se muta creando un fichero: su aceptacion es un comando que interroga el estado real del sistema. Nacio ROJO y se comprobo EJECUTANDOLO desde este arbol el 2026-08-23, al re-ubicarla desde pw-ralph"
+  }
+}
