@@ -163,8 +163,17 @@ def _hook(arbol: Path, cuerpo: str) -> None:
     """
     carpeta = arbol / "hooks"
     carpeta.mkdir(parents=True, exist_ok=True)
-    (carpeta / "pre-commit").write_text("#!/bin/sh" + chr(10) + cuerpo + chr(10),
-                                        encoding="utf-8")
+    f = carpeta / "pre-commit"
+    f.write_text("#!/bin/sh" + chr(10) + cuerpo + chr(10), encoding="utf-8")
+    # ⚠️ EL PERMISO DE EJECUCION NO ES ADORNO, y en Windows no se nota.
+    #
+    # En Windows da igual: git lanza el hook a traves del shell y ese bit ni existe. En Linux git
+    # NO EJECUTA un hook sin el — y no avisa: simplemente no corre, el commit pasa, y la sonda
+    # concluye que la guarda «dejo pasar un caso rojo conocido».
+    #
+    # MEDIDO el 2026-08-30 al añadir Linux a la CI: estos dos tests llevaban SEIS DIAS rojos por
+    # esto, desde el 24-ago. En Windows pasaban, y nadie lo vio porque nadie miraba la CI.
+    f.chmod(f.stat().st_mode | 0o111)
     _git("-C", str(arbol), "add", "-A")
     _git("-C", str(arbol), "-c", "user.email=t@local", "-c", "user.name=t",
          "commit", "-qm", "hook", "--no-verify")

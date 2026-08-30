@@ -11,6 +11,8 @@ import datetime
 import importlib.util
 from pathlib import Path
 
+import pytest
+
 MODULO = Path(__file__).resolve().parent.parent / "scripts" / "aceptaciones" / "guardianes_vivos.py"
 HOY = datetime.datetime(2026, 8, 24, 12, 0, 0)
 
@@ -155,6 +157,7 @@ def test_verde_solo_cuando_todas_las_tuyas_viven(monkeypatch):
 # --- la máquina de verdad ----------------------------------------------------
 
 
+@pytest.mark.maquina
 def test_contra_la_maquina_real_la_pregunta_se_puede_hacer():
     """Sin fixtures. No exige que estén vivos —hoy 8 no lo están— sino que la pregunta se pueda
     hacer: si esto revienta, el comprobador no protege de nada."""
