@@ -25,13 +25,23 @@ parezca de verdad. `README.md` está en los cinco y no son la misma pieza.
 
 ## Qué cuenta como quedarse atrás
 
-Una **función con nombre** que está en dos o más copias y falta en otra. Se eligen funciones y no
-líneas porque son unidades con nombre: se puede decir *qué* falta y *dónde*, que es lo único que
-convierte un aviso en trabajo. Un diff línea a línea entre copias que han divergido legítimamente
-sería ruido puro.
+Una **pieza con nombre** que está en dos o más copias y falta en otra, o que está en todas pero con
+un cuerpo distinto. Se eligen unidades con nombre y no líneas porque se puede decir *qué* falta y
+*dónde*, que es lo único que convierte un aviso en trabajo. Un diff línea a línea entre copias que
+han divergido legítimamente sería ruido puro.
 
 Exigir **dos o más** presencias, y no una, es deliberado: algo que existe en un solo sitio no es
 una pieza compartida que se quedó atrás, es código propio de ese repo.
+
+Piezas con nombre hay de dos clases, y hasta el 2026-08-30 sólo se miraba una:
+
+- **funciones**, comparadas por su cuerpo ejecutable (ver `_funciones`);
+- **ajustes de módulo** —topes, suelos, umbrales—, comparados por su valor (ver `_ajustes`).
+
+El segundo agujero era real y estaba **vacío**: medido el 2026-08-30, ningún ajuste compartido
+divergía, así que cerrarlo costó **cero rojos nuevos**. Muerde el día que dos repos lleven el mismo
+umbral con distinto número — un `_TOPE_SIN_COMPROBADOR` a 28 aquí y a 40 allí —, que es justo la
+clase de desfase que no pone rojo a nadie por su cuenta.
 
 ## La trampa prohibida
 
@@ -163,6 +173,82 @@ def _funciones(texto: str) -> dict[str, str]:
             if isinstance(n, (ast.FunctionDef, ast.AsyncFunctionDef))}
 
 
+def _es_ajuste(v: ast.AST) -> bool:
+    """¿El valor de esta asignación es un AJUSTE, o es CONTENIDO de ese repo?
+
+    Se decide por la **forma del valor**, no por la convención del nombre. Los dos criterios se
+    midieron el 2026-08-30 sobre los cinco repos antes de elegir, y no empatan.
+
+    Hay **17 asignaciones de módulo compartidas** (mismo nombre y misma ruta en 2+ repos) y **5
+    divergen hoy**. Las cinco son `dict`, y las cinco son REGISTROS que deben diferir por
+    definición — `COMPROBADORES`, `SIN_MUTACION`, `ARTEFACTOS`, `CUMPLIDAS`, `_INV`: son el
+    contenido de cada tablero, no un ajuste que se quedó desalineado.
+
+      · Por CONVENCIÓN DE NOMBRE (mayúsculas sin guion bajo inicial = ajuste) el criterio falla por
+        los dos lados a la vez. Denunciaría 4 de esas 5 —todas menos `_INV`—: **4 rojos nuevos, y
+        los 4 falsos**, incerrables salvo declarando una exención por registro. Y se le escaparía
+        justo el caso que motiva esto, porque `_TOPE_SIN_COMPROBADOR` empieza por guion bajo.
+      · Por FORMA DEL VALOR: **cero rojos nuevos** hoy, y sí vería `_TOPE_SIN_COMPROBADOR = 28` el
+        día que se comparta.
+
+    ## Dónde está el corte, y por qué ahí
+
+    Ajuste = un literal, o una tupla/lista/conjunto de literales. Nada más.
+
+    Un `dict` NO cuenta aunque sus valores sean literales: es la forma de un registro, y las cinco
+    divergencias de hoy lo confirman sin una sola excepción. Por forma no hay manera de distinguir
+    un `UMBRALES = {...}` de un `COMPROBADORES = {...}`, así que se prefiere el falso negativo al
+    rojo falso — un rojo que no se puede cerrar entrena a mirar para otro lado, y así muere un
+    tablero.
+
+    Por el mismo motivo queda fuera lo que lleve una llamada o una operación dentro:
+    `_SEPARADOR_DE_PROSA = (chr(8212), "(HOY")` es un ajuste de verdad y aun así no se vigila. Se
+    pierde a propósito: ensanchar el corte para cazarlo mete `Call` en la definición de «literal»,
+    que es la puerta por la que entran los registros.
+
+    El `UnaryOp` sí entra, y no es un detalle: en el AST un `-1` no es un `Constant`, es un menos
+    aplicado a un `1`. Sin esa rama, cualquier tope negativo quedaría fuera de la vista por un
+    accidente de representación, que es la peor razón para no mirar algo.
+    """
+    if isinstance(v, ast.Constant):
+        return True
+    if isinstance(v, ast.UnaryOp) and isinstance(v.op, (ast.USub, ast.UAdd)):
+        return isinstance(v.operand, ast.Constant)
+    if isinstance(v, (ast.Tuple, ast.List, ast.Set)):
+        return all(_es_ajuste(e) for e in v.elts)
+    return False
+
+
+def _ajustes(texto: str) -> dict[str, str]:
+    """{nombre: valor canónico} de los ajustes de nivel superior.
+
+    Se reimprime con `ast.unparse` por el mismo motivo que en `_codigo`: así una diferencia de
+    comillas o de formato deja de contar como diferencia de valor.
+
+    El desempaquetado (`A, B = 1, 2`) se ignora a propósito: el valor a comparar sería la tupla
+    entera, la misma para los dos nombres, y eso convierte un cambio en `B` en un aviso sobre `A`.
+    Un aviso que señala la pieza equivocada es peor que no avisar.
+    """
+    try:
+        arbol = ast.parse(texto)
+    except SyntaxError:
+        return {}
+    fuera: dict[str, str] = {}
+    for n in arbol.body:
+        if isinstance(n, ast.AnnAssign):
+            objetivos: list[ast.expr] = [n.target]
+        elif isinstance(n, ast.Assign):
+            objetivos = list(n.targets)
+        else:
+            continue
+        if n.value is None or not _es_ajuste(n.value):
+            continue
+        for t in objetivos:
+            if isinstance(t, ast.Name):
+                fuera[t.id] = ast.unparse(n.value)
+    return fuera
+
+
 def desfases() -> list[tuple[str, str, str, list[str], list[str]]]:
     """(ruta, función, qué pasa, quién la tiene, a quién le falta o quién divergió).
 
@@ -201,12 +287,19 @@ def desfases() -> list[tuple[str, str, str, list[str], list[str]]]:
     fuera = []
     for rel, repos_con in sorted(compartidas.items()):
         funcs: dict[str, dict[str, str]] = {}
+        # Que nombres de esta ruta son AJUSTES y no funciones. Hace falta mas abajo, porque la
+        # AUSENCIA de un ajuste no significa lo mismo que la de un test.
+        ajustes: set[str] = set()
         for repo in repos_con:
             try:
-                funcs[repo.name] = _funciones(
-                    (repo / rel).read_text(encoding="utf-8", errors="replace"))
+                texto = (repo / rel).read_text(encoding="utf-8", errors="replace")
             except OSError:
                 continue
+            # Un modulo no puede tener una funcion y un ajuste con el mismo nombre —el segundo
+            # pisaria al primero—, asi que fundirlos en un solo diccionario no puede perder nada.
+            aj = _ajustes(texto)
+            ajustes |= set(aj)
+            funcs[repo.name] = {**_funciones(texto), **aj}
         if len(funcs) < 2:
             continue
 
@@ -250,7 +343,15 @@ def desfases() -> list[tuple[str, str, str, list[str], list[str]]]:
                 #   · una pieza de maquinaria solo hace falta si ese repo usa la facilidad. Que mcp
                 #     no lleve `_BUGS` no es un desfase: es una diferencia de diseño, y decidir si
                 #     la adopta es criterio, no automatismo.
-                clase = "sin propagar" if nombre.startswith("test_") else "sin adoptar"
+                #
+                # Un AJUSTE ausente cae siempre del lado de «sin adoptar», sin mirar su nombre: un
+                # tope que no esta en un repo no es un tope desalineado, es que ese repo no tiene
+                # la maquinaria que lo usa. Copiarle el numero seria meter una constante muerta.
+                # Lo que si muerde de un ajuste es que EXISTA en dos sitios con valores distintos,
+                # y ese caso baja por la rama de divergencia, en rojo.
+                clase = ("sin propagar"
+                         if nombre.startswith("test_") and nombre not in ajustes
+                         else "sin adoptar")
                 fuera.append((rel, nombre, clase, donde, faltan))
             if divergidas:
                 # Sin mayoria NO se puede decir «esta se desvio», pero SI se puede decir que

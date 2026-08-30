@@ -684,7 +684,22 @@ SIN_MUTACION = {
         "comparten NOMBRE, VERDE-PERO-INFORMANDO cuando falta una pieza de MAQUINARIA que ese repo no usa "
         "—`_fabrica_bug` falta en mcp, pero mcp no tiene tabla `_BUGS`: copiarla seria codigo muerto, y un "
         "rojo que exige una decision de diseño para cerrarse se aprende a ignorar—, y ROJO cuando no se "
-        "puede mirar, que es la trampa de aprobar en vacio.",
+        "puede mirar, que es la trampa de aprobar en vacio. "
+        "Desde el 2026-08-30 mira tambien los AJUSTES de modulo —topes, suelos, umbrales—, que hasta "
+        "entonces quedaban fuera del extractor: ROJO cuando un `_TOPE` compartido vale 28 en un repo y 40 "
+        "en otro (incluidos los negativos, que en el AST no son constantes sino un menos aplicado a un "
+        "numero), VERDE-PERO-INFORMANDO cuando un ajuste falta en un repo —que no tenga el tope significa "
+        "que no tiene la maquinaria que lo usa, y copiarle el numero seria una constante muerta—, VERDE "
+        "cuando tres formas de escribir el mismo 28 (`28`, `0o34`, `0x1C`) coinciden, y VERDE cuando un "
+        "REGISTRO diverge a proposito. Ese ultimo es el caso feo que decidio el criterio: se separa ajuste "
+        "de contenido por la FORMA DEL VALOR y no por la convencion del nombre, porque medido ese dia sobre "
+        "los cinco repos hay 17 asignaciones de modulo compartidas y las 5 que divergen son `dict` que DEBEN "
+        "diferir (`COMPROBADORES`, `SIN_MUTACION`, `ARTEFACTOS`, `CUMPLIDAS`, `_INV`) — el criterio por "
+        "nombre habria creado 4 rojos nuevos y los 4 falsos, y ademas se le habria escapado "
+        "`_TOPE_SIN_COMPROBADOR` por empezar con guion bajo. Las cinco ramas nuevas se verificaron POR "
+        "MUTACION el 2026-08-30: cuatro roturas del fuente (devolver el extractor a solo funciones, colar "
+        "`ast.Dict` como ajuste, quitar la rama `UnaryOp`, quitar la guarda del prefijo `test_`), cada una "
+        "pone rojos exactamente los tests que le tocan, y el sha256 del guion vuelve intacto.",
     "escaparate-sin-rutas-de-casa":
         "no se muta escribiendo un fichero: interroga a los repos PUBLICOS de verdad con `git ls-files`, "
         "asi que una mutacion tendria que ensuciar un repo real. Su cambio de color se verifico en las DOS "

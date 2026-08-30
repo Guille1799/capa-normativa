@@ -253,3 +253,129 @@ def test_si_no_se_puede_mirar_es_rojo(tmp_path):
     mod._REPOS = ("uno", "dos")
     ok, msg = mod.piezas_compartidas_al_dia()
     assert not ok and "no se pudo mirar" in msg
+
+
+# ---------------------------------------------------------------------------------------------
+# Los AJUSTES de módulo: topes, suelos, umbrales. Hasta el 2026-08-30 el extractor sólo miraba
+# `ast.FunctionDef`, así que un `_TOPE = 28` aquí y `= 40` allí no lo denunciaba nadie.
+# ---------------------------------------------------------------------------------------------
+
+def _con(linea: str) -> str:
+    """El cuerpo compartido de siempre, más una asignación de módulo."""
+    return _CUERPO + "\n\n" + linea + "\n"
+
+
+def test_rojo_cuando_un_AJUSTE_compartido_lleva_otro_numero(tmp_path):
+    """El agujero que motiva todo esto, y que el 2026-08-30 estaba REAL PERO VACIO.
+
+    El extractor era `isinstance(n, (ast.FunctionDef, ast.AsyncFunctionDef))`, así que las
+    asignaciones de módulo quedaban fuera de su vista por completo. Un tope a 28 en un repo y a 40
+    en otro no lo veía nadie: los dos tableros siguen verdes, cada uno midiendo con su vara.
+
+    Es el mismo daño que una función divergida y de la clase más peligrosa —desde fuera parece
+    propagado—, pero además silencioso: un número no se lee, se aplica.
+    """
+    mod = _modulo()
+    _montar(mod, tmp_path, {"uno": _con("_TOPE = 28"),
+                            "dos": _con("_TOPE = 28"),
+                            "tres": _con("_TOPE = 40")})
+    ok, msg = mod.piezas_compartidas_al_dia()
+    assert not ok, f"un tope compartido con otro numero ha salido VERDE: {msg}"
+    assert "_TOPE" in msg, f"no nombra el ajuste, asi que no hay nada que mirar: {msg}"
+    assert any(f == "_TOPE" and que == "divergida" and otros == ["tres"]
+               for _, f, que, _, otros in mod.desfases()), \
+        f"no dice QUE ajuste ni DONDE se desvio: {mod.desfases()}"
+
+
+def test_un_REGISTRO_que_diverge_LEGITIMAMENTE_no_puede_ponerse_rojo(tmp_path):
+    """El caso feo, y el que decide el criterio. Si esto se pone rojo, el criterio está mal.
+
+    MEDIDO el 2026-08-30 sobre los cinco repos: de las **17** asignaciones de módulo compartidas,
+    **5 divergen hoy**, y las cinco son `dict` que DEBEN diferir — `COMPROBADORES`, `SIN_MUTACION`,
+    `ARTEFACTOS`, `CUMPLIDAS`, `_INV`. Son el contenido de cada tablero, no un ajuste desalineado.
+
+    Ahí es donde el criterio por CONVENCION DE NOMBRE (mayúsculas sin guion bajo = ajuste) se cae:
+    denunciaría 4 de esas 5, o sea **4 rojos nuevos y los 4 falsos**, y ninguno se podría cerrar sin
+    escribir una exención por registro y por repo. Un rojo incerrable entrena a mirar para otro
+    lado, que es como muere un tablero.
+
+    Por eso el corte es la FORMA DEL VALOR y un `dict` nunca cuenta, aunque sus valores sean
+    literales: por forma no hay manera de separar un `UMBRALES = {...}` de un `COMPROBADORES =
+    {...}`, así que se prefiere el falso negativo al rojo falso.
+    """
+    mod = _modulo()
+    _montar(mod, tmp_path, {
+        "uno":  _con("COMPROBADORES = {'a': comun_uno}"),
+        "dos":  _con("COMPROBADORES = {'b': comun_dos, 'c': comun_uno}"),
+        "tres": _con("COMPROBADORES = {}"),
+    })
+    ok, msg = mod.piezas_compartidas_al_dia()
+    assert ok, ("un REGISTRO que diverge a proposito ha puesto ROJO: " + msg +
+                ". Es el falso positivo que hunde el tablero — el criterio esta mal.")
+    assert not any(f == "COMPROBADORES" for _, f, _, _, _ in mod.desfases()), \
+        "ni siquiera deberia entrar en la lista: un dict es contenido, no un ajuste"
+
+
+def test_un_TOPE_NEGATIVO_tambien_se_vigila(tmp_path):
+    """En el AST un `-1` no es un `Constant`: es un menos aplicado a un `1` (`ast.UnaryOp`).
+
+    Sin la rama de `UnaryOp`, cualquier tope negativo quedaría fuera de la vista por un accidente
+    de representación — la peor razón posible para no mirar algo, porque no deja rastro.
+    """
+    mod = _modulo()
+    _montar(mod, tmp_path, {"uno": _con("_SUELO = -1"), "dos": _con("_SUELO = -2")})
+    ok, msg = mod.piezas_compartidas_al_dia()
+    assert not ok, f"dos topes negativos distintos han salido VERDE: {msg}"
+    assert "_SUELO" in msg, f"no nombra el ajuste: {msg}"
+
+
+def test_un_AJUSTE_que_falta_se_informa_pero_NO_pone_rojo(tmp_path):
+    """Ausencia y desacuerdo no son lo mismo, y meterlos en el mismo saco esconde el segundo.
+
+    Un tope que no está en un repo no es un tope desalineado: es que ese repo no tiene la
+    maquinaria que lo usa. Copiarle el número sería meter una constante muerta — el mismo
+    argumento que ya sostiene `sin adoptar` para la maquinaria (`_fabrica_bug` en mcp).
+
+    Lo que sí muerde de un ajuste es que EXISTA en dos sitios con valores distintos, y eso baja por
+    la otra rama, en rojo.
+    """
+    mod = _modulo()
+    _montar(mod, tmp_path, {"uno": _con("_TOPE = 28"), "dos": _con("_TOPE = 28"),
+                            "tres": _CUERPO})
+    ok, msg = mod.piezas_compartidas_al_dia()
+    assert ok, f"un ajuste que un repo no usa ha puesto ROJO: {msg}"
+    assert "sin poner rojo" in msg, f"tampoco lo informa, o sea que se pierde: {msg}"
+    assert any(f == "_TOPE" and que == "sin adoptar" for _, f, que, _, _ in mod.desfases()), \
+        "un ajuste ausente nunca es «sin propagar»: no hay sitio donde se le llame que lo exija"
+
+
+def test_los_ajustes_iguales_siguen_en_VERDE(tmp_path):
+    """La mitad que casi nunca se prueba. Un detector que sólo se ha visto en rojo podría estar
+    rojo por estar roto — y aquí el riesgo es concreto: si `_ajustes` mirase el FUENTE en vez del
+    valor reimpreso, un `28` y un `0o34` (el mismo número) contarían como divergencia."""
+    mod = _modulo()
+    _montar(mod, tmp_path, {"uno": _con("_TOPE = 28"), "dos": _con('_TOPE = 0o34'),
+                            "tres": _con("_TOPE = 0x1C")})
+    ok, msg = mod.piezas_compartidas_al_dia()
+    assert ok, f"tres formas de escribir el mismo 28 han salido ROJO: {msg}"
+
+
+def test_un_AJUSTE_llamado_test_algo_NO_se_trata_como_un_test(tmp_path):
+    """La guarda que separa las dos ramas por lo que la pieza ES, no por como se llama.
+
+    Un test ausente es un hueco de verdad —no tiene nunca sitio donde se le llame, asi que su
+    ausencia no puede justificarse—, y por eso pone ROJO. Un AJUSTE ausente no: significa que ese
+    repo no tiene la maquinaria que lo usa.
+
+    En un fichero de tests un `test_datos = [1, 2, 3]` de nivel de modulo es perfectamente normal.
+    Sin esta guarda, su ausencia en un repo se clasificaria como «sin propagar» solo por el prefijo
+    del nombre, y seria un ROJO falso e incerrable.
+    """
+    mod = _modulo()
+    _montar(mod, tmp_path, {"uno": _con("test_datos = (1, 2, 3)"),
+                            "dos": _con("test_datos = (1, 2, 3)"),
+                            "tres": _CUERPO})
+    ok, msg = mod.piezas_compartidas_al_dia()
+    assert ok, f"un ajuste ausente ha puesto ROJO solo por llamarse test_*: {msg}"
+    assert any(f == "test_datos" and que == "sin adoptar" for _, f, que, _, _ in mod.desfases()), \
+        "el prefijo del nombre no puede decidir la clase de una pieza que es un ajuste"
