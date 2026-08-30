@@ -469,7 +469,52 @@ def revista_de_runtimes() -> tuple[bool, str]:
     return True, "los interpretes cuadran con el manifiesto, y la revista sabe detectar una deriva"
 
 
-def tableros_corren_solos() -> tuple[bool, str]:
+
+
+def _delega(guion: str, verde: str, timeout: int = 900, corte: int = 240,
+            usa_salida: bool = True) -> tuple:
+    """Corre un comprobador que vive en `scripts/aceptaciones/` y traduce su salida a un color.
+
+    Nace el 2026-08-30 de juntar SIETE copias de este mismo bloque, identicas salvo el nombre del
+    guion, el timeout y donde cortaban el mensaje. Cien lineas repetidas, y cada una habria
+    necesitado por separado el mismo cambio para entender la tercera casilla — que es la senal de
+    que no debian ser siete.
+
+    Traduce asi, y las dos primeras filas son nuevas:
+
+      · el proceso NO LLEGA A ARRANCAR   -> MUDO. Bajo carga esta maquina falla al lanzar procesos
+        (OSError 6). Antes eso subia como excepcion y el tablero lo pintaba de ROJO: una falsa
+        alarma con la forma exacta de las que llevamos todo el dia persiguiendo.
+      · SE CUELGA (timeout)              -> MUDO. Colgarse no es un veredicto: es no haber podido
+        medir. Si se cuelga siempre, insistira y la ronda lo sube a ROJO a los dos dias con ronda.
+      · sale 3                            -> MUDO. El guion mismo dice que no pudo.
+      · sale != 0                         -> ROJO.
+      · sale 0                            -> VERDE.
+      · el guion NO EXISTE                -> ROJO, y este SI: no es que no se haya podido mirar,
+        es que falta el que tenia que mirar. Un mudo lo perdonaria dos dias.
+    """
+    import subprocess
+    import sys
+    ruta = RAIZ / "scripts" / "aceptaciones" / guion
+    if not ruta.is_file():
+        return False, "no existe " + ruta.name
+    try:
+        r = subprocess.run([sys.executable, str(ruta)], capture_output=True, timeout=timeout,
+                           cwd=str(RAIZ), stdin=subprocess.DEVNULL)
+    except subprocess.TimeoutExpired:
+        return None, "se cuelga (>" + str(timeout // 60) + " min): no es un veredicto, es no medir"
+    except OSError as e:
+        return None, "no se pudo lanzar (" + type(e).__name__ + ": " + str(e)[:80] + ")"
+    salida = (r.stdout + r.stderr).decode("utf-8", "replace").strip().splitlines()
+    ultima = (salida[-1] if salida else "")[:corte]
+    if r.returncode == 3:
+        return None, ultima.replace("MUDO: ", "") or "no se pudo medir"
+    if r.returncode != 0:
+        return False, ultima or "falla sin mensaje"
+    return True, ((ultima.replace("VERDE: ", "") or verde) if usa_salida else verde)
+
+
+def tableros_corren_solos() -> tuple:
     """Los siete tableros y `--verifica` se ejecutan SOLOS, no cuando alguien se acuerda.
 
     Nace ROJA el 2026-08-23. Corren automaticamente el pre-commit, los tres Ralph de madrugada y el
@@ -479,23 +524,11 @@ def tableros_corren_solos() -> tuple[bool, str]:
     promesa en prosa, sin nada que la hiciera cumplirse, tres mensajes despues de explicar por que
     eso no vale. Esto es esa frase convertida en un exit code.
     """
-    import subprocess
-    import sys
-    guion = RAIZ / "scripts" / "aceptaciones" / "tableros_corren_solos.py"
-    if not guion.is_file():
-        return False, "no existe " + guion.name
-    try:
-        r = subprocess.run([sys.executable, str(guion)], capture_output=True,
-                           timeout=600, cwd=str(RAIZ))
-    except subprocess.TimeoutExpired:
-        return False, "la comprobacion se cuelga (>10 min)"
-    salida = (r.stdout + r.stderr).decode("utf-8", "replace").strip().splitlines()
-    if r.returncode != 0:
-        return False, (salida[-1] if salida else "falla sin mensaje")[:180]
-    return True, "los tableros y --verifica corren solos, con ejecucion buena y reciente"
+    return _delega("tableros_corren_solos.py", "los tableros y --verifica corren solos, con ejecucion buena y reciente",
+                   timeout=600, corte=180, usa_salida=False)
 
 
-def escaparate_con_guarda() -> tuple[bool, str]:
+def escaparate_con_guarda() -> tuple:
     """Todo repo PUBLICO tiene la guarda del `pre-push`, y esa guarda ARRANCA.
 
     La regla es de G (2026-08-24): «github es donde los reclutadores iran a mirar». Vivia escrita
@@ -511,23 +544,11 @@ def escaparate_con_guarda() -> tuple[bool, str]:
     La lista de repos publicos se le pregunta a GitHub, no se mantiene a mano: una lista escrita
     caduca el dia que haces publico uno privado, que es justo cuando mas falta hace.
     """
-    import subprocess
-    import sys
-    guion = RAIZ / "scripts" / "aceptaciones" / "escaparate_con_guarda.py"
-    if not guion.is_file():
-        return False, "no existe " + guion.name
-    try:
-        r = subprocess.run([sys.executable, str(guion)], capture_output=True,
-                           timeout=600, cwd=str(RAIZ))
-    except subprocess.TimeoutExpired:
-        return False, "la comprobacion se cuelga (>10 min)"
-    salida = (r.stdout + r.stderr).decode("utf-8", "replace").strip().splitlines()
-    if r.returncode != 0:
-        return False, (salida[-1] if salida else "falla sin mensaje")[:200]
-    return True, "todos los repos publicos tienen la guarda del escaparate y arranca en todos"
+    return _delega("escaparate_con_guarda.py", "todos los repos publicos tienen la guarda del escaparate y arranca en todos",
+                   timeout=600, corte=200, usa_salida=False)
 
 
-def guardianes_vivos() -> tuple[bool, str]:
+def guardianes_vivos() -> tuple:
     """Los guardianes programados no solo existen: estan activos y su ultimo intento no fallo.
 
     El censo pregunta si cada guardian esta DESCRITO. Este pregunta si FUNCIONA, y la diferencia
@@ -540,20 +561,8 @@ def guardianes_vivos() -> tuple[bool, str]:
     Es `AUTONOMIA_MUERTA_41_DIAS` otra vez, y mas largo. Un inventario que dice «existe» y no dice
     «funciona» es un inventario que tranquiliza.
     """
-    import subprocess
-    import sys
-    guion = RAIZ / "scripts" / "aceptaciones" / "guardianes_vivos.py"
-    if not guion.is_file():
-        return False, "no existe " + guion.name
-    try:
-        r = subprocess.run([sys.executable, str(guion)], capture_output=True,
-                           timeout=600, cwd=str(RAIZ))
-    except subprocess.TimeoutExpired:
-        return False, "la comprobacion se cuelga (>10 min)"
-    salida = (r.stdout + r.stderr).decode("utf-8", "replace").strip().splitlines()
-    if r.returncode != 0:
-        return False, (salida[-1] if salida else "falla sin mensaje")[:200]
-    return True, "todos los guardianes programados propios estan activos y su ultimo intento no fallo"
+    return _delega("guardianes_vivos.py", "todos los guardianes programados propios estan activos y su ultimo intento no fallo",
+                   timeout=600, corte=200, usa_salida=False)
 
 
 def _hook_efectivo():
@@ -826,7 +835,7 @@ ARTEFACTOS = {
     # se anade un check a healthcheck.py, la aceptacion NO se entera a proposito (lleva los nueve
     # congelados dentro): la promesa es sobre la decision, no sobre mantener un registro al dia.
 }
-def escaparate_sin_rutas_de_casa() -> tuple[bool, str]:
+def escaparate_sin_rutas_de_casa() -> tuple:
     """Ningun repo PUBLICO versiona la ruta de casa de G.
 
     La guarda `pre-push` vigila LA PUERTA: lo que va a salir en el proximo empujon. Eso deja fuera
@@ -840,23 +849,11 @@ def escaparate_sin_rutas_de_casa() -> tuple[bool, str]:
     es una reescritura local sin victimas; despues exige force-push sobre historia publica, y eso
     lo decide G. Delega en scripts/aceptaciones/escaparate_sin_rutas_de_casa.py.
     """
-    import subprocess
-    import sys
-    guion = RAIZ / "scripts" / "aceptaciones" / "escaparate_sin_rutas_de_casa.py"
-    if not guion.is_file():
-        return False, "no existe " + guion.name
-    try:
-        r = subprocess.run([sys.executable, str(guion)], capture_output=True,
-                           timeout=900, cwd=str(RAIZ))
-    except subprocess.TimeoutExpired:
-        return False, "la comprobacion se cuelga (>15 min)"
-    salida = (r.stdout + r.stderr).decode("utf-8", "replace").strip().splitlines()
-    if r.returncode != 0:
-        return False, (salida[-1] if salida else "falla sin mensaje")[:260]
-    return True, (salida[-1].replace("VERDE: ", "") if salida else "sin rutas de casa")
+    return _delega("escaparate_sin_rutas_de_casa.py", "sin rutas de casa",
+                   timeout=900, corte=260)
 
 
-def piezas_compartidas_al_dia() -> tuple[bool, str]:
+def piezas_compartidas_al_dia() -> tuple:
     """Una pieza que vive en varios repos no puede quedarse atras en uno solo.
 
     Cinco repos independientes comparten COPIAS del mismo arnes. Nada sabe que son la misma cosa:
@@ -874,23 +871,11 @@ def piezas_compartidas_al_dia() -> tuple[bool, str]:
     no se escribe: una lista a mano envejeceria igual que el problema que intenta resolver.
     Delega en scripts/aceptaciones/piezas_compartidas_al_dia.py.
     """
-    import subprocess
-    import sys
-    guion = RAIZ / "scripts" / "aceptaciones" / "piezas_compartidas_al_dia.py"
-    if not guion.is_file():
-        return False, "no existe " + guion.name
-    try:
-        r = subprocess.run([sys.executable, str(guion)], capture_output=True,
-                           timeout=900, cwd=str(RAIZ))
-    except subprocess.TimeoutExpired:
-        return False, "la comprobacion se cuelga (>15 min)"
-    salida = (r.stdout + r.stderr).decode("utf-8", "replace").strip().splitlines()
-    if r.returncode != 0:
-        return False, (salida[-1] if salida else "falla sin mensaje")[:260]
-    return True, (salida[-1].replace("VERDE: ", "") if salida else "todas al dia")
+    return _delega("piezas_compartidas_al_dia.py", "todas al dia",
+                   timeout=900, corte=260)
 
 
-def exenciones_no_suben() -> tuple[bool, str]:
+def exenciones_no_suben() -> tuple:
     """La lista de exentos del pase de mutacion solo puede DECRECER.
 
     MEDIDO el 2026-08-30: `--verifica` imprimia «0/0 verificados por mutacion (31 declarados no
@@ -906,23 +891,11 @@ def exenciones_no_suben() -> tuple[bool, str]:
     una comprobacion nueva: su interfaz toma un diccionario nombre->valor, que es exactamente lo que
     es SIN_MUTACION. Delega en scripts/aceptaciones/exenciones_no_suben.py.
     """
-    import subprocess
-    import sys
-    guion = RAIZ / "scripts" / "aceptaciones" / "exenciones_no_suben.py"
-    if not guion.is_file():
-        return False, "no existe " + guion.name
-    try:
-        r = subprocess.run([sys.executable, str(guion)], capture_output=True,
-                           timeout=600, cwd=str(RAIZ), stdin=subprocess.DEVNULL)
-    except subprocess.TimeoutExpired:
-        return False, "la comprobacion se cuelga (>10 min)"
-    salida = (r.stdout + r.stderr).decode("utf-8", "replace").strip().splitlines()
-    if r.returncode != 0:
-        return False, (salida[-1] if salida else "falla sin mensaje")[:240]
-    return True, (salida[-1].replace("VERDE: ", "") if salida else "el tope aguanta")
+    return _delega("exenciones_no_suben.py", "el tope aguanta",
+                   timeout=600, corte=240)
 
 
-def ci_de_los_publicos_en_verde() -> tuple[bool, str]:
+def ci_de_los_publicos_en_verde() -> tuple:
     """La ultima corrida de CI de cada repo publico tiene que estar en verde.
 
     MEDIDO el 2026-08-30: la CI de capa-normativa estuvo ROJA desde el 24 hasta el 30 — seis dias,
@@ -934,26 +907,8 @@ def ci_de_los_publicos_en_verde() -> tuple[bool, str]:
 
     Delega en scripts/aceptaciones/ci_de_los_publicos_en_verde.py.
     """
-    import subprocess
-    import sys
-    guion = RAIZ / "scripts" / "aceptaciones" / "ci_de_los_publicos_en_verde.py"
-    if not guion.is_file():
-        return False, "no existe " + guion.name
-    try:
-        r = subprocess.run([sys.executable, str(guion)], capture_output=True,
-                           timeout=900, cwd=str(RAIZ), stdin=subprocess.DEVNULL)
-    except subprocess.TimeoutExpired:
-        return False, "la comprobacion se cuelga (>15 min)"
-    salida = (r.stdout + r.stderr).decode("utf-8", "replace").strip().splitlines()
-    ultima = (salida[-1] if salida else "")[:240]
-    # 3 = NO CONCLUYENTE. Es el PRIMER comprobador que estrena la tercera casilla: no poder
-    # preguntarle a GitHub no es «estan verdes», pero tampoco es una CI rota. Si el impedimento
-    # es permanente insistira, y la ronda lo sube a ROJO sola a los dos dias CON ronda.
-    if r.returncode == 3:
-        return None, ultima.replace("MUDO: ", "") or "no se pudo preguntar"
-    if r.returncode != 0:
-        return False, ultima or "falla sin mensaje"
-    return True, (ultima.replace("VERDE: ", "") if salida else "todas en verde")
+    return _delega("ci_de_los_publicos_en_verde.py", "todas en verde",
+                   timeout=900, corte=240)
 
 
 COMPROBADORES = {
