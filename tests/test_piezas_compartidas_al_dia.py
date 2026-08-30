@@ -127,6 +127,68 @@ def test_rojo_cuando_una_copia_DIVERGE(tmp_path):
         "no nombra la funcion que divergio"
 
 
+def test_dos_copias_con_dos_versiones_es_ROJO_aunque_no_haya_mayoria(tmp_path):
+    """La rama que estuvo sin un solo test, y es donde se escondia un desacuerdo de verdad.
+
+    ## Que cambio, y por que
+
+    Antes esto solo se INFORMABA, con este argumento: con dos copias y dos versiones no hay
+    mayoria, asi que no se sabe cual es la buena y decidirlo es criterio, no automatismo.
+
+    El argumento falla, y se vio con un caso real el 2026-08-30. `_git`, en
+    `scripts/aceptacion_de_la_tarea.py` —maquinaria que decide si una tarea del robot cuenta como
+    hecha— tenia dos versiones:
+
+        mcp_smart_context   subprocess.run(["git", *args], capture_output=True, ...)
+        JobHunter           subprocess.run(["git", *args], cwd=str(RAIZ), ...,
+                                           stdin=subprocess.DEVNULL)
+
+    Una de las dos es CLARAMENTE mejor: `cwd` es lo que evita juzgar el arbol equivocado desde el
+    worktree del robot (el fallo que bloqueo 34 tareas), y `stdin=DEVNULL` es la proteccion contra
+    el `[WinError 6]`. Si se sabia cual era la buena, y el tablero lo mencionaba de pasada al final
+    de una linea verde.
+
+    ## Lo que el guardian necesita saber, y lo que no
+
+    No necesita saber cual version es correcta — eso sigue siendo criterio. Necesita saber si
+    ALGUIEN HA MIRADO, y eso si lo puede decir una maquina. El rojo ya no significa «alineala con
+    la mayoria»: significa «nadie ha decidido esto», y se cierra unificando o escribiendo en
+    `_DIVERGENCIAS_ACEPTADAS` por que las dos son correctas.
+
+    Y por eso la popularidad deja de ser el criterio: con tres copias viejas y una arreglada, la
+    mayoria es la vieja, y usarla de referencia señalaria el ARREGLO como el error.
+    """
+    mod = _modulo()
+    otra = _CUERPO.replace("def comun_dos():\n    return 2",
+                           "def comun_dos():\n    return 2, 'otra version, y nadie ha decidido'")
+    _montar(mod, tmp_path, {"uno": _CUERPO, "dos": otra})
+    ok, msg = mod.piezas_compartidas_al_dia()
+    assert not ok, f"dos versiones sin mayoria han salido VERDE: {msg}"
+    assert "comun_dos" in msg, f"no nombra la pieza, asi que no hay nada que mirar: {msg}"
+    assert any(f == "comun_dos" and que == "sin decidir" for _, f, que, _, _ in mod.desfases()), \
+        "no la clasifica como pendiente de decision"
+
+
+def test_una_divergencia_SIN_MAYORIA_tambien_se_cierra_por_ESCRITO(tmp_path):
+    """La salida del rojo no es solo unificar: tambien vale decir por que las dos son correctas.
+
+    Sin esto, el cambio de criterio crearia rojos incerrables cuando las dos versiones son
+    legitimas — y un rojo que no se puede cerrar se aprende a ignorar, que es como muere un
+    tablero.
+    """
+    mod = _modulo()
+    otra = _CUERPO.replace("def comun_dos():\n    return 2",
+                           "def comun_dos():\n    return 2, 'legitima en su repo'")
+    _montar(mod, tmp_path, {"uno": _CUERPO, "dos": otra})
+    mod._DIVERGENCIAS_ACEPTADAS = dict(mod._DIVERGENCIAS_ACEPTADAS)
+    mod._DIVERGENCIAS_ACEPTADAS["comun_dos"] = ("las dos son correctas y aqui esta escrito por que:"
+                                                " cada repo la usa para una cosa distinta. Este es"
+                                                " el test de que la exencion escrita cierra el"
+                                                " rojo.")
+    ok, msg = mod.piezas_compartidas_al_dia()
+    assert ok, f"una divergencia ACEPTADA por escrito sigue en rojo: {msg}"
+
+
 def test_una_sola_presencia_no_cuenta(tmp_path):
     """Algo que existe en UN solo sitio no es una pieza que se quedo atras: es codigo propio.
     Sin esta regla, cada funcion privada de cada repo seria un hallazgo y el aviso seria ruido."""

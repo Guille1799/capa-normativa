@@ -253,20 +253,31 @@ def desfases() -> list[tuple[str, str, str, list[str], list[str]]]:
                 clase = "sin propagar" if nombre.startswith("test_") else "sin adoptar"
                 fuera.append((rel, nombre, clase, donde, faltan))
             if divergidas:
-                # Se exige mayoria de DOS para hablar de divergencia, igual que para hablar de
-                # ausencia. Con dos copias y dos versiones distintas no hay de que se desvio una:
-                # hay dos versiones y hay que DECIDIR cual vale, que es criterio y no automatismo.
+                # Sin mayoria NO se puede decir «esta se desvio», pero SI se puede decir que
+                # nadie ha decidido cual vale — y eso es lo que se reporta (`sin decidir`), en
+                # ROJO. Corregido el 2026-08-30: antes esto solo se informaba, con el argumento de
+                # que decidir es criterio y no automatismo. El argumento falla, y se vio con un
+                # caso real: `_git` en `scripts/aceptacion_de_la_tarea.py` tenia dos versiones, y
+                # una era CLARAMENTE mejor —la de JobHunter lleva `cwd` (lo que evita juzgar el
+                # arbol equivocado desde el worktree del robot) y `stdin=DEVNULL` (la proteccion
+                # contra el WinError 6)—. Se sabia cual era la buena, y el tablero lo mencionaba
+                # de pasada al final de una linea VERDE.
                 #
-                # Caso real del 2026-08-26: otra sesion llevo `aceptacion_de_la_tarea.py` a
-                # JobHunter y su version difiere de la de mcp. Llamarlo «divergida» prometeria
-                # saber cual es la buena, y no se sabe.
+                # El guardian no necesita saber cual version es correcta: eso sigue siendo
+                # criterio. Necesita saber si ALGUIEN HA MIRADO, y eso si lo puede decir una
+                # maquina. Se cierra unificando, o escribiendo en _DIVERGENCIAS_ACEPTADAS por que
+                # las dos son correctas.
+                #
+                # ⚠️ Y por eso la mayoria NO es la referencia: con tres copias viejas y una
+                # arreglada, la mayoria es la vieja, y usarla como patron señalaria el ARREGLO
+                # como el error. Los grupos se imprimen como informacion, no como veredicto.
                 #
                 # Cuando SI hay mayoria se nombra el grupo entero, no un representante: saber que
                 # dos repos coinciden y otros dos se salieron dice de que lado esta el arreglo.
                 if nombre in _DIVERGENCIAS_ACEPTADAS:
                     clase = "divergencia aceptada"
                 else:
-                    clase = "divergida" if len(mayoria) >= 2 else "sin referencia"
+                    clase = "divergida" if len(mayoria) >= 2 else "sin decidir"
                 fuera.append((rel, nombre, clase, sorted(mayoria), divergidas))
     return fuera
 
@@ -278,12 +289,14 @@ def piezas_compartidas_al_dia() -> tuple[bool, str]:
         return False, f"no se pudo mirar ({e}). Eso NO es «todo al dia»."
 
     sin_propagar = [x for x in atrasadas if x[2] == "sin propagar"]
-    divergidas = [x for x in atrasadas if x[2] == "divergida"]
-    # `sin adoptar` y `sin referencia` comparten destino —se informan, no ponen rojo— pero por
-    # motivos distintos, y por eso se cuentan aparte: una es «este repo no usa esa facilidad» y la
-    # otra es «hay dos versiones y nadie ha decidido cual vale». Fundirlas escondería la segunda.
-    sin_adoptar = [x for x in atrasadas if x[2] in ("sin adoptar", "sin referencia",
-                                                    "divergencia aceptada")]
+    # `divergida` y `sin decidir` van JUNTAS al rojo: en las dos la pieza EXISTE en dos o mas
+    # sitios con codigo distinto, o sea que hay una diferencia de comportamiento que nadie ha
+    # resuelto. Que haya mayoria o no cambia lo que se puede DECIR, no si hay que mirarlo.
+    divergidas = [x for x in atrasadas if x[2] in ("divergida", "sin decidir")]
+    # `sin adoptar` se queda informando, y su argumento SI se sostiene: la pieza no esta, y su
+    # ausencia puede ser diseño —que mcp no lleve `_fabrica_bug` es que no tiene tabla `_BUGS`—.
+    # Ausencia y desacuerdo no son lo mismo, y meterlos en el mismo saco escondia el segundo.
+    sin_adoptar = [x for x in atrasadas if x[2] in ("sin adoptar", "divergencia aceptada")]
 
     # `sin adoptar` se INFORMA pero no pone rojo: es una diferencia de diseño entre repos, y
     # decidir si uno adopta una facilidad del otro es criterio. Un rojo que no se puede cerrar sin
@@ -291,8 +304,11 @@ def piezas_compartidas_al_dia() -> tuple[bool, str]:
     cola = ""
     if sin_adoptar:
         nombres = sorted({f for _, f, _, _, _ in sin_adoptar})
-        cuantas_sin_ref = sum(1 for x in sin_adoptar if x[2] == "sin referencia")
-        detalle_ref = (f", {cuantas_sin_ref} con DOS versiones y ninguna mayoritaria"
+        # Ya no hay «sin referencia» aqui: esas pasaron al rojo el 2026-08-30. Queda el
+        # recuento de las aceptadas por escrito, que es lo unico que conviene tener a la vista
+        # —una exencion escrita se revisa; una implicita se hereda—.
+        cuantas_sin_ref = sum(1 for x in sin_adoptar if x[2] == "divergencia aceptada")
+        detalle_ref = (f", {cuantas_sin_ref} divergencia(s) aceptada(s) por escrito"
                        if cuantas_sin_ref else "")
         cola = (f" (aparte, sin poner rojo: {len(sin_adoptar)} pieza(s) que piden criterio y no "
                 f"automatismo{detalle_ref} — {', '.join(nombres[:4])})")
@@ -310,8 +326,17 @@ def piezas_compartidas_al_dia() -> tuple[bool, str]:
                       ", ".join(f"{k} le faltan {v}" for k, v in
                                 sorted(porq.items(), key=lambda x: -x[1])) + ")")
     if divergidas:
-        nombres = sorted({f"{f}" for _, f, _, _, _ in divergidas})
-        partes.append(f"{len(divergidas)} DIVERGIDA(S): " + ", ".join(nombres[:5]))
+        # Se separan al IMPRIMIR aunque compartan destino, porque piden cosas distintas: una
+        # divergida tiene un grupo mayoritario del que salió, y una sin decidir no tiene de que
+        # salirse — tiene dos versiones y ningun arbitro.
+        con_patron = sorted({f for _, f, q, _, _ in divergidas if q == "divergida"})
+        sin_arbitro = sorted({f for _, f, q, _, _ in divergidas if q == "sin decidir"})
+        if con_patron:
+            partes.append(f"{len(con_patron)} DIVERGIDA(S): " + ", ".join(con_patron[:5]))
+        if sin_arbitro:
+            partes.append(f"{len(sin_arbitro)} SIN DECIDIR (dos versiones y nadie ha elegido; "
+                          "se cierra unificando o escribiendo por que las dos valen): "
+                          + ", ".join(sin_arbitro[:5]))
 
     return False, (" · ".join(partes) + ". El repo que se queda atras NO se pone rojo por su "
                    "cuenta: simplemente no tiene el detector, asi que no detecta. Y una funcion "
@@ -327,7 +352,7 @@ if __name__ == "__main__":
             print(f"  [{que}] {rel} :: {funcion}")
             print(f"      la tienen igual: {', '.join(tienen)}")
             etiqueta = {"divergencia aceptada": "distinta A PROPOSITO en",
-                        "sin referencia": "otra version en",
+                        "sin decidir": "otra version, sin arbitro, en",
                         "sin propagar": "le falta a",
                         "sin adoptar": "no usa esa facilidad",
                         "divergida": "divergida en"}[que]
