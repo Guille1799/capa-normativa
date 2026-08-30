@@ -36,6 +36,18 @@ pondría el tablero rojo sin nada que hacer, y un rojo así se aprende a ignorar
 Y empieza a servir **de inmediato**, antes de convertir ni un comprobador: con el tope puesto, el
 siguiente no puede nacer exento sin que alguien baje el número a mano y explique por qué.
 
+## La regla se corrigió el mismo día, y merece leerse
+
+Esto nació diciendo «el tope sólo se baja». Horas después bloqueó al comprobador de la CI, se
+midió por qué no se podía bajar, y salió que `ARTEFACTOS` está VACÍO: el pase de mutación exige
+que el comprobador esté ROJO de partida, o sea que sólo sabe atacar a los que aún no funcionan.
+Contra uno verde no tiene ataque, y todos los de aquí miran el mundo por `git ls-files` o por el
+sistema operativo — no por si existe un fichero suelto.
+
+Así que la regla vieja pedía algo imposible. La nueva conserva lo único que valía: que una
+exención no pueda aparecer sin que alguien la nombre. Se deja escrito en vez de reescribir el
+docstring como si nunca hubiera dicho otra cosa.
+
 ## Qué vigila de cada entrada, y qué NO
 
 El valor vigilado es **el test que nombra su coartada**, no la prosa del motivo. Las prosas se
@@ -60,13 +72,28 @@ RAIZ = Path(__file__).resolve().parent.parent.parent
 TABLERO = RAIZ / "scripts" / "aceptacion.py"
 BASELINE = Path(__file__).resolve().parent / "exenciones_baseline.json"
 
-#: El tope de HOY. Sólo se baja, y se baja A MANO: bajarlo es el acto que convierte «he convertido
-#: un comprobador» en una propiedad que el tablero defiende a partir de ahora.
+#: El tope de HOY. Sólo se mueve A MANO, con `--calibrar` y un commit: ese acto es lo único que
+#: convierte un cambio en la deuda en algo que el tablero defiende a partir de ahora.
 #:
 #: Empieza en 32 y no en 31 porque este comprobador se cuenta a sí mismo: su veredicto sale de leer
 #: `SIN_MUTACION` en memoria, así que tampoco se le puede mutar creando un fichero. Decirlo en vez
 #: de disimularlo es la mitad del trabajo — el primer paso para bajar el tope es admitir dónde está.
-TOPE = int(os.environ.get("CN_TOPE_EXENCIONES") or 32)
+#:
+#: 2026-08-30, 32 -> 33, y la primera subida. Entra `ci-de-los-publicos-en-verde`, que pregunta a
+#: GitHub por la última corrida de CI de cada repo público: no hay fichero que se pueda plantar para
+#: que GitHub conteste otra cosa. Su exención es ESTRUCTURAL, no dejadez.
+#:
+#: Y la subida obligó a corregir la regla que este mismo fichero escribió por la mañana —«sólo se
+#: baja»—, porque medir enseñó que HOY NO SE PUEDE BAJAR: `_verifica` sólo sabe mutar en la
+#: dirección rojo -> verde (plantar el artefacto que FALTA), así que no tiene ningún ataque contra
+#: un comprobador que ya funciona. `ARTEFACTOS` tiene CERO entradas. Un número que sólo puede subir
+#: y nunca bajar no es un trinquete: es el gate que el docstring de arriba dice que no hay que
+#: construir. La regla nueva conserva lo que de verdad valía —que ninguna exención pueda aparecer
+#: EN SILENCIO— y admite que subir es legítimo cuando se nombra al comprobador y su motivo.
+#:
+#: El arreglo de fondo está encolado en PENDIENTES: enseñar a `_verifica` la dirección
+#: verde -> rojo -> verde. Mientras no exista, este tope sube y no baja, y eso hay que verlo.
+TOPE = int(os.environ.get("CN_TOPE_EXENCIONES") or 33)
 
 #: Las dos formas que puede tener una coartada hoy. El vocabulario obliga a clasificar: una entrada
 #: sin clase reconocida es una exención que nadie ha mirado.
@@ -130,8 +157,8 @@ def exenciones_no_suben() -> tuple[bool, str]:
         return False, " · ".join(str(getattr(h, "mensaje", h))[:150] for h in hallazgos[:3])
 
     return True, (f"{len(actual)} exenciones, tope {TOPE}: ninguna nueva, ninguna cambiada de "
-                  f"coartada. El siguiente comprobador no puede nacer exento sin bajar el tope "
-                  f"a mano")
+                  f"coartada. El siguiente comprobador no puede nacer exento en silencio — mover "
+                  f"el tope exige --calibrar, un commit y nombrar por que")
 
 
 def _calibrar() -> int:

@@ -1,4 +1,9 @@
 {
+  "ci-de-los-publicos-en-verde": {
+    "value": "tests/test_ci_de_los_publicos.py",
+    "clase": "test-nombrado",
+    "reason": "no se muta creando un fichero: pregunta a GitHub por la ULTIMA corrida de CI de cada repo publico, y un artefacto en disco no cambia lo que GitHub conteste. Su cambio de color lo cubre tests/test_ci_d"
+  },
   "exenciones-no-suben": {
     "value": "tests/test_exenciones_no_suben.py",
     "clase": "test-nombrado",

@@ -35,26 +35,34 @@ class _Respuesta:
         self.stderr = stderr
 
 
-def _con_gh(mod, respuesta, repos=("uno", "dos")):
-    mod.publicos = lambda: [Path(r) for r in repos]
-    mod.subprocess.run = lambda *a, **k: respuesta
+def _con_gh(mp, mod, respuesta, repos=("uno", "dos")):
+    """Le falsifica a `mod` la lista de repos y la respuesta de `gh`, y lo DESHACE al salir.
+
+    Va por `monkeypatch` y no por asignacion directa por un motivo medido el 2026-08-30: escrita
+    como asignacion, la sustitucion no cae sobre el modulo bajo prueba sino sobre el `subprocess`
+    GLOBAL, que es el mismo objeto para todo el proceso. Se quedaba puesta el resto de la sesion y
+    tumbo 68 tests ajenos con el OSError falso de aqui abajo — el test del guardian de la CI
+    rompiendo a los demas. `monkeypatch` restaura al terminar cada test.
+    """
+    mp.setattr(mod, "publicos", lambda: [Path(r) for r in repos])
+    mp.setattr(mod.subprocess, "run", lambda *a, **k: respuesta)
     return mod
 
 
-def test_verde_cuando_la_ultima_esta_en_verde():
+def test_verde_cuando_la_ultima_esta_en_verde(monkeypatch):
     """La mitad que se olvida: si no puede cerrarse, su rojo no significa nada."""
     mod = _modulo()
-    _con_gh(mod, _Respuesta([{"conclusion": "success", "status": "completed",
+    _con_gh(monkeypatch, mod, _Respuesta([{"conclusion": "success", "status": "completed",
                               "headBranch": "main", "createdAt": "2026-08-30T10:00:00Z",
                               "workflowName": "CI"}]))
     ok, msg = mod.ci_de_los_publicos_en_verde()
     assert ok, f"la ultima corrida esta en verde y ha salido ROJO: {msg}"
 
 
-def test_rojo_cuando_la_ultima_fallo():
+def test_rojo_cuando_la_ultima_fallo(monkeypatch):
     """El caso real: capa-normativa estuvo asi SEIS DIAS y nadie lo supo."""
     mod = _modulo()
-    _con_gh(mod, _Respuesta([{"conclusion": "failure", "status": "completed",
+    _con_gh(monkeypatch, mod, _Respuesta([{"conclusion": "failure", "status": "completed",
                               "headBranch": "main", "createdAt": "2026-08-24T10:00:00Z",
                               "workflowName": "CI"}]))
     ok, msg = mod.ci_de_los_publicos_en_verde()
@@ -63,23 +71,23 @@ def test_rojo_cuando_la_ultima_fallo():
     assert "2026-08-24" in msg, "no dice CUANDO fue, que es lo que mide la gravedad"
 
 
-def test_un_repo_SIN_CI_no_cuenta_como_rota():
+def test_un_repo_SIN_CI_no_cuenta_como_rota(monkeypatch):
     """No tener CI y tenerla rota son cosas distintas, y confundirlas es acusar en falso.
 
     `eu-political-observatory` se quedo sin workflows el 2026-08-29 al sacarle el arnes del repo
     publico. Pintarlo de rojo por eso seria pedirle que arregle algo que no existe.
     """
     mod = _modulo()
-    _con_gh(mod, _Respuesta([]))
+    _con_gh(monkeypatch, mod, _Respuesta([]))
     ok, msg = mod.ci_de_los_publicos_en_verde()
     assert ok, f"un repo sin CI ha puesto ROJO: {msg}"
     assert "sin ninguna corrida" in msg, f"tampoco lo informa, o sea que se pierde: {msg}"
 
 
-def test_una_corrida_EN_CURSO_no_es_un_fallo():
+def test_una_corrida_EN_CURSO_no_es_un_fallo(monkeypatch):
     """Todavia no ha dicho nada. Darla por rota seria inventarse un veredicto."""
     mod = _modulo()
-    _con_gh(mod, _Respuesta([{"conclusion": None, "status": "in_progress",
+    _con_gh(monkeypatch, mod, _Respuesta([{"conclusion": None, "status": "in_progress",
                               "headBranch": "main", "createdAt": "2026-08-30T10:00:00Z",
                               "workflowName": "CI"}]))
     ok, msg = mod.ci_de_los_publicos_en_verde()
@@ -87,24 +95,24 @@ def test_una_corrida_EN_CURSO_no_es_un_fallo():
     assert "en curso" in msg
 
 
-def test_rojo_si_gh_no_contesta():
+def test_rojo_si_gh_no_contesta(monkeypatch):
     """No haber podido preguntar NUNCA es «estan verdes». La trampa de aprobar en vacio."""
     mod = _modulo()
-    _con_gh(mod, _Respuesta([], returncode=1, stderr="no auth"))
+    _con_gh(monkeypatch, mod, _Respuesta([], returncode=1, stderr="no auth"))
     ok, msg = mod.ci_de_los_publicos_en_verde()
     assert not ok
     assert "no se pudo" in msg
 
 
-def test_rojo_si_no_hay_repos_publicos():
+def test_rojo_si_no_hay_repos_publicos(monkeypatch):
     """Cero repos publicos es un resultado sospechoso, no una maquina limpia."""
     mod = _modulo()
-    mod.publicos = lambda: []
+    monkeypatch.setattr(mod, "publicos", lambda: [])
     ok, msg = mod.ci_de_los_publicos_en_verde()
     assert not ok and "cero repos" in msg
 
 
-def test_rojo_si_no_se_puede_lanzar_gh():
+def test_rojo_si_no_se_puede_lanzar_gh(monkeypatch):
     """Bajo carga, un proceso puede no llegar a lanzarse. Eso no dice nada sobre la CI —
     igual que no condenar en vacio en `escaparate-con-guarda`."""
     mod = _modulo()
@@ -112,8 +120,8 @@ def test_rojo_si_no_se_puede_lanzar_gh():
     def revienta(*a, **k):
         raise OSError(6, "The handle is invalid")
 
-    mod.publicos = lambda: [Path("uno")]
-    mod.subprocess.run = revienta
+    monkeypatch.setattr(mod, "publicos", lambda: [Path("uno")])
+    monkeypatch.setattr(mod.subprocess, "run", revienta)
     ok, msg = mod.ci_de_los_publicos_en_verde()
     assert not ok
     assert "no se pudo" in msg
