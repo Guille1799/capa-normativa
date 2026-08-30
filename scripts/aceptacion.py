@@ -674,6 +674,13 @@ CUMPLIDAS = {
 }
 
 SIN_MUTACION = {
+    "ci-de-los-publicos-en-verde":
+        "no se muta creando un fichero: pregunta a GitHub por la ULTIMA corrida de CI de cada repo "
+        "publico, y un artefacto en disco no cambia lo que GitHub conteste. Su cambio de color lo cubre "
+        "tests/test_ci_de_los_publicos.py, que le falsifica la respuesta de `gh`: VERDE con la ultima en "
+        "verde, ROJO cuando fallo (y comprobando que dice EN QUE repo y CUANDO), VERDE-informando cuando "
+        "un repo no tiene CI —que no es lo mismo que tenerla rota—, VERDE con una corrida EN CURSO, y "
+        "ROJO cuando gh no contesta o no se puede lanzar, que son las dos caras de no haber podido mirar.",
     "exenciones-no-suben":
         "no se muta creando un fichero: su veredicto sale de leer SIN_MUTACION EN MEMORIA, asi que "
         "un artefacto en disco no le cambia de color. Y si — se cuenta a si mismo entre los exentos, que "
@@ -886,7 +893,36 @@ def exenciones_no_suben() -> tuple[bool, str]:
     return True, (salida[-1].replace("VERDE: ", "") if salida else "el tope aguanta")
 
 
+def ci_de_los_publicos_en_verde() -> tuple[bool, str]:
+    """La ultima corrida de CI de cada repo publico tiene que estar en verde.
+
+    MEDIDO el 2026-08-30: la CI de capa-normativa estuvo ROJA desde el 24 hasta el 30 — seis dias,
+    diez corridas fallidas seguidas, y nadie se entero. Se descubrio por casualidad.
+
+    Lo que fallaba no era grave. Lo grave era el silencio: los tableros SI se leen (ronda diaria,
+    aviso al arrancar sesion) y la CI no tenia ni una cosa ni la otra. Este comprobador es el
+    puente que mete su resultado en el sitio que si se mira.
+
+    Delega en scripts/aceptaciones/ci_de_los_publicos_en_verde.py.
+    """
+    import subprocess
+    import sys
+    guion = RAIZ / "scripts" / "aceptaciones" / "ci_de_los_publicos_en_verde.py"
+    if not guion.is_file():
+        return False, "no existe " + guion.name
+    try:
+        r = subprocess.run([sys.executable, str(guion)], capture_output=True,
+                           timeout=900, cwd=str(RAIZ), stdin=subprocess.DEVNULL)
+    except subprocess.TimeoutExpired:
+        return False, "la comprobacion se cuelga (>15 min)"
+    salida = (r.stdout + r.stderr).decode("utf-8", "replace").strip().splitlines()
+    if r.returncode != 0:
+        return False, (salida[-1] if salida else "falla sin mensaje")[:240]
+    return True, (salida[-1].replace("VERDE: ", "") if salida else "todas en verde")
+
+
 COMPROBADORES = {
+    "ci-de-los-publicos-en-verde": ci_de_los_publicos_en_verde,
     "exenciones-no-suben": exenciones_no_suben,
     "piezas-compartidas-al-dia": piezas_compartidas_al_dia,
     "escaparate-sin-rutas-de-casa": escaparate_sin_rutas_de_casa,

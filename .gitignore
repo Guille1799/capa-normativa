@@ -26,3 +26,7 @@ ralph_run_*.log
 PENDIENTES.md
 PROGRESS.md
 docs/CN_REFERENCIA_CORE.md
+
+# datos de cobertura: se regeneran con scripts/cobertura.py
+.coverage
+.coverage.*
