@@ -99,7 +99,7 @@ export const BIA_MEASUREMENT_ERROR_MARGIN = 3.0 as const;
 **Solo emite las constantes** (las que no ramifican por el sujeto). Una que ramifica no se puede
 volcar sin reproducir su tabla de decisión y su hit policy en cada lenguaje, así que **no se
 emite y sale en `omitidas` con su motivo** — una ausencia silenciosa haría parecer completo al
-fichero generado. En el registro real del primer inquilino: **38 constantes emitidas, 36
+fichero generado. En el registro real del primer inquilino, medido el **2026-08-30**: **116 constantes emitidas, 42
 omitidas**, cada una con su razón. Y **lo que el registro no serviría tampoco se emite**:
 retiradas y bloqueadas quedan fuera, o `emit` sería la puerta de atrás.
 
@@ -222,8 +222,8 @@ for h in revisar_semantica("backend", mapa):
 ```
 
 **Cómo se mantiene callado.** Exige **dos** condiciones a la vez: que el nombre traiga una palabra
-de polaridad *semántica*, y que la norma declare la contraria. Sobre un backend real con 81 normas
-da **0 hallazgos** — y encuentra el caso de arriba en cuanto se introduce. Un slug que no esté en tu
+de polaridad *semántica*, y que la norma declare la contraria. Medido en su día sobre un backend real de 81 normas,
+daba **0 hallazgos** — y encuentra el caso de arriba en cuanto se introduce. Un slug que no esté en tu
 mapa se **ignora en silencio**, así que puedes pasar un mapa parcial sin generar ruido.
 
 `_MIN` y `_MAX` desnudos **no** están en el vocabulario, y es deliberado: en el proyecto de origen
@@ -624,10 +624,12 @@ Tres reglas lo sujetan, para que el campo nuevo no sea una etiqueta libre:
 git clone https://github.com/Guille1799/capa-normativa.git
 cd capa-normativa
 pip install -e ".[dev]"
-python -m pytest -q          # 445 passed
+python -m pytest -q          # 666 passed, 18 skipped
 ```
 
-Verificado el 2026-08-24 sobre `v0.17.0`: **445 passed**. El CI los corre en **3.10, 3.12 y
+Verificado el **2026-08-30**: en un clon limpio, **666 passed, 18 skipped**. Los 18 que se
+saltan comprueban cosas de la máquina del autor y **dicen por qué** al saltarse; en esa máquina
+la suite da **683 passed, 1 skipped**. Se publica la cifra del clon porque es la que vas a ver tú. El CI los corre en **3.10, 3.12 y
 3.14** —las tres deliberadas, y el porqué de cada una está escrito en
 `.github/workflows/ci.yml`— y además pasa el vigilante **sobre este mismo repositorio**: un
 paquete que vende detectores y no se los aplica a sí mismo es difícil de defender.
