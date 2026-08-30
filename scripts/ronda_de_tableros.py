@@ -97,7 +97,14 @@ TIMEOUT_VERIFICA_S = 30 * 60
 #: enquistado no desaparezca del todo, lo bastante espaciado para que no sea ruido.
 RECORDATORIO_S = 7 * 24 * 3600
 
-VERDE, ROJO, CUMPLIDA = "\U0001F7E2", "\U0001F534", "\u2705"
+VERDE, ROJO, CUMPLIDA = chr(0x1F7E2), chr(0x1F534), chr(0x2705)
+
+#: La tercera casilla del tablero, estrenada el 2026-08-30: «no he podido mirar». Aqui hace
+#: falta por una razon que no se ve a simple vista: `leer_tablero` CONTRASTA los emojis contados
+#: contra la linea de resumen, y sin conocer esta marca contaria 1 verde + 0 rojos contra un
+#: total de 2 y declararia el tablero ILEGIBLE. O sea que el tablero aprende a hablar y la ronda
+#: se queda sorda: hay que ensenarsela a las dos a la vez.
+MUDO = chr(0x26AA)
 
 #: `(nombre, subruta desde la raíz, intérprete relativo o None para el `python` del PATH)`.
 #: Los comandos son LITERALMENTE los que G documentó; si uno cambia, cambia aquí y en ningún
@@ -256,6 +263,9 @@ def _interprete_de(t: dict) -> tuple[str, str | None]:
 # ── leer la salida de un tablero ─────────────────────────────────────────────────────────────
 
 _RESUMEN = re.compile(r"(\d+)\s*/\s*(\d+)\s+promesas cumplidas")
+#: La coleta que el tablero anade cuando hay mudos. Se contrasta igual que el resto: si el
+#: tablero dice que hay 3 sin medir y solo se han contado 2, la salida no es fiable.
+_RESUMEN_MUDOS = re.compile(r"(\d+)\s+sin poder medirse")
 
 
 def leer_tablero(salida: str) -> dict:
@@ -266,29 +276,117 @@ def leer_tablero(salida: str) -> dict:
     esta función contaría cero de todo y la ronda diría «ningún rojo», que es la mentira exacta
     que un guarda no puede permitirse. Con el contraste, ese día dice ILEGIBLE.
     """
-    verdes, rojos, cumplidas = [], [], []
+    verdes, rojos, cumplidas, mudos = [], [], [], []
     for linea in salida.splitlines():
         t = linea.strip()
         if not t:
             continue
         marca, resto = t[0], t[1:].strip()
-        destino = {VERDE: verdes, ROJO: rojos, CUMPLIDA: cumplidas}.get(marca)
+        destino = {VERDE: verdes, ROJO: rojos, CUMPLIDA: cumplidas, MUDO: mudos}.get(marca)
         if destino is None:
             continue
         destino.append(resto.split(None, 1)[0] if resto else "(sin nombre)")
     m = _RESUMEN.search(salida)
     if not m:
-        return {"verdes": verdes, "rojos": rojos, "cumplidas": cumplidas, "legible": False,
+        return {"verdes": verdes, "rojos": rojos, "cumplidas": cumplidas, "mudos": mudos, "legible": False,
                 "porque": "el tablero no imprimio su linea de resumen «N/M promesas cumplidas»"}
     dice_verdes, dice_total = int(m.group(1)), int(m.group(2))
-    if len(verdes) != dice_verdes or len(verdes) + len(rojos) != dice_total:
-        return {"verdes": verdes, "rojos": rojos, "cumplidas": cumplidas, "legible": False,
+    dice_mudos = int(m2.group(1)) if (m2 := _RESUMEN_MUDOS.search(salida)) else 0
+    if (len(verdes) != dice_verdes or len(mudos) != dice_mudos
+            or len(verdes) + len(rojos) + len(mudos) != dice_total):
+        return {"verdes": verdes, "rojos": rojos, "cumplidas": cumplidas, "mudos": mudos, "legible": False,
                 "porque": ("el recuento no cuadra con el resumen del tablero: contados "
-                           + str(len(verdes)) + " verdes y " + str(len(rojos)) + " rojos, el "
-                           "tablero dice " + str(dice_verdes) + "/" + str(dice_total)
+                           + str(len(verdes)) + " verdes y " + str(len(rojos)) + " rojos y " + str(len(mudos)) + " mudos, el "
+                           "tablero dice " + str(dice_verdes) + "/" + str(dice_total) + " y " + str(dice_mudos) + " mudos"
                            + ". Casi seguro que los emojis no sobrevivieron a la tuberia")}
-    return {"verdes": verdes, "rojos": rojos, "cumplidas": cumplidas, "legible": True,
+    return {"verdes": verdes, "rojos": rojos, "cumplidas": cumplidas, "mudos": mudos, "legible": True,
             "porque": ""}
+
+
+
+#: Cuantos DIAS DISTINTOS con ronda puede un vigilante no conseguir medir antes de que el mudo se
+#: convierta en rojo. Decidido por G el 2026-08-30, y la parte importante es el denominador:
+#:
+#:   > «2 dias, pero que esos dias se haya trabajado — si no, en un finde que no curre va a saltar»
+#:
+#: Y tenia razon. La primera version contaba TIEMPO TRANSCURRIDO desde la ultima medicion buena, y
+#: con eso un fin de semana sin rondas hacia que el lunes, al primer tropiezo, el contador ya
+#: marcara tres dias y saltara la alarma. El vigilante no habia fallado dos veces: le habian
+#: preguntado una. Contar ocasiones en las que DE VERDAD se le pregunto es lo unico honesto.
+DIAS_MUDO_HASTA_ROJO = 2
+
+
+def escalar_mudos(historial: dict, tablero: str, mudos: list, medidos: list,
+                  dia: str) -> tuple[dict, list]:
+    """Actualiza la memoria de mudos y devuelve los que ya son ROJO por vigilante muerto.
+
+    Un mudo suelto es normal: la maquina iba ahogada. Un mudo que INSISTE es otra cosa, y el rojo
+    que devuelve esta funcion no acusa a la promesa vigilada sino AL VIGILANTE: uno que nunca
+    consigue medir esta muerto aunque jamas haya dicho una mentira.
+
+    Tres decisiones que valen mas que el codigo:
+
+    · **Solo cuentan dias en los que la ronda corrio**, porque esta funcion solo se llama entonces.
+      Un finde sin rondas no gasta paciencia.
+    · **Varias rondas del mismo dia cuentan como una.** Correr la ronda a mano tres veces seguidas
+      no puede matar a un vigilante en diez minutos.
+    · **Lo resetea CUALQUIER medicion conseguida, incluido un ROJO.** Un rojo significa que si
+      consiguio mirar, que es exactamente lo que aqui se estaba poniendo en duda. Confundir «mide y
+      dice que mal» con «no consigue medir» seria repetir el error que abrio todo esto.
+    """
+    h = dict(historial)
+    for nombre in medidos:                       # midio: se le perdona todo lo anterior
+        h.pop(tablero + "::" + nombre, None)
+    muertos = []
+    for nombre in mudos:
+        clave = tablero + "::" + nombre
+        dias = sorted(set(h.get(clave, []) + [dia]))
+        h[clave] = dias
+        if len(dias) >= DIAS_MUDO_HASTA_ROJO:
+            muertos.append(nombre)
+    return h, muertos
+
+
+
+
+def aplicar_mudos(resultados: list, memoria_f, dia: str) -> dict:
+    """Escala los mudos de cada tablero, MUTA sus fichas y guarda la memoria. Devuelve la memoria.
+
+    Vive fuera de `main` para poder atacarla: enterrada dentro, la unica forma de probarla seria
+    correr la ronda entera —nueve minutos y ocho repos— y entonces no se probaria nunca. Un trozo
+    de logica que solo se puede ejercitar de esa manera es un trozo de logica sin probar.
+
+    La memoria vive en su propio fichero y NO en `aviso.json` a proposito: si se corrompe se
+    pierde la cuenta de los mudos, pero no el aviso de rojos, que es lo que no puede fallar.
+    Por eso tambien se lee y se escribe a prueba de balas — un fichero de memoria ilegible
+    equivale a empezar la cuenta de cero, nunca a tumbar la ronda.
+    """
+    try:
+        memoria = json.loads(memoria_f.read_text(encoding="utf-8"))
+        if not isinstance(memoria, dict):
+            memoria = {}
+    except (OSError, ValueError):
+        memoria = {}
+
+    for ficha in resultados:
+        mudos = ficha.get("mudos") or []
+        memoria, muertos = escalar_mudos(memoria, ficha["nombre"], mudos,
+                                         ficha.get("medidos") or [], dia)
+        if not muertos:
+            continue
+        # Pasan a ROJO por la puerta de delante: entran en `rojos`, cambian la firma y avisan
+        # como cualquier otro. Pero la acusacion NO es sobre la promesa vigilada sino sobre el
+        # VIGILANTE, asi que se guardan aparte para poder decirlo con esas palabras en el informe.
+        ficha["muertos"] = muertos
+        ficha["rojos"] = list(ficha["rojos"]) + [m for m in muertos if m not in ficha["rojos"]]
+        ficha["mudos"] = [m for m in mudos if m not in muertos]
+
+    try:
+        memoria_f.parent.mkdir(parents=True, exist_ok=True)
+        memoria_f.write_text(json.dumps(memoria, ensure_ascii=False, indent=1), encoding="utf-8")
+    except OSError:
+        pass
+    return memoria
 
 
 # ── correr ───────────────────────────────────────────────────────────────────────────────────
@@ -378,7 +476,9 @@ def correr_tablero(t: dict) -> dict:
                                                  if cola else ""))
     return dict(base, estado="ok", verdes=len(lectura["verdes"]), rojos=lectura["rojos"],
                 cumplidas=lectura["cumplidas"], exit=r.returncode, duracion_s=tardo,
-                verifica=verifica, detalle=(err.splitlines()[-1][:120] if err else ""))
+                verifica=verifica, detalle=(err.splitlines()[-1][:120] if err else ""),
+                mudos=lectura.get("mudos", []),
+                medidos=lectura["verdes"] + lectura["rojos"])
 
 
 def leer_nombrados(salida: str, pedidos: list[str]) -> dict | None:
@@ -896,6 +996,9 @@ def main(argv: list[str]) -> int:
         _di("      " + r["estado"] + " · " + str(r["verdes"]) + " verdes · "
             + str(len(r.get("rojos", []))) + " rojos · --verifica=" + str(v.get("exit"))
             + " · " + str(round(r["duracion_s"] + v.get("duracion_s", 0.0), 1)) + " s")
+
+    # Un mudo que INSISTE deja de ser «la maquina iba ahogada» y pasa a ser un vigilante muerto.
+    aplicar_mudos(resultados, carpeta / "mudos.json", inicio.strftime("%Y-%m-%d"))
 
     previo = leer_ultimo(carpeta)
     nuevos, resueltos = comparar(resultados, previo)
