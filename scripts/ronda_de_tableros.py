@@ -137,13 +137,23 @@ _REPOS_NO_VIGILADOS = {
 }
 
 #: Carpetas sueltas que quedan fuera aunque su repo SÍ esté vigilado por otra carpeta. Aquí no
-#: vale excluir el repo entero: `eu-ralph` y `eu-political-observatory` son el mismo repo en dos
-#: worktrees, y uno de los dos sí entra en la ronda.
-_CARPETAS_NO_VIGILADAS = {
-    "eu-political-observatory": (
-        "el checkout humano de eu; su tablero lo corre `eu-ralph`, que es el worktree del bucle y "
-        "el que G nombró. Meter los dos duplicaría cada rojo y la ronda contaría doble."),
-}
+#: vale excluir el repo entero cuando dos worktrees del mismo repo tienen tablero y sólo uno debe
+#: entrar en la ronda.
+#:
+#: VACÍA desde el 2026-08-30, y el motivo merece quedarse escrito porque la exclusión que vivía
+#: aquí dejó de tener sentido sin que nadie la tocara.
+#:
+#: Excluía `eu-political-observatory` —el checkout humano— porque su tablero lo corría `eu-ralph`,
+#: el worktree del bucle, y meter los dos habría contado cada rojo dos veces.
+#:
+#: El 2026-08-29 otra sesión sacó del repo PÚBLICO de eu todo el arnés de trabajo: los cuatro
+#: subagentes, los hooks, las skills, `settings.json` y `scripts/` entero, y metió el LICENSE. Es
+#: la regla del escaparate aplicada a fondo, y está bien. Pero con eso el checkout humano de eu
+#: dejó de tener tablero — así que ya no hay nada que excluir, y la exclusión pasó a ser un
+#: FANTASMA: una excepción que protege algo que no existe y despista a quien la lea.
+#:
+#: Lo cazó `test_los_excluidos_declarados_existen_de_verdad`, que existe exactamente para esto.
+_CARPETAS_NO_VIGILADAS: dict[str, str] = {}
 
 
 # ── descubrir ────────────────────────────────────────────────────────────────────────────────

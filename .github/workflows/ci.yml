@@ -17,11 +17,12 @@ on:
 
 jobs:
   tests:
-    name: pytest (py${{ matrix.python }})
-    runs-on: ubuntu-latest
+    name: pytest (py${{ matrix.python }} · ${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
       matrix:
+        os: [ubuntu-latest]
         # ⚠️ LAS TRES VERSIONES SON DELIBERADAS, y ninguna es decorativa:
         #   · 3.10 — es lo que `requires-python = ">=3.10"` DECLARA. Hasta hoy ese soporte no se
         #     había verificado NUNCA: el desarrollo ha ido sobre 3.14, así que la promesa vivía
@@ -35,6 +36,31 @@ jobs:
         # Probar solo una convertiría el rango declarado en una afirmación sin comprobar, que es
         # exactamente lo que este paquete existe para impedir.
         python: ["3.10", "3.12", "3.14"]
+        # ⚠️ WINDOWS NO ES UNA VERSIÓN MÁS DE LA MATRIZ, y por eso va aparte con `include`.
+        #
+        # El eje `python` prueba COMPATIBILIDAD DE LENGUAJE; el sistema operativo prueba otra cosa
+        # distinta, y cruzarlos daría seis trabajos para responder a dos preguntas.
+        #
+        # POR QUÉ HACE FALTA, medido el 2026-08-29: de los cuatro fallos reales de esa semana, los
+        # CUATRO eran exclusivos de Windows y ninguno podía aparecer en Linux — `bash` resolviendo
+        # al lanzador de WSL en vez de a Git Bash, descriptores no heredables que mataban a los
+        # subprocesos antes de arrancar, tareas programadas apagándose al desenchufar, y rutas
+        # `C:/Users/<usuario>` cableadas. La CI llevaba meses verde sin haber visto ni uno.
+        #
+        # Windows-latest caza dos de esos cuatro. Los otros dos son estado de la máquina, no
+        # código, y no se pueden cazar en un runner — eso lo vigilan los tableros y el healthcheck,
+        # que corren donde el sistema vive de verdad. Decirlo importa: esto no es una bala de
+        # plata, es la mitad que faltaba.
+        #
+        # Y la ganancia menos obvia: en un runner el usuario NO se llama como el de desarrollo, así
+        # que cualquier ruta de casa cableada revienta al instante en vez de esperar a que alguien
+        # la vea.
+        #
+        # 3.14 y no otra: es la versión sobre la que se desarrolla, así que este trabajo reproduce
+        # el entorno real. Probar Windows con las tres sería pagar el triple por la misma respuesta.
+        include:
+          - os: windows-latest
+            python: "3.14"
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5

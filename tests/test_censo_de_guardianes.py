@@ -154,6 +154,7 @@ def test_el_censo_puede_tener_de_mas(tmp_path, monkeypatch):
 # --- la máquina de verdad ----------------------------------------------------
 
 
+@pytest.mark.maquina
 def test_contra_la_maquina_real_enumera_las_cuatro_familias():
     """Sin fixtures: si aquí sale una familia a cero, la fuente se rompió."""
     m = _cargar()

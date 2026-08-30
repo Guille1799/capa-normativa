@@ -549,6 +549,7 @@ def test_una_raiz_vacia_no_descubre_nada(tmp_path):
     assert not (tmp_path / "sin-usar").exists(), "no puede dejar informe de una ronda que no hubo"
 
 
+@pytest.mark.maquina
 def test_los_excluidos_declarados_existen_de_verdad():
     """Una exclusión a algo que ya no está no protege nada, y despista a quien la lea.
 
@@ -563,6 +564,7 @@ def test_los_excluidos_declarados_existen_de_verdad():
     assert not fantasmas, "excluidos que ya no tienen tablero en el disco: " + ", ".join(fantasmas)
 
 
+@pytest.mark.maquina
 def test_los_siete_declarados_estan_en_esta_maquina():
     """La lista dice lo que creemos que hay; esto lo contrasta con lo que hay."""
     vigilados, ausentes, huerfanos = RONDA.descubrir()

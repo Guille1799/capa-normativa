@@ -15,6 +15,49 @@ import pytest
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "src"))
 
 
+#: ¿Estamos en la máquina de G, o en un ordenador limpio (un runner de CI, otro portátil)?
+HAY_MAQUINA = (Path.home() / "proyectos").is_dir()
+
+
+def pytest_configure(config):
+    config.addinivalue_line(
+        "markers",
+        "maquina: interroga la maquina de G (sus repos, sus tareas). Se salta en un runner limpio.")
+
+
+def pytest_collection_modifyitems(config, items):
+    """Los tests marcados `maquina` se SALTAN fuera de la máquina de G, no fallan.
+
+    Tres tests interrogan a esa máquina a propósito, y sus nombres lo dicen: «están en ESTA
+    máquina», «contra la máquina REAL». No son tests portables mal escritos — son la mitad del
+    arnés que comprueba **el mundo**, y sin el mundo delante no tienen nada que comprobar.
+
+    ## Por qué saltar y no excluirlos del comando
+
+    Excluirlos con `-m "not maquina"` los haría desaparecer sin dejar rastro. Saltados, el resumen
+    dice cuántos y por qué, así que la diferencia entre «no aplica aquí» y «nadie los corre» sigue
+    siendo visible. Un test que desaparece en silencio es como una comprobación se pierde para
+    siempre.
+
+    ## Y por qué la condición es ESTRECHA
+
+    Salta sólo si NO existe `~/proyectos`. En la máquina de G existe, así que allí corren siempre —
+    que es donde tienen que correr. Un `skipif` generoso convertiría estos tres en decorativos, y
+    ése es justo el fallo que este arnés persigue: aprobar por no haber mirado.
+
+    MEDIDO el 2026-08-30 simulando un runner limpio (carpeta de usuario vacía): de 640 tests
+    fallaban exactamente estos TRES. El resto es portable — la suite era mucho más independiente
+    de la máquina de lo que parecía leyendo los ficheros.
+    """
+    if HAY_MAQUINA:
+        return
+    saltar = pytest.mark.skip(
+        reason="necesita la maquina de G (~/proyectos con sus repos): aqui no hay nada que mirar")
+    for item in items:
+        if "maquina" in item.keywords:
+            item.add_marker(saltar)
+
+
 @pytest.fixture(autouse=True, scope="session")
 def _subprocesos_con_descriptores_validos():
     """Ningún subproceso de la suite hereda los descriptores del proceso que lanzó pytest.
