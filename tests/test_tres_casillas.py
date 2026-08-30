@@ -90,14 +90,16 @@ def test_un_comprobador_que_REVIENTA_sigue_siendo_ROJO_y_no_mudo(tablero, capsys
     assert tablero.ROJO in salida and tablero.MUDO not in salida
 
 
-def test_el_tablero_de_VERDAD_no_tiene_ningun_mudo_hoy(capsys):
-    """Ancla contra el estado real: hoy ninguno de los 33 usa la casilla nueva todavia.
+def test_las_tres_marcas_existen_y_son_DISTINTAS_entre_si():
+    """Si dos marcas coincidieran, el tablero tendria tres estados y dos colores — o sea dos.
 
-    El dia que alguno la use, este test cae y hay que venir a decir CUAL y POR QUE — que es
-    justo la conversacion que queremos forzar, porque estrenar la casilla no es un detalle.
+    Se escribio antes con el nombre `..._no_tiene_ningun_mudo_hoy` y un docstring que decia
+    anclar el estado real. No lo hacia: sus dos asserts nunca miraron los comprobadores. Un test
+    cuyo nombre promete mas de lo que comprueba es peor que no tenerlo, porque se cuenta como
+    cubierto. Se renombra a lo que de verdad hace.
     """
     spec = importlib.util.spec_from_file_location("tablero_real", str(TABLERO))
     mod = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(mod)
     assert hasattr(mod, "MUDO"), "el contrato de tres casillas ha desaparecido del tablero"
-    assert mod.VERDE != mod.ROJO != mod.MUDO != mod.VERDE
+    assert len({mod.VERDE, mod.ROJO, mod.MUDO}) == 3

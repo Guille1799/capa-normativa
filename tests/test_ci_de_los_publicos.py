@@ -95,26 +95,43 @@ def test_una_corrida_EN_CURSO_no_es_un_fallo(monkeypatch):
     assert "en curso" in msg
 
 
-def test_rojo_si_gh_no_contesta(monkeypatch):
-    """No haber podido preguntar NUNCA es «estan verdes». La trampa de aprobar en vacio."""
+def test_MUDO_si_gh_no_contesta(monkeypatch):
+    """No haber podido preguntar NUNCA es «estan verdes» — pero tampoco es una CI rota.
+
+    Es el primer comprobador que estrena la tercera casilla, y aqui esta el porque: desde dentro
+    NO hay forma de distinguir un tropiezo de red de que `gh` no este instalado. Diciendo MUDO no
+    hace falta distinguirlos: si el impedimento es permanente insistira, y la ronda lo sube a ROJO
+    a los dos dias CON ronda. Lo unico prohibido, y lo que protege el primer assert, es el verde.
+    """
     mod = _modulo()
     _con_gh(monkeypatch, mod, _Respuesta([], returncode=1, stderr="no auth"))
     ok, msg = mod.ci_de_los_publicos_en_verde()
-    assert not ok
+    assert ok is not True, "no haber podido preguntar se ha leido como «estan verdes»"
+    assert ok is None, f"deberia ser MUDO y no ROJO: no es una CI rota, es no haber mirado. {msg}"
     assert "no se pudo" in msg
 
 
-def test_rojo_si_no_hay_repos_publicos(monkeypatch):
-    """Cero repos publicos es un resultado sospechoso, no una maquina limpia."""
+def test_rojo_y_NO_mudo_si_no_hay_repos_publicos(monkeypatch):
+    """Cero repos publicos es un resultado sospechoso, no una maquina limpia.
+
+    Y este SI es rojo: `gh` ha contestado, y ha contestado algo imposible. Eso es haber mirado y
+    ver algo que no cuadra, que es lo contrario de no haber podido mirar. La linea entre las dos
+    casillas pasa exactamente por aqui.
+    """
     mod = _modulo()
     monkeypatch.setattr(mod, "publicos", lambda: [])
     ok, msg = mod.ci_de_los_publicos_en_verde()
-    assert not ok and "cero repos" in msg
+    assert ok is False, f"contestar algo imposible es ROJO, no MUDO: {msg}"
+    assert "cero repos" in msg
 
 
-def test_rojo_si_no_se_puede_lanzar_gh(monkeypatch):
-    """Bajo carga, un proceso puede no llegar a lanzarse. Eso no dice nada sobre la CI —
-    igual que no condenar en vacio en `escaparate-con-guarda`."""
+def test_MUDO_si_no_se_puede_lanzar_gh(monkeypatch):
+    """Bajo carga esta maquina falla al ARRANCAR procesos, y eso no dice nada sobre la CI.
+
+    Es la causa que sospechamos detras de los 10 comprobadores de la familia mcp que salian rojos
+    durante la ronda y verdes al repreguntarles a solas. Con la casilla nueva, este caso deja de
+    producir una falsa alarma sin dejar de contarse.
+    """
     mod = _modulo()
 
     def revienta(*a, **k):
@@ -123,5 +140,5 @@ def test_rojo_si_no_se_puede_lanzar_gh(monkeypatch):
     monkeypatch.setattr(mod, "publicos", lambda: [Path("uno")])
     monkeypatch.setattr(mod.subprocess, "run", revienta)
     ok, msg = mod.ci_de_los_publicos_en_verde()
-    assert not ok
+    assert ok is None, f"un proceso que no arranca es MUDO, no ROJO: {msg}"
     assert "no se pudo" in msg

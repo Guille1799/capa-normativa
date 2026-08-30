@@ -704,7 +704,12 @@ SIN_MUTACION = {
         "tests/test_ci_de_los_publicos.py, que le falsifica la respuesta de `gh`: VERDE con la ultima en "
         "verde, ROJO cuando fallo (y comprobando que dice EN QUE repo y CUANDO), VERDE-informando cuando "
         "un repo no tiene CI —que no es lo mismo que tenerla rota—, VERDE con una corrida EN CURSO, y "
-        "ROJO cuando gh no contesta o no se puede lanzar, que son las dos caras de no haber podido mirar.",
+        "y MUDO cuando gh no contesta o no llega a lanzarse. Es el PRIMERO que estrena la tercera "
+        "casilla, y por un motivo que no tiene otra salida: desde dentro no hay forma de saber si "
+        "el impedimento es un tropiezo de red o que gh no este instalado. Diciendo MUDO no hace "
+        "falta saberlo — si es permanente insistira, y la ronda lo sube a ROJO sola a los dos dias "
+        "CON ronda. El test tambien fija la linea entre las dos casillas: cero repos publicos SI "
+        "es ROJO, porque ahi gh ha contestado, y ha contestado algo imposible.",
     "exenciones-no-suben":
         "no se muta creando un fichero: su veredicto sale de leer SIN_MUTACION EN MEMORIA, asi que "
         "un artefacto en disco no le cambia de color. Y si — se cuenta a si mismo entre los exentos, que "
@@ -940,9 +945,15 @@ def ci_de_los_publicos_en_verde() -> tuple[bool, str]:
     except subprocess.TimeoutExpired:
         return False, "la comprobacion se cuelga (>15 min)"
     salida = (r.stdout + r.stderr).decode("utf-8", "replace").strip().splitlines()
+    ultima = (salida[-1] if salida else "")[:240]
+    # 3 = NO CONCLUYENTE. Es el PRIMER comprobador que estrena la tercera casilla: no poder
+    # preguntarle a GitHub no es «estan verdes», pero tampoco es una CI rota. Si el impedimento
+    # es permanente insistira, y la ronda lo sube a ROJO sola a los dos dias CON ronda.
+    if r.returncode == 3:
+        return None, ultima.replace("MUDO: ", "") or "no se pudo preguntar"
     if r.returncode != 0:
-        return False, (salida[-1] if salida else "falla sin mensaje")[:240]
-    return True, (salida[-1].replace("VERDE: ", "") if salida else "todas en verde")
+        return False, ultima or "falla sin mensaje"
+    return True, (ultima.replace("VERDE: ", "") if salida else "todas en verde")
 
 
 COMPROBADORES = {

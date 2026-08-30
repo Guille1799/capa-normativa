@@ -24,12 +24,25 @@ Los privados importan menos y la lista se deriva igual, así que ampliarlo es ca
 
 ## La trampa prohibida, en sus dos caras
 
-Si no se puede preguntar a GitHub —falta `gh`, no hay red, no hay permisos— esto es **ROJO por no
-haber podido mirar**, nunca verde.
+Si no se puede preguntar a GitHub —falta `gh`, no hay red, no hay permisos— esto **jamás es
+verde**. Y tampoco es rojo: un repo sin ningún workflow no tiene una CI rota, no tiene CI. Se
+informa aparte, porque acusar a un repo de tener la CI roja cuando no la tiene es la misma mentira
+al revés.
 
-Y la otra cara, que se aprendió el mismo día: **tampoco es rojo**. Un repo sin ningún workflow no
-tiene una CI rota — no tiene CI. Se informa aparte y no cuenta como fallo, porque acusar a un repo
-de tener la CI roja cuando no la tiene es la misma mentira al revés.
+## Es el primero que estrena la tercera casilla, y por qué le tocaba a éste
+
+Nació el 2026-08-30 diciendo *«no se pudo preguntar → ROJO»*, con el argumento de que no mirar
+nunca puede leerse como aprobar. El argumento es bueno y sigue en pie; lo que estaba mal era el
+sitio donde caía, porque metía en la misma casilla dos frases distintas: *«he mirado y la CI está
+rota»* y *«no he podido mirar»*.
+
+Ahora devuelve **MUDO** (`None`). Y eso resuelve algo que aquí no tenía solución: **este
+comprobador no puede saber si el fallo es de un rato o permanente.** Que `gh` no conteste una vez
+puede ser la red; que no conteste nunca es que no está instalado. Desde dentro se ven idénticos.
+
+Con la casilla nueva no hace falta distinguirlos: se dice MUDO, y si es permanente **insistirá**
+y la ronda lo convertirá en ROJO ella sola a los dos días con ronda. El tiempo decide lo que el
+comprobador no puede — y mientras tanto el mudo está a la vista, con su motivo, no escondido.
 """
 from __future__ import annotations
 
@@ -79,15 +92,18 @@ def _ultima_corrida(repo: Path) -> tuple[str | None, str]:
     return f.get("conclusion"), detalle
 
 
-def ci_de_los_publicos_en_verde() -> tuple[bool, str]:
+def ci_de_los_publicos_en_verde() -> tuple[bool | None, str]:
+    """VERDE / ROJO / MUDO (`None`). Ver el docstring del modulo: no poder mirar es MUDO."""
     try:
         pubs = publicos()
     except NoSePudoMirar as e:
-        return False, f"no se pudo mirar ({e}). Eso NO es «las CI estan verdes»."
+        return None, f"no se pudo mirar ({e}). Eso NO es «las CI estan verdes»."
     except OSError as e:
-        return False, (f"no se pudo ni enumerar los repos ({type(e).__name__}: {e}). "
-                       "Eso NO es «las CI estan verdes»: es no haber podido mirar.")
+        return None, (f"no se pudo ni enumerar los repos ({type(e).__name__}: {e}). "
+                      "Eso NO es «las CI estan verdes»: es no haber podido mirar.")
     if not pubs:
+        # Esto SI es rojo y no mudo: `gh` ha contestado, y ha contestado algo imposible. No es no
+        # haber podido mirar — es haber mirado y ver algo que no cuadra.
         return False, "cero repos publicos detectados: sospechoso, no limpio"
 
     rojas, sin_ci, en_curso = [], [], []
@@ -95,10 +111,10 @@ def ci_de_los_publicos_en_verde() -> tuple[bool, str]:
         try:
             conclusion, detalle = _ultima_corrida(repo)
         except NoSePudoMirar as e:
-            return False, f"no se pudo preguntar ({e}). Eso NO es «estan verdes»."
+            return None, f"no se pudo preguntar ({e}). Eso NO es «estan verdes»."
         except OSError as e:
-            return False, (f"no se pudo lanzar gh ({type(e).__name__}: {e}). "
-                           "Eso NO es «estan verdes».")
+            return None, (f"no se pudo lanzar gh ({type(e).__name__}: {e}). "
+                          "Eso NO es «estan verdes».")
         if detalle == "sin ninguna corrida":
             sin_ci.append(repo.name)
         elif detalle.startswith("en curso"):
@@ -122,5 +138,7 @@ def ci_de_los_publicos_en_verde() -> tuple[bool, str]:
 
 if __name__ == "__main__":
     ok, msg = ci_de_los_publicos_en_verde()
-    print(("VERDE: " if ok else "ROJO: ") + msg)
-    sys.exit(0 if ok else 1)
+    # 3 = NO CONCLUYENTE, el mismo codigo que usa el tablero. Quien llame a este guion por
+    # separado tiene que poder distinguir las tres cosas igual que las distingue el tablero.
+    print(("MUDO: " if ok is None else "VERDE: " if ok else "ROJO: ") + msg)
+    sys.exit(3 if ok is None else 0 if ok else 1)
