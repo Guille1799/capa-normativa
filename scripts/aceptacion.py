@@ -674,14 +674,24 @@ def canario_de_los_hooks() -> tuple[bool, str]:
         return False, "no existe scripts/canario_hooks.py: nadie comprueba los hooks"
     try:
         r = subprocess.run([sys.executable, str(guion)], capture_output=True, timeout=900,
-                           cwd=str(RAIZ))
+                           cwd=str(RAIZ), stdin=subprocess.DEVNULL)
     except subprocess.TimeoutExpired:
-        return False, "el canario de los hooks se cuelga (>15 min)"
+        return None, "el canario de los hooks se cuelga (>15 min): eso no es un veredicto"
+    except OSError as e:
+        return None, "no se pudo lanzar el canario (" + type(e).__name__ + ")"
     salida = (r.stdout + r.stderr).decode("utf-8", "replace").strip().splitlines()
+    ultima = (salida[-1] if salida else "")
+    if r.returncode == 3:
+        return None, ultima.replace("MUDO: ", "")[:180] or "no se pudo medir"
     if r.returncode != 0:
         util = [l for l in salida if l.strip().startswith(chr(183))]
-        return False, (util[0].strip() if util else (salida[-1] if salida else "falla sin mensaje"))[:180]
-    return True, "los 10 hooks sobreviven a basura y rechazan su carga envenenada"
+        return False, (util[0].strip() if util else (ultima or "falla sin mensaje"))[:180]
+    # El recuento sale del propio canario y NO se escribe aqui. Hasta el 2026-08-30 esta linea
+    # decia «los 10 hooks» con el numero a mano: el dia que se registrara el once, el tablero
+    # habria seguido diciendo diez. Una cifra escrita a mano en un mensaje de VERDE es una
+    # mentira con fecha de caducidad, y encima en el sitio que nadie relee.
+    return True, (ultima.replace("VERDE: ", "")[:180]
+                  or "los hooks sobreviven a basura y rechazan su carga envenenada")
 
 
 CUMPLIDAS = {

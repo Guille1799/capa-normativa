@@ -199,3 +199,47 @@ def test_el_sandbox_no_toca_el_settings_del_usuario(tmp_path):
                        capture_output=True, timeout=600, cwd=str(RAIZ), env=entorno)
     salida = (r.stdout + r.stderr).decode("utf-8", "replace")
     assert "1 hooks registrados" in salida, salida[:400]
+
+
+# ── las tres razones por las que la lista sale vacia, que NO son la misma ────────────────────
+
+def test_un_settings_QUE_NO_EXISTE_es_ROJO(tmp_path):
+    """Que no exista es una RESPUESTA, no un impedimento: dice que aqui no hay nada registrado.
+
+    Y un canario sin nada que vigilar es un canario roto. Por eso este sigue siendo rojo y no
+    asciende a mudo — un mudo se perdonaria dos dias, y esto no se arregla solo.
+    """
+    m = _tablero(tmp_path / "no_existe.json")
+    ok, motivo = m.canario_de_los_hooks()
+    assert ok is False, motivo
+    assert "no existe" in motivo.lower(), motivo
+
+
+def test_un_settings_ILEGIBLE_es_MUDO_y_no_rojo(tmp_path):
+    """El unico de los tres que no era rojo, y hasta hoy salia rojo con el mismo mensaje.
+
+    Permisos, disco, el fichero en uso por otro proceso: no se ha podido mirar. Y no mirar no es
+    una acusacion. Si el impedimento persiste, la ronda lo sube a ROJO ella sola a los dos dias.
+    """
+    ajustes = tmp_path / "settings.json"
+    ajustes.mkdir()                      # una CARPETA donde se espera un fichero: OSError al leer
+    m = _tablero(ajustes)
+    ok, motivo = m.canario_de_los_hooks()
+    assert ok is not True, "un settings ilegible se ha leido como «los hooks estan bien»"
+    assert ok is None, f"deberia ser MUDO: no se ha comprobado nada. {motivo}"
+
+
+def test_el_VERDE_no_lleva_el_numero_de_hooks_escrito_a_mano(tmp_path):
+    """MEDIDO el 2026-08-30: el mensaje decia «los 10 hooks» y habia NUEVE.
+
+    Alguien retiro un hook y la cifra se quedo. Una cifra a mano en un mensaje de VERDE es una
+    mentira con fecha de caducidad, y encima en el sitio que nadie relee. Ahora el recuento sale
+    del propio canario, asi que este test exige que el numero coincida con los hooks de pega.
+    """
+    m = _tablero(_sandbox(tmp_path, _GRITA))
+    ok, motivo = m.canario_de_los_hooks()
+    assert ok is True, motivo
+    assert "los 10 hooks" not in motivo, (
+        "el numero vuelve a estar escrito a mano en el tablero: " + motivo)
+    assert " 1 hook" in motivo or " 1 " in motivo, (
+        f"el sandbox monta UN hook y el mensaje no lo refleja: {motivo}")

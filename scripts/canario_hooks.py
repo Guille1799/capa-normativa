@@ -279,9 +279,28 @@ def envenenados() -> list[str]:
 
 
 def main(argv: list[str]) -> int:
+    # `hooks_registrados()` devuelve [] por tres motivos distintos, y hasta el 2026-08-30 los tres
+    # salian ROJO con el mismo mensaje. Dos de ellos SI son rojo; el tercero no, y confundirlos es
+    # la misma trampa que este canario existe para cazar en los demas.
+    try:
+        SETTINGS.read_text("utf-8", errors="replace")
+    except FileNotFoundError:
+        # No es «no he podido leerlo»: es una respuesta clara, y dice que aqui no hay nada
+        # registrado. Un canario sin nada que vigilar es un canario roto.
+        print("ROJO: no existe " + str(SETTINGS) + " — sin lista no hay canario")
+        return 1
+    except OSError as e:
+        # ESTE es el que no era rojo. Permisos, disco, el fichero en uso: no se ha podido mirar,
+        # y no mirar no es una acusacion. Si el impedimento persiste, la ronda lo sube a rojo sola.
+        print("MUDO: no se pudo leer " + SETTINGS.name + " (" + type(e).__name__ + "): no se ha "
+              "comprobado nada, que no es lo mismo que estar mal")
+        return 3
     registrados = hooks_registrados()
     if not registrados:
-        print("ROJO: no se pudo leer ningun hook de settings.json — sin lista no hay canario")
+        # Se ha leido bien y no declara hooks (o el JSON esta corrupto). Es una respuesta, y es
+        # imposible en esta maquina: eso es haber mirado y ver algo que no cuadra.
+        print("ROJO: " + SETTINGS.name + " se lee pero no declara ningun hook — sin lista no hay "
+              "canario")
         return 1
     # Primero si COMPILAN: un fichero que no parsea da un «sale 1» indistinguible de un hook que
     # decide bloquear, y ese diagnostico equivocado cuesta horas. Que salga nombrado y aparte.
