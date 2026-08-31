@@ -94,8 +94,15 @@ CACHE = Path.home() / "proyectos" / ".rondas" / "sabotaje_cableado.json"
 
 
 def _llave() -> str:
-    """La huella de todo lo que puede cambiar el veredicto: el tablero y la suite entera."""
+    """La huella de todo lo que puede cambiar el veredicto: el tablero, la suite, y ESTE fichero.
+
+    ⚠️ Incluirse a sí mismo no es celo: el 2026-08-31 este comprobador dio un VERDE falso por un
+    bug propio, y al arreglarlo la memoria habría seguido sirviendo el verde envenenado — porque
+    ni el tablero ni un test habían cambiado. Un guardián que se arregla y sigue contestando lo
+    que decía roto es peor que uno roto.
+    """
     h = hashlib.sha256()
+    h.update(Path(__file__).read_bytes())
     h.update(TABLERO.read_bytes())
     for f in sorted((RAIZ / "tests").glob("*.py")):
         h.update(f.name.encode("utf-8"))
@@ -219,8 +226,11 @@ def _medir() -> tuple[bool | None, str]:
 
     original = TABLERO.read_bytes()
     huella = hashlib.sha256(original).hexdigest()
+    # El final de línea del fichero se preserva a mano. `write_text` traduce `\n` a `\r\n` en
+    # Windows, y sobre un fichero que YA lleva CRLF eso produce `\r\r\n` en cada línea.
+    salto = "\r\n" if b"\r\n" in original else "\n"
     try:
-        texto = original.decode("utf-8")
+        texto = original.decode("utf-8").replace("\r\n", "\n")
         piezas = piezas_de_cableado(texto)
     except (UnicodeDecodeError, SyntaxError, NoSePudoMutar) as e:
         return None, f"no se pudo leer el tablero ({e}): no se ha mutado nada"
@@ -255,9 +265,30 @@ def _medir() -> tuple[bool | None, str]:
                 # todas formas, y eso lo denuncia otro sitio, no aqui.
                 sin_mutar.append(pieza + " (sin ningun `return False`)")
                 continue
-            TABLERO.write_text(mutada, encoding="utf-8")
+            crudo = mutada.replace("\n", salto).encode("utf-8")
+            # ⚠️ LA GUARDA QUE HACE IMPOSIBLE EL FALLO DEL 2026-08-31, y merece leerse.
+            #
+            # `return False` -> `return True` quita EXACTAMENTE un byte por volteo. Cualquier otro
+            # tamaño significa que la escritura ha tocado algo más que la mutación, y entonces la
+            # suite puede protestar por ESO — y todas las piezas parecerían vigiladas.
+            #
+            # Paso de verdad: la primera versión escribía con `write_text`, que sobre un fichero
+            # con CRLF produce `\r\r\n` en cada línea. Corrompía las 1.169 líneas, la suite
+            # protestaba por la corrupción, y este comprobador dio un VERDE perfecto diciendo que
+            # las 9 piezas estaban vigiladas — cuando dos no lo estaban. Un verde falso dentro del
+            # comprobador escrito para cazar verdes falsos.
+            #
+            # Detectarlo no basta: se hace imposible. Si el tamaño no cuadra, no se mide.
+            if len(crudo) != len(original) - cuantos:
+                raise NoSePudoMutar(
+                    f"mutando {pieza} el fichero cambio {len(original) - len(crudo)} bytes y "
+                    f"debia cambiar {cuantos} (uno por volteo): la escritura ha tocado algo mas "
+                    f"que la mutacion, asi que cualquier veredicto seria falso")
+            TABLERO.write_bytes(crudo)
             if not _corre_la_suite():
                 ciegas.append(f"{pieza} ({cuantos} retorno(s) volteado(s))")
+    except NoSePudoMutar as e:
+        return None, f"{e}"
     except subprocess.TimeoutExpired:
         return None, f"la suite se cuelga (>{TIMEOUT_SUITE_S // 60} min): no es un veredicto"
     except OSError as e:

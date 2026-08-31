@@ -230,3 +230,53 @@ def test_si_el_TABLERO_cambia_la_memoria_deja_de_valer(sab, monkeypatch, tablero
     _suite(sab, monkeypatch, referencia=False, luego=lambda: corridas.append(1) or True)
     sab.sabotaje_del_cableado()
     assert len(corridas) == 2, "la memoria ha seguido valiendo con el tablero cambiado"
+
+
+# ── el verde falso del 2026-08-31, hecho imposible ───────────────────────────────────────────
+
+def test_la_mutacion_NO_puede_tocar_nada_mas_que_la_mutacion(sab, monkeypatch, tablero_intacto):
+    """El fallo que dio un VERDE perfecto y falso, ahora imposible en vez de sólo arreglado.
+
+    La primera version escribia con `write_text`, que sobre un fichero con CRLF produce `\r\r\n`
+    en cada linea. Corrompia las 1.169 lineas del tablero, la suite protestaba POR ESO, y el
+    comprobador concluyo que las 9 piezas estaban vigiladas cuando dos no lo estaban. Un verde
+    falso dentro del comprobador escrito para cazar verdes falsos.
+
+    `return False` -> `return True` quita EXACTAMENTE un byte por volteo. Cualquier otro tamano
+    significa que la escritura ha tocado algo mas, y entonces no se mide: sale MUDO.
+    """
+    _limpio(sab, monkeypatch)
+    monkeypatch.setattr(sab, "piezas_de_cableado", lambda _f: ["_delega"])
+    _suite(sab, monkeypatch, referencia=False, luego=True)
+
+    original = sab.voltear
+    monkeypatch.setattr(sab, "voltear",
+                        lambda f, n: (original(f, n)[0] + "\n# basura de mas\n", original(f, n)[1]))
+    ok, msg = sab.sabotaje_del_cableado()
+    assert ok is None, f"con la escritura sucia NO se puede dar un veredicto: {msg}"
+    assert "bytes" in msg and "volteo" in msg
+
+
+def test_el_tablero_se_reescribe_conservando_SUS_finales_de_linea(sab, tablero_intacto):
+    """La comprobacion directa del bug: mutar y reescribir no puede engordar el fichero."""
+    crudo = TABLERO.read_bytes()
+    salto = "\r\n" if b"\r\n" in crudo else "\n"
+    texto = crudo.decode("utf-8").replace("\r\n", "\n")
+    mutada, cuantos = sab.voltear(texto, "_delega")
+    reescrito = mutada.replace("\n", salto).encode("utf-8")
+    assert len(reescrito) == len(crudo) - cuantos, (
+        "reescribir el tablero cambia " + str(len(crudo) - len(reescrito)) + " bytes y deberia "
+        "cambiar " + str(cuantos) + ": los finales de linea se estan corrompiendo")
+    assert b"\r\r\n" not in reescrito
+
+
+def test_la_memoria_se_invalida_si_cambia_ESTE_comprobador(sab, monkeypatch, tablero_intacto):
+    """Un guardian que se arregla y sigue contestando lo que decia roto es peor que uno roto.
+
+    El 2026-08-31 este comprobador dio un verde falso por un bug propio. Sin esta parte de la
+    llave, al arreglarlo la memoria habria seguido sirviendo el verde envenenado — porque ni el
+    tablero ni un solo test habian cambiado.
+    """
+    fuente = Path(sab.__file__ if hasattr(sab, "__file__") else GUION)
+    assert "Path(__file__).read_bytes()" in GUION.read_text(encoding="utf-8"), (
+        "la llave de la memoria ya no incluye el propio comprobador")
