@@ -721,6 +721,15 @@ CUMPLIDAS = {
 }
 
 SIN_MUTACION = {
+    "sabotaje-del-cableado":
+        "no se muta creando un fichero: su veredicto sale de MUTAR EL PROPIO TABLERO y correr la "
+        "suite entera, asi que un artefacto en disco no cambia lo que conteste. Y mutarlo con la "
+        "maquina vieja seria circular. Su cambio de color lo cubre "
+        "tests/test_sabotaje_del_cableado.py, que le falsifica el oraculo: ROJO cuando la suite "
+        "no protesta ante una pieza saboteada (nombrandola), VERDE cuando protesta por cada una, "
+        "MUDO si la suite YA FALLA antes de mutar —un juez que ya grita no puede juzgar—, MUDO "
+        "con cambios sin guardar, ROJO con cero piezas, y sobre todo que el tablero VUELVE "
+        "INTACTO aunque la suite reviente a mitad, comprobado por huella.",
     "ci-de-los-publicos-en-verde":
         "no se muta creando un fichero: pregunta a GitHub por la ULTIMA corrida de CI de cada repo "
         "publico, y un artefacto en disco no cambia lo que GitHub conteste. Su cambio de color lo cubre "
@@ -925,7 +934,29 @@ def ci_de_los_publicos_en_verde() -> tuple:
                    timeout=900, corte=240)
 
 
+def sabotaje_del_cableado() -> tuple:
+    """Ninguna pieza del tablero puede quedarse INCAPAZ DE PONERSE ROJA sin que nadie lo note.
+
+    Le voltea los `return False` a cada pieza de cableado —dejandola fisicamente incapaz de dar
+    un veredicto negativo— y corre la suite entera. Si nadie protesta, esa pieza no la vigila
+    nada, y todo comprobador que cuelgue de ella es decorativo.
+
+    OCUPA EL SITIO del pase de mutacion viejo, que el 2026-08-30 se descubrio muerto: ARTEFACTOS
+    vacio, `0/0 verificados` —que se lee como un 100 %— y sin forma de revivir, porque su unica
+    mentira era plantar un fichero en el suelo y aqui nadie mira el suelo.
+
+    NACE ROJO con dos piezas ciegas (`_delega`, del que cuelgan 7 comprobadores, y
+    `revista_de_runtimes`). Se cierra escribiendo los tests que faltan, no tocando esto.
+
+    Cuesta ~10 min la primera vez y ~0 despues: recuerda su veredicto mientras ni el tablero ni
+    un solo test cambien, que es exactamente lo que puede cambiar la respuesta.
+    """
+    return _delega("sabotaje_del_cableado.py", "todas las piezas de cableado estan vigiladas",
+                   timeout=2400, corte=300)
+
+
 COMPROBADORES = {
+    "sabotaje-del-cableado": sabotaje_del_cableado,
     "ci-de-los-publicos-en-verde": ci_de_los_publicos_en_verde,
     "exenciones-no-suben": exenciones_no_suben,
     "piezas-compartidas-al-dia": piezas_compartidas_al_dia,

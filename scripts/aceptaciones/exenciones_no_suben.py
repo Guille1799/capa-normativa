@@ -93,7 +93,15 @@ BASELINE = Path(__file__).resolve().parent / "exenciones_baseline.json"
 #:
 #: El arreglo de fondo está encolado en PENDIENTES: enseñar a `_verifica` la dirección
 #: verde -> rojo -> verde. Mientras no exista, este tope sube y no baja, y eso hay que verlo.
-TOPE = int(os.environ.get("CN_TOPE_EXENCIONES") or 33)
+#: 2026-08-31, 33 -> 34. Entra `sabotaje-del-cableado`, y su exencion es estructural por partida
+#: doble: su veredicto sale de MUTAR EL PROPIO TABLERO y correr la suite, asi que ningun artefacto
+#: en disco lo cambia — y ademas mutarlo con la maquina de mutar seria circular.
+#:
+#: Esta subida es distinta de la de ayer y conviene decirlo: la de ayer AÑADIA deuda sin nada a
+#: cambio. Esta entra junto con el comprobador que hace que la deuda deje de ser invisible — el que
+#: destapo que `_delega` y `revista_de_runtimes` podian quedarse incapaces de ponerse rojas sin que
+#: ninguna de las 694 pruebas se enterara. Sube el numero de exentos y baja el de ciegos.
+TOPE = int(os.environ.get("CN_TOPE_EXENCIONES") or 34)
 
 #: Las dos formas que puede tener una coartada hoy. El vocabulario obliga a clasificar: una entrada
 #: sin clase reconocida es una exención que nadie ha mirado.

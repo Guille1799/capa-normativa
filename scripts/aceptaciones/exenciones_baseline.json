@@ -1,4 +1,9 @@
 {
+  "sabotaje-del-cableado": {
+    "value": "tests/test_sabotaje_del_cableado.py",
+    "clase": "test-nombrado",
+    "reason": "no se muta creando un fichero: su veredicto sale de MUTAR EL PROPIO TABLERO y correr la suite entera, asi que un artefacto en disco no cambia lo que conteste. Y mutarlo con la maquina vieja seria circ"
+  },
   "ci-de-los-publicos-en-verde": {
     "value": "tests/test_ci_de_los_publicos.py",
     "clase": "test-nombrado",
