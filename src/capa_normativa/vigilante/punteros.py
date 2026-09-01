@@ -68,7 +68,7 @@ def revisar_punteros(
     """Revisa los `§N.M` de `corpus` contra las cabeceras de `corpus` + `tambien`.
 
     `tambien` existe por un falso positivo medido el 2026-08-09: al correr esto sobre
-    `ponerse_wenorro/docs`, los `§5.40`/`§5.50` salieron colgantes — y eran **correctos**,
+    los `docs/` de un proyecto vecino, los `§5.40`/`§5.50` salieron colgantes — y eran **correctos**,
     apuntando a un documento que vive en OTRO repo. 17 de 18 hallazgos de aquella corrida
     eran de esa clase. Un puntero entre repos es inverificable si no le declaras el otro
     corpus; declararlo es el precio de que esta clase deje de ser ciega.

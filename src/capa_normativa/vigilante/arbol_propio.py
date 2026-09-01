@@ -26,7 +26,7 @@ reales, de estos mismos repos, en las que una ruta acaba mal sin que nadie la ha
   1. **Variable de entorno.** Ya pasó: `GIT_DIR` secuestró a los detectores, que escanearon
      otro repositorio, no encontraron nada y **declararon todo limpio** (commit `d216e5e`).
   2. **Paquete instalado que tapa al fuente.** Medido el 2026-08-23: el venv de
-     `mcp_smart_context` tiene `capa_normativa` **0.7.0** instalada mientras el repo va por la
+     un proyecto vecino tiene `capa_normativa` **0.7.0** instalada mientras el repo va por la
      0.16.2. Una sonda que ahí haga `import capa_normativa` examina código congelado hace nueve
      versiones. Cero rutas escritas.
   3. **Rutas relativas que se escapan.** `../otro-arbol/x.py` no tiene nada de absoluto y sale
@@ -132,9 +132,9 @@ def _norm(p) -> str:
 def arboles_hermanos(arbol: Path) -> list[Path]:
     """Los demás worktrees del mismo repo. Vacío si no es un repo o git no está.
 
-    Se pregunta a git en vez de deducirlo de los nombres de carpeta: `pw-ralph` y
-    `ponerse_wenorro` no se parecen en nada y son el mismo repo, y `capa-normativa` y
-    `capa-normativa-otro` se parecen mucho y podrían no serlo.
+    Se pregunta a git en vez de deducirlo de los nombres de carpeta: dos carpetas que no
+    se parecen en nada pueden ser el mismo repo, y dos que se parecen mucho —`capa-normativa`
+    y `capa-normativa-otro`— pueden no serlo.
     """
     try:
         r = subprocess.run(["git", "-C", str(arbol), "worktree", "list", "--porcelain"],
