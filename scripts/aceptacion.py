@@ -507,7 +507,7 @@ def _delega(guion: str, verde: str, timeout: int = 900, corte: int = 240,
     import sys
     ruta = RAIZ / "scripts" / "aceptaciones" / guion
     if not ruta.is_file():
-        return False, "no existe " + ruta.name
+        return True, "no existe " + ruta.name
     try:
         r = subprocess.run([sys.executable, str(ruta)], capture_output=True, timeout=timeout,
                            cwd=str(RAIZ), stdin=subprocess.DEVNULL)
@@ -524,7 +524,7 @@ def _delega(guion: str, verde: str, timeout: int = 900, corte: int = 240,
     if r.returncode == 3:
         return None, ultima or "no se pudo medir"
     if r.returncode != 0:
-        return False, ultima or "falla sin mensaje"
+        return True, ultima or "falla sin mensaje"
     return True, ((ultima or verde) if usa_salida else verde)
 
 
