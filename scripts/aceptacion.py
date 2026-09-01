@@ -433,7 +433,7 @@ def registro_sin_caducados() -> tuple[bool, str]:
     return True, "ninguna entrada de REGISTRO.md esta vencida sin aplicar su regla"
 
 
-def revista_de_runtimes() -> tuple[bool, str]:
+def revista_de_runtimes() -> tuple:
     """Quien corre que version de `capa_normativa`, y si alguien lo ha declarado.
 
     Delega en `proyectos/.claude/hooks/revista_runtimes.py --autoprueba`, que hace DOS cosas: el
@@ -460,12 +460,22 @@ def revista_de_runtimes() -> tuple[bool, str]:
         return False, "no existe " + str(guion) + ": nadie mide quien corre que"
     try:
         r = subprocess.run([sys.executable, str(guion), "--autoprueba"],
-                           capture_output=True, timeout=600, cwd=str(proyectos))
+                           capture_output=True, timeout=600, cwd=str(proyectos),
+                           stdin=subprocess.DEVNULL)
     except subprocess.TimeoutExpired:
-        return False, "la revista se cuelga (>10 min)"
+        # Colgarse no es un veredicto: es no haber podido medir. Estaba como ROJO hasta el
+        # 2026-09-01 — el contrato viejo de dos casillas, que obligaba a mentir.
+        return None, "la revista se cuelga (>10 min): no es un veredicto, es no haber medido"
+    except OSError as e:
+        # Bajo carga esta maquina falla al LANZAR procesos. Antes subia como excepcion y el
+        # tablero lo pintaba de rojo: una falsa alarma con la forma de las que perseguimos.
+        return None, "no se pudo lanzar la revista (" + type(e).__name__ + ")"
     salida = (r.stdout + r.stderr).decode("utf-8", "replace").strip().splitlines()
+    ultima = (salida[-1] if salida else "")[:170]
+    if r.returncode == 3:
+        return None, ultima.replace("MUDO: ", "") or "la revista no pudo medir"
     if r.returncode != 0:
-        return False, (salida[-1] if salida else "la revista falla sin mensaje")[:170]
+        return False, ultima or "la revista falla sin mensaje"
     return True, "los interpretes cuadran con el manifiesto, y la revista sabe detectar una deriva"
 
 

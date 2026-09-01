@@ -72,6 +72,15 @@ TIMEOUT_SUITE_S = 900
 #: Tests que se descartan del oráculo, con su motivo. ⚠️ Cada entrada aquí AGRANDA el punto ciego,
 #: así que va con nombre y fecha o no va.
 _DESCARTADOS: dict[str, str] = {
+    "tests/test_sabotaje_del_cableado.py":
+        "CONTAMINACION PROPIA, medida el 2026-09-01. Mutando `_delega` fallaban 8 tests y SIETE "
+        "eran de este fichero: leen `scripts/aceptacion.py` como DATO —para derivar la lista de "
+        "piezas, o para calcular la huella de la memoria— asi que cualquier mutacion del tablero "
+        "los rompe. Y un test que falla porque EL TEXTO cambio no verifica COMPORTAMIENTO: contarlo "
+        "como protesta daba `_delega` por vigilado cuando no lo esta. Quitarlo hace el juez mas "
+        "correcto, no mas flojo — se comprobo despues: sin este fichero, `_delega` sale ciego, que "
+        "es la verdad. Siguen corriendo en la suite normal; lo que no pueden es hacer de oraculo "
+        "sobre el fichero del que ellos mismos leen.",
     "tests/test_ronda_de_tableros.py::test_los_siete_declarados_estan_en_esta_maquina":
         "ROJO desde el 2026-08-31 por un motivo REAL y ajeno a este repo: al sacar el arnes del "
         "repo publico eu-political-observatory, la sincronizacion del worktree del robot borro su "
