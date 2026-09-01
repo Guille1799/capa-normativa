@@ -1047,7 +1047,7 @@ def _verifica(solo: str | None = None) -> int:
         if solo is not None and nombre != solo:
             continue
         if nombre in SIN_MUTACION:
-            print("  " + chr(9898) + " " + nombre.ljust(24) + "sin mutar: " + SIN_MUTACION[nombre])
+            print("  " + chr(9898) + " " + nombre.ljust(24) + " sin mutar: " + SIN_MUTACION[nombre])
             continue
         artefactos = ARTEFACTOS.get(nombre)
         if not artefactos:
@@ -1092,9 +1092,32 @@ def _verifica(solo: str | None = None) -> int:
     # tests/test_inv_ejecutan_de_verdad.py::test_los_no_mutables_declarados_existen_de_verdad,
     # porque un numero que se defiende solo tambien deja de denunciar el desorden que lo causo.
     mutables = [n for n in COMPROBADORES if n not in SIN_MUTACION]
-    verificados = len(mutables) - len(malos)
-    print(f"  {verificados}/{len(mutables)} verificados por mutación"
-          f" ({len(COMPROBADORES) - len(mutables)} declarados no mutables).")
+    no_mutables = len(COMPROBADORES) - len(mutables)
+    # ⚠️ `0/0` NO se imprime como si fuera una nota. Estuvo meses saliendo asi y en un informe se
+    # lee como un 100 % — fue el hallazgo del 2026-08-30 y por poco funda una maquina entera para
+    # arreglar lo que era, en realidad, una frase mal escrita.
+    #
+    # Y NO se retira el pase, aunque este vacio: se comprobo el 2026-09-01 mirando su historia.
+    # `ARTEFACTOS` tuvo una entrada real —`inv-para-que-el-healthcheck-si-el-tablero`, cuya
+    # aceptacion era escribir un documento— y funciono: se planto el fichero, el comprobador se
+    # puso verde, se verifico. Luego la promesa se cumplio, se retiro a CUMPLIDAS, y la lista se
+    # vacio SOLA. Esta dormida, no muerta: sirve para PROMESAS PENDIENTES cuya aceptacion es un
+    # artefacto con nombre, y volvera a llenarse la proxima vez que nazca una.
+    #
+    # Lo que NO puede hacer es atacar a un comprobador que ya funciona —exige que este ROJO de
+    # partida—, y de eso se ocupa `sabotaje-del-cableado`, que le opera por dentro en vez de
+    # intentar enganarle por fuera.
+    if mutables:
+        print(f"  {len(mutables) - len(malos)}/{len(mutables)} promesas pendientes verificadas "
+              f"por mutación ({no_mutables} declaradas no mutables).")
+    else:
+        # Se conserva la forma «N/M verificados por mutación» porque `ronda_de_tableros.py` la
+        # busca literalmente para resumir el pase. Lo que cambia es que el 0/0 ya no viaja solo:
+        # el significado va PEGADO, en la misma línea, donde no se puede leer sin él.
+        print(f"  0/0 verificados por mutación: NO es un 100 %, es que hoy no hay ninguna promesa "
+              f"pendiente que mutar ({no_mutables} comprobadores declarados no mutables).")
+        print("  La verificación adversarial de los comprobadores vive en `sabotaje-del-cableado`,"
+              " que les quita la capacidad de decir que no y exige que la suite lo note.")
     return 1 if malos else 0
 
 

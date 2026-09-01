@@ -252,3 +252,44 @@ def test_la_cuenta_de_verificados_por_mutacion_no_sale_negativa():
     assert verificables >= 0, (
         "hay " + str(len(TB.SIN_MUTACION)) + " exenciones para " + str(len(TB.COMPROBADORES))
         + " comprobadores: --verifica imprimiria una cuenta negativa.")
+
+
+def test_el_CERO_DE_CERO_no_puede_viajar_sin_su_significado(capsys):
+    """Un `0/0` suelto se lee como un 100 %, y estuvo meses saliendo asi.
+
+    Fue el hallazgo del 2026-08-30: el pase adversarial no mutaba nada, imprimia `0/0 verificados`
+    y en el informe eso parecia un aprobado. Por poco funda una maquina entera para arreglar lo
+    que era, en el fondo, una frase mal escrita.
+
+    La forma «N/M verificados por mutación» se conserva a proposito —`ronda_de_tableros.py` la
+    busca literalmente para resumir el pase—, asi que lo unico que puede protegerse es que el
+    numero NO viaje solo: el significado tiene que ir PEGADO, en la misma linea, donde no se
+    pueda leer sin el.
+    """
+    TB._verifica()
+    lineas = capsys.readouterr().out.splitlines()
+    resumen = [l for l in lineas if "verificados por mutaci" in l]
+    assert len(resumen) == 1, f"la ronda busca esa linea y hay {len(resumen)}: {resumen}"
+    if resumen[0].strip().startswith("0/0"):
+        assert "NO es un 100" in resumen[0], (
+            "el 0/0 vuelve a salir sin decir que no es una nota: " + resumen[0])
+        assert "no hay ninguna promesa pendiente" in resumen[0], (
+            "no dice POR QUE es cero, que es lo unico que lo distingue de un aprobado")
+
+
+def test_el_pase_de_mutacion_NO_se_ha_retirado(capsys):
+    """Esta dormido, no muerto, y la diferencia se comprobo mirando su historia.
+
+    `ARTEFACTOS` tuvo una entrada real —`inv-para-que-el-healthcheck-si-el-tablero`, cuya
+    aceptacion era escribir un documento— y funciono: se planto el fichero, el comprobador se puso
+    verde, se verifico. Luego la promesa se cumplio, paso a CUMPLIDAS, y la lista se vacio SOLA.
+
+    Sirve para PROMESAS PENDIENTES cuya aceptacion es un artefacto con nombre, y volvera a
+    llenarse la proxima vez que nazca una. Retirarlo por estar vacio seria tirar algo que
+    funciona — este test lo impide.
+    """
+    assert hasattr(TB, "ARTEFACTOS"), "se ha retirado el pase de mutacion, que estaba dormido"
+    assert isinstance(TB.ARTEFACTOS, dict)
+    fuente = inspect.getsource(TB._verifica)
+    assert "ARTEFACTOS.get(" in fuente, (
+        "el pase ya no consulta ARTEFACTOS: quedaria una tabla que nadie lee")
