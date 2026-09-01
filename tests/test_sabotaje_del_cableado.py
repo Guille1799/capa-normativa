@@ -280,3 +280,44 @@ def test_la_memoria_se_invalida_si_cambia_ESTE_comprobador(sab, monkeypatch, tab
     fuente = Path(sab.__file__ if hasattr(sab, "__file__") else GUION)
     assert "Path(__file__).read_bytes()" in GUION.read_text(encoding="utf-8"), (
         "la llave de la memoria ya no incluye el propio comprobador")
+
+
+# ── un comentario que habla de código no es código ───────────────────────────────────────────
+
+def test_una_PROSA_que_menciona_la_frase_no_cuenta_como_codigo(sab):
+    """El falso positivo del 2026-09-01, y la ironia es exacta.
+
+    El envoltorio de ESTE comprobador no tiene ningun `return False` —es `return _delega(...)`—
+    pero su docstring MENCIONA la frase al explicar que hace. Buscando texto, el comprobador mutaba
+    su propia prosa: no cambiaba ningun comportamiento, la suite no protestaba, y se acusaba a si
+    mismo de estar ciego.
+
+    Mirando el arbol sintactico eso deja de poder confundirse.
+    """
+    fuente = ('def f():\n'
+              '    """Voltea los return False de cada pieza."""\n'
+              '    # aqui tambien se habla de return False\n'
+              '    return _otro(1)\n')
+    _, cuantos = sab.voltear(fuente, "f")
+    assert cuantos == 0, "ha mutado una docstring o un comentario"
+
+
+def test_reconoce_las_DOS_formas_de_decir_que_no(sab):
+    """`return False` a secas y `return False, "motivo"`, que es la que usa este tablero."""
+    fuente = ('def f(x):\n'
+              '    if x == 1:\n'
+              '        return False\n'
+              '    if x == 2:\n'
+              '        return False, "con motivo"\n'
+              '    return True, "bien"\n')
+    mutada, cuantos = sab.voltear(fuente, "f")
+    assert cuantos == 2, f"esperaba dos formas y ha visto {cuantos}"
+    assert "return False" not in mutada
+
+
+def test_NO_se_acusa_a_si_mismo(sab):
+    """Ancla contra el estado real: el envoltorio de este comprobador es un delegador puro, asi
+    que no tiene cable propio que romper y no debe entrar en la lista de piezas."""
+    piezas = sab.piezas_de_cableado(TABLERO.read_text(encoding="utf-8"))
+    assert "sabotaje_del_cableado" not in piezas, (
+        "vuelve a acusarse a si mismo: casi seguro que esta buscando texto y no estructura")

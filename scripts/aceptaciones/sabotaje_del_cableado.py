@@ -126,6 +126,30 @@ class NoSePudoMutar(Exception):
     """No se pudo hacer el experimento. Nunca se traduce a «todo vigilado»."""
 
 
+def _lineas_que_dicen_que_no(fn) -> list[int]:
+    """Las líneas de `fn` con un `return False` DE VERDAD, mirando la estructura y no las letras.
+
+    ⚠️ Buscar el texto `return False` fue un error, y se pagó el 2026-09-01: el envoltorio de este
+    mismo comprobador no tiene ninguno —es `return _delega(...)`—, pero **su docstring menciona la
+    frase** al explicar qué hace. El comprobador mutó su propia prosa, no cambió ningún
+    comportamiento, la suite no protestó, y se acusó a sí mismo de estar ciego.
+
+    Un comentario que habla de código no es código. Mirando el árbol sintáctico eso deja de poder
+    confundirse: un `ast.Return` cuyo valor es `False`, o una tupla que empieza por `False`, que
+    es la forma que usa este tablero (`return False, "motivo"`).
+    """
+    fuera = []
+    for n in ast.walk(fn):
+        if not isinstance(n, ast.Return) or n.value is None:
+            continue
+        v = n.value
+        if isinstance(v, ast.Tuple) and v.elts:
+            v = v.elts[0]
+        if isinstance(v, ast.Constant) and v.value is False:
+            fuera.append(n.lineno)
+    return sorted(set(fuera))
+
+
 def piezas_de_cableado(fuente: str) -> list[str]:
     """Las funciones del tablero de las que cuelga al menos un comprobador.
 
@@ -151,11 +175,11 @@ def piezas_de_cableado(fuente: str) -> list[str]:
     # propósito, a los siete envoltorios de una línea (`return _delega(...)`): su cable es
     # `_delega`, y mutarlos por separado gastaría un minuto de suite cada uno para no medir nada
     # nuevo. La pieza que se muta es aquella donde vive de verdad la decisión de decir que no.
-    cuerpos = {n.name: ast.get_source_segment(fuente, n) or ""
-               for n in ast.walk(arbol) if isinstance(n, ast.FunctionDef)}
-    candidatas = (directas | {f for f in fabricas if f}) & set(cuerpos)
+    funcs = {n.name: n for n in ast.walk(arbol) if isinstance(n, ast.FunctionDef)}
+    candidatas = (directas | {f for f in fabricas if f}) & set(funcs)
     candidatas.add("_delega")               # la pieza de la que cuelgan mas comprobadores
-    return sorted(n for n in candidatas if "return False" in cuerpos.get(n, ""))
+    return sorted(n for n in candidatas
+                  if n in funcs and _lineas_que_dicen_que_no(funcs[n]))
 
 
 def voltear(fuente: str, funcion: str) -> tuple[str, int]:
@@ -170,9 +194,13 @@ def voltear(fuente: str, funcion: str) -> tuple[str, int]:
         raise NoSePudoMutar(f"no existe la funcion {funcion}")
     lineas = fuente.split("\n")
     n = 0
-    for i in range(fn.lineno - 1, fn.end_lineno):
+    # Sólo las líneas que el ÁRBOL dice que llevan un `return False` de verdad. Recorrer el rango
+    # entero buscando el texto mutaba también docstrings y comentarios — ver el porqué, con su
+    # caso real, en `_lineas_que_dicen_que_no`.
+    for numero in _lineas_que_dicen_que_no(fn):
+        i = numero - 1
         if "return False" in lineas[i]:
-            lineas[i] = lineas[i].replace("return False", "return True")
+            lineas[i] = lineas[i].replace("return False", "return True", 1)
             n += 1
     return "\n".join(lineas), n
 
