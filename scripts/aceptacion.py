@@ -433,7 +433,7 @@ def registro_sin_caducados() -> tuple[bool, str]:
     return True, "ninguna entrada de REGISTRO.md esta vencida sin aplicar su regla"
 
 
-def revista_de_runtimes() -> tuple[bool, str]:
+def revista_de_runtimes() -> tuple:
     """Quien corre que version de `capa_normativa`, y si alguien lo ha declarado.
 
     Delega en `proyectos/.claude/hooks/revista_runtimes.py --autoprueba`, que hace DOS cosas: el
@@ -460,12 +460,22 @@ def revista_de_runtimes() -> tuple[bool, str]:
         return False, "no existe " + str(guion) + ": nadie mide quien corre que"
     try:
         r = subprocess.run([sys.executable, str(guion), "--autoprueba"],
-                           capture_output=True, timeout=600, cwd=str(proyectos))
+                           capture_output=True, timeout=600, cwd=str(proyectos),
+                           stdin=subprocess.DEVNULL)
     except subprocess.TimeoutExpired:
-        return False, "la revista se cuelga (>10 min)"
+        # Colgarse no es un veredicto: es no haber podido medir. Estaba como ROJO hasta el
+        # 2026-09-01 — el contrato viejo de dos casillas, que obligaba a mentir.
+        return None, "la revista se cuelga (>10 min): no es un veredicto, es no haber medido"
+    except OSError as e:
+        # Bajo carga esta maquina falla al LANZAR procesos. Antes subia como excepcion y el
+        # tablero lo pintaba de rojo: una falsa alarma con la forma de las que perseguimos.
+        return None, "no se pudo lanzar la revista (" + type(e).__name__ + ")"
     salida = (r.stdout + r.stderr).decode("utf-8", "replace").strip().splitlines()
+    ultima = (salida[-1] if salida else "")[:170]
+    if r.returncode == 3:
+        return None, ultima.replace("MUDO: ", "") or "la revista no pudo medir"
     if r.returncode != 0:
-        return False, (salida[-1] if salida else "la revista falla sin mensaje")[:170]
+        return False, ultima or "la revista falla sin mensaje"
     return True, "los interpretes cuadran con el manifiesto, y la revista sabe detectar una deriva"
 
 
@@ -721,6 +731,15 @@ CUMPLIDAS = {
 }
 
 SIN_MUTACION = {
+    "sabotaje-del-cableado":
+        "no se muta creando un fichero: su veredicto sale de MUTAR EL PROPIO TABLERO y correr la "
+        "suite entera, asi que un artefacto en disco no cambia lo que conteste. Y mutarlo con la "
+        "maquina vieja seria circular. Su cambio de color lo cubre "
+        "tests/test_sabotaje_del_cableado.py, que le falsifica el oraculo: ROJO cuando la suite "
+        "no protesta ante una pieza saboteada (nombrandola), VERDE cuando protesta por cada una, "
+        "MUDO si la suite YA FALLA antes de mutar —un juez que ya grita no puede juzgar—, MUDO "
+        "con cambios sin guardar, ROJO con cero piezas, y sobre todo que el tablero VUELVE "
+        "INTACTO aunque la suite reviente a mitad, comprobado por huella.",
     "ci-de-los-publicos-en-verde":
         "no se muta creando un fichero: pregunta a GitHub por la ULTIMA corrida de CI de cada repo "
         "publico, y un artefacto en disco no cambia lo que GitHub conteste. Su cambio de color lo cubre "
@@ -925,7 +944,29 @@ def ci_de_los_publicos_en_verde() -> tuple:
                    timeout=900, corte=240)
 
 
+def sabotaje_del_cableado() -> tuple:
+    """Ninguna pieza del tablero puede quedarse INCAPAZ DE PONERSE ROJA sin que nadie lo note.
+
+    Le voltea los `return False` a cada pieza de cableado —dejandola fisicamente incapaz de dar
+    un veredicto negativo— y corre la suite entera. Si nadie protesta, esa pieza no la vigila
+    nada, y todo comprobador que cuelgue de ella es decorativo.
+
+    OCUPA EL SITIO del pase de mutacion viejo, que el 2026-08-30 se descubrio muerto: ARTEFACTOS
+    vacio, `0/0 verificados` —que se lee como un 100 %— y sin forma de revivir, porque su unica
+    mentira era plantar un fichero en el suelo y aqui nadie mira el suelo.
+
+    NACE ROJO con dos piezas ciegas (`_delega`, del que cuelgan 7 comprobadores, y
+    `revista_de_runtimes`). Se cierra escribiendo los tests que faltan, no tocando esto.
+
+    Cuesta ~10 min la primera vez y ~0 despues: recuerda su veredicto mientras ni el tablero ni
+    un solo test cambien, que es exactamente lo que puede cambiar la respuesta.
+    """
+    return _delega("sabotaje_del_cableado.py", "todas las piezas de cableado estan vigiladas",
+                   timeout=2400, corte=300)
+
+
 COMPROBADORES = {
+    "sabotaje-del-cableado": sabotaje_del_cableado,
     "ci-de-los-publicos-en-verde": ci_de_los_publicos_en_verde,
     "exenciones-no-suben": exenciones_no_suben,
     "piezas-compartidas-al-dia": piezas_compartidas_al_dia,
@@ -1006,7 +1047,7 @@ def _verifica(solo: str | None = None) -> int:
         if solo is not None and nombre != solo:
             continue
         if nombre in SIN_MUTACION:
-            print("  " + chr(9898) + " " + nombre.ljust(24) + "sin mutar: " + SIN_MUTACION[nombre])
+            print("  " + chr(9898) + " " + nombre.ljust(24) + " sin mutar: " + SIN_MUTACION[nombre])
             continue
         artefactos = ARTEFACTOS.get(nombre)
         if not artefactos:
@@ -1051,9 +1092,32 @@ def _verifica(solo: str | None = None) -> int:
     # tests/test_inv_ejecutan_de_verdad.py::test_los_no_mutables_declarados_existen_de_verdad,
     # porque un numero que se defiende solo tambien deja de denunciar el desorden que lo causo.
     mutables = [n for n in COMPROBADORES if n not in SIN_MUTACION]
-    verificados = len(mutables) - len(malos)
-    print(f"  {verificados}/{len(mutables)} verificados por mutación"
-          f" ({len(COMPROBADORES) - len(mutables)} declarados no mutables).")
+    no_mutables = len(COMPROBADORES) - len(mutables)
+    # ⚠️ `0/0` NO se imprime como si fuera una nota. Estuvo meses saliendo asi y en un informe se
+    # lee como un 100 % — fue el hallazgo del 2026-08-30 y por poco funda una maquina entera para
+    # arreglar lo que era, en realidad, una frase mal escrita.
+    #
+    # Y NO se retira el pase, aunque este vacio: se comprobo el 2026-09-01 mirando su historia.
+    # `ARTEFACTOS` tuvo una entrada real —`inv-para-que-el-healthcheck-si-el-tablero`, cuya
+    # aceptacion era escribir un documento— y funciono: se planto el fichero, el comprobador se
+    # puso verde, se verifico. Luego la promesa se cumplio, se retiro a CUMPLIDAS, y la lista se
+    # vacio SOLA. Esta dormida, no muerta: sirve para PROMESAS PENDIENTES cuya aceptacion es un
+    # artefacto con nombre, y volvera a llenarse la proxima vez que nazca una.
+    #
+    # Lo que NO puede hacer es atacar a un comprobador que ya funciona —exige que este ROJO de
+    # partida—, y de eso se ocupa `sabotaje-del-cableado`, que le opera por dentro en vez de
+    # intentar enganarle por fuera.
+    if mutables:
+        print(f"  {len(mutables) - len(malos)}/{len(mutables)} promesas pendientes verificadas "
+              f"por mutación ({no_mutables} declaradas no mutables).")
+    else:
+        # Se conserva la forma «N/M verificados por mutación» porque `ronda_de_tableros.py` la
+        # busca literalmente para resumir el pase. Lo que cambia es que el 0/0 ya no viaja solo:
+        # el significado va PEGADO, en la misma línea, donde no se puede leer sin él.
+        print(f"  0/0 verificados por mutación: NO es un 100 %, es que hoy no hay ninguna promesa "
+              f"pendiente que mutar ({no_mutables} comprobadores declarados no mutables).")
+        print("  La verificación adversarial de los comprobadores vive en `sabotaje-del-cableado`,"
+              " que les quita la capacidad de decir que no y exige que la suite lo note.")
     return 1 if malos else 0
 
 

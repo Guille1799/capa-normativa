@@ -24,8 +24,22 @@ def _cargar():
     return mod
 
 
-def _tarea(nombre="ralph-cn", estado="Ready", ultima="8/24/2026 3:00:00 AM", resultado="0",
+def _tarea(nombre="ralph-cn", estado="Ready", ultima=None, resultado="0",
            accion=r"C:\proyectos\ralph_cn.cmd"):
+    """Una tarea del Programador, RECIÉN corrida salvo que se diga otra cosa.
+
+    ⚠️ La fecha por defecto **se deriva del reloj y no se escribe**. Estaba escrita —`8/24/2026`—
+    y el 2026-08-31 este fichero se puso rojo solo, a media sesión y sin que nadie lo tocara:
+    `test_verde_solo_cuando_todas_las_tuyas_viven` llama a `guardianes_vivos()` SIN inyectarle
+    `hoy`, así que compara contra el reloj de verdad. Siete días después de esa fecha, la tarea de
+    mentira cruzó `_DIAS_SIN_CORRER` y el test empezó a fallar.
+
+    Era una bomba de relojería con fecha de detonación conocida. Y el arreglo sólido no es mover
+    el número —eso sólo la reprograma para dentro de una semana— sino que **no haya número que
+    mover**. Los tests que sí necesitan una fecha concreta la siguen pasando a mano.
+    """
+    if ultima is None:
+        ultima = datetime.datetime.now().strftime("%m/%d/%Y %I:%M:%S %p")
     return {"nombre": nombre, "accion": accion, "estado": estado,
             "ultima": ultima, "resultado": resultado}
 
@@ -166,3 +180,46 @@ def test_contra_la_maquina_real_la_pregunta_se_puede_hacer():
     assert filas, "el Programador no devolvio tareas"
     mias = [t for t in filas if m._es_tuya(t)]
     assert len(mias) >= 10, f"solo {len(mias)} tareas propias: el filtro se ha vuelto loco"
+
+
+# --- no arrancar tampoco es gritar ------------------------------------------
+
+def test_un_127_es_NO_HABER_ARRANCADO_y_no_un_hallazgo():
+    """El caso real del 2026-08-31, con `ralph-eu` muerto dentro durante dias.
+
+    Al sacar el arnes del repo PUBLICO eu-political-observatory para dejarlo presentable, eso
+    llego a `main`; el worktree del robot se sincronizo y la sincronizacion BORRO
+    `scripts/ralph.sh`, que es lo que su lanzador ejecuta. Desde entonces la tarea arranca, no
+    encuentra nada y termina en 127 todos los dias — y este comprobador la daba por VIVA, porque
+    127 es un numero pequeño y los pequeños «los elige el programa».
+
+    No este. 127 es lo que devuelve un shell cuando NO ENCUENTRA que ejecutar, y por convencion
+    ningun programa lo usa como veredicto propio.
+    """
+    m = _cargar()
+    caidos = m.muertos([_tarea(nombre="ralph-eu", resultado="127")], hoy=HOY)
+    assert len(caidos) == 1, "un 127 se ha dado por vivo: la tarea corre y no hace nada"
+    assert "ARRANCAR" in caidos[0][1], caidos[0][1]
+    assert "no existe" in caidos[0][1], (
+        "el motivo tiene que decir QUE mirar, o el rojo no se puede cerrar: " + caidos[0][1])
+
+
+def test_un_126_tambien(_=None):
+    """Existe pero no es ejecutable: en Linux, un .sh sin el bit +x. Misma clase de muerte."""
+    m = _cargar()
+    caidos = m.muertos([_tarea(resultado="126")], hoy=HOY)
+    assert len(caidos) == 1 and "ARRANCAR" in caidos[0][1]
+
+
+def test_el_arreglo_NO_resucita_el_ruido_que_se_quito_ayer():
+    """La otra direccion, y es la que protege el trabajo del 2026-08-30.
+
+    `healthcheck.py` sale 1 cuando ENCUENTRA algo, `test-regresion-diaria.ps1` sale 1 cuando la
+    regresion falla, y `ralph_diario.sh` usa 2 para «atascado». Los tres estan gritando, no
+    muriendo. Si esta rama nueva se los tragara, volveriamos a llamar muertos a tres que trabajan
+    — que es exactamente el ruido que se quito ayer.
+    """
+    m = _cargar()
+    for codigo in ("1", "2", "3"):
+        assert m.muertos([_tarea(resultado=codigo)], hoy=HOY) == [], (
+            "el codigo " + codigo + " lo eligio el programa: es un hallazgo suyo, no su muerte")

@@ -502,8 +502,53 @@ def leer_nombrados(salida: str, pedidos: list[str]) -> dict | None:
     return veredictos
 
 
-def reconfirmar(t: dict, exe: str, nombres: list[str]) -> tuple[list[str], list[str]]:
-    """Vuelve a preguntar por unos rojos concretos. Devuelve `(confirmados, inestables)`.
+def _desconocido_para_el_tablero(err: str, nombre: str) -> bool:
+    """¿El tablero ha dicho, de él y con su nombre, que no lo conoce?
+
+    `aceptacion.py` contesta a un nombre que no está en `COMPROBADORES` con
+    `desconocida: <nombre>. Conocidas: ...` por **stderr** y sale 2, sin imprimir ningún
+    veredicto. Eso no es una avería: es el tablero contestando bien a una pregunta mal hecha.
+
+    ⚠️ Se exige que la línea NOMBRE a ese comprobador, no que contenga la palabra. Un
+    `"desconocida" in err` casaría con la lista de `Conocidas:` que viene detrás, con un mensaje
+    sobre OTRO nombre del mismo lote, y con esta misma explicación si algún día se imprimiera.
+
+    Y si el tablero cambiara su forma de decirlo, esto deja de reconocerlo y todo cae en «no se
+    pudo leer» — que conserva la alarma. La dirección del fallo es la segura a propósito: dejar
+    de tirar un rojo bueno cuesta ruido, tirarlo cuesta el rojo.
+    """
+    marca = "desconocida:"
+    for linea in (err or "").splitlines():
+        t = linea.strip()
+        if not t.startswith(marca):
+            continue
+        # `desconocida: <nombre>. Conocidas: ...`  ->  el primer trozo tras los dos puntos
+        dicho = t[len(marca):].strip().split(".")[0].split()[0] if t[len(marca):].strip() else ""
+        if dicho == nombre:
+            return True
+    return False
+
+
+def _repreguntar_uno(t: dict, exe: str, nombre: str) -> str:
+    """Vuelve a preguntar por UN comprobador. Devuelve `rojo`, `verde`, `jubilado` o `sin-leer`."""
+    try:
+        r = subprocess.run([exe, "scripts/aceptacion.py", nombre], cwd=str(t["cwd"]),
+                           env=_entorno_limpio(), capture_output=True,
+                           timeout=TIMEOUT_TABLERO_S)
+    except (subprocess.TimeoutExpired, OSError):
+        return "sin-leer"                            # sin respuesta se conserva la alarma
+    veredictos = leer_nombrados(r.stdout.decode("utf-8", "replace"), [nombre])
+    if veredictos is not None:
+        return "rojo" if veredictos[nombre] else "verde"
+    if _desconocido_para_el_tablero(r.stderr.decode("utf-8", "replace"), nombre):
+        return "jubilado"
+    return "sin-leer"                                # salida no fiable: se conserva la alarma
+
+
+def reconfirmar(t: dict, exe: str, nombres: list[str]) -> tuple[list[str], list[str], list[str]]:
+    """Vuelve a preguntar por unos rojos concretos, UNO A UNO.
+
+    Devuelve `(confirmados, inestables, jubilados)`.
 
     ## Por qué existe (medido el 2026-08-23, la primera vez que la tarea corrió de verdad)
 
@@ -512,30 +557,53 @@ def reconfirmar(t: dict, exe: str, nombres: list[str]) -> tuple[list[str], list[
     rojo: los tumbó la carga. Correr siete tableros seguidos carga la máquina, y hay
     comprobadores que interrogan procesos con timeout y se caen si el equipo va justo.
 
-    Un guarda que da falsas alarmas es peor que uno silencioso, porque enseña a no mirarlo — es la
-    misma lección de `inv-el-healthcheck-avisa-cada-30` entrando por otra puerta. Así que **un
-    rojo NUEVO no se cree a la primera**: se le vuelve a preguntar, a él solo, y solo se avisa de
-    los que insisten.
+    Un guarda que da falsas alarmas es peor que uno silencioso, porque enseña a no mirarlo. Así
+    que **un rojo NUEVO no se cree a la primera**: se le vuelve a preguntar, a él solo, y solo se
+    avisa de los que insisten. Y los que no se reconfirman van al informe como `inestables`, que
+    es un hallazgo por sí mismo.
 
-    Sale barato justamente porque se pregunta solo por lo nuevo, que casi siempre son cero.
+    ## Por qué UNO A UNO, y no el lote entero (medido el 2026-09-02)
 
-    Y los que NO se reconfirman no se tiran a la basura: van al informe como `inestables`, que es
-    un hallazgo por sí mismo — un comprobador que cambia de color según la carga está roto aunque
-    su promesa esté bien.
+    Antes se pedía todo el lote en una sola llamada, y eso **acoplaba a los comprobadores entre
+    sí**: `aceptacion.py` se para en el primer nombre que no conoce (exit 2, sin veredictos),
+    `leer_nombrados` exige un veredicto por nombre pedido y devuelve `None`, y con `None` esta
+    función devolvía todos los nombres en el primer hueco. En la rama de rojos nuevos eso era
+    seguro; en la de `resueltos` ese hueco es `aun_rojos`, **así que el lote entero acababa en
+    `inestables`**.
+
+    Lo que se veía por fuera era un aviso que decía *«22 comprobadores cambian de color según la
+    carga»*. Se midieron los 22 a solas, dos veces cada uno: **cambian de color CERO.** Lo que
+    había eran 5 nombres que su tablero no conoce y tres lotes envenenados por ellos — 1 + 10 + 11
+    = 22 exactos, y el único tablero con el lote limpio fue el único cuyo `resueltos` sobrevivió.
+
+    Y se realimentaba sola, que es por qué crecía de 16 a 22 en una tarde: los `aun_rojos` se
+    reescribían en `ficha["rojos"]`, así que al día siguiente volvían a «resolverse» y a envenenar
+    el lote otra vez, arrastrando a todos los que se hubieran puesto verdes ese día.
+
+    Preguntando de uno en uno no hay lote que envenenar: **un nombre que el tablero no conoce sólo
+    puede envenenarse a sí mismo.** Es hacer el fallo imposible en vez de detectarlo. Cuesta un
+    proceso por nombre — los 22 medidos tardan ~35 s, y la ronda entera tarda ~16 min.
+
+    ## Los jubilados son una tercera cosa, ni rojo ni cierre
+
+    Un comprobador que se retira bien —como hizo `aae4054` con dos de ellos— desaparece de la
+    lista de rojos, así que `comparar()` lo lee como «resuelto» y se le repregunta. No está
+    resuelto: **ha dejado de existir**, que no es lo mismo, y meterlo en cualquiera de los dos
+    montones miente. Sale en su propio apartado del informe, una vez, y no se reescribe en
+    `rojos` — que es lo que corta la realimentación.
     """
     if not nombres:
-        return [], []
-    try:
-        r = subprocess.run([exe, "scripts/aceptacion.py", *nombres], cwd=str(t["cwd"]),
-                           env=_entorno_limpio(), capture_output=True,
-                           timeout=TIMEOUT_TABLERO_S)
-    except (subprocess.TimeoutExpired, OSError):
-        return list(nombres), []       # sin respuesta se conserva la alarma
-    veredictos = leer_nombrados(r.stdout.decode("utf-8", "replace"), nombres)
-    if veredictos is None:
-        return list(nombres), []       # salida no fiable: se conserva la alarma
-    return ([n for n in nombres if veredictos[n]],
-            [n for n in nombres if not veredictos[n]])
+        return [], [], []
+    confirmados, inestables, jubilados = [], [], []
+    for n in nombres:
+        estado = _repreguntar_uno(t, exe, n)
+        if estado == "verde":
+            inestables.append(n)
+        elif estado == "jubilado":
+            jubilados.append(n)
+        else:                                        # rojo, o no se pudo leer: se conserva
+            confirmados.append(n)
+    return confirmados, inestables, jubilados
 
 
 # ── comparar con la pasada anterior ──────────────────────────────────────────────────────────
@@ -662,7 +730,7 @@ def decidir_aviso(nueva: str, estado: dict | None, ahora_ts: float) -> tuple[boo
 
 
 def avisar(tableros: list[dict], nuevos: dict, resueltos: dict, huerfanos: list[str],
-           ausentes: list[str], carpeta: Path) -> str:
+           ausentes: list[str], carpeta: Path, jubilados: dict | None = None) -> str:
     """Aplica `decidir_aviso` y, si toca, lanza el globo. Devuelve qué se hizo, para el informe."""
     f = firma(tableros, huerfanos, ausentes)
     estado_f = carpeta / "aviso.json"
@@ -691,8 +759,11 @@ def avisar(tableros: list[dict], nuevos: dict, resueltos: dict, huerfanos: list[
     else:
         mal = [t["nombre"] for t in tableros if (t.get("verifica") or {}).get("exit") not in (0,)]
         titulo = "Tableros de aceptacion - cambio de estado"
+        cuantos_jub = sum(len(v) for v in (jubilados or {}).values())
         cuerpo = (str(total_rojos) + " rojo(s) en total, se cerraron "
                   + str(sum(len(v) for v in resueltos.values()))
+                  + ("" if not cuantos_jub else
+                     "; " + str(cuantos_jub) + " ya no existen en su tablero")
                   + ("" if not mal else "; --verifica falla en " + ", ".join(mal)) + donde)
     lanzado = _toast(titulo, cuerpo)
     try:
@@ -737,6 +808,17 @@ def _md(informe: dict) -> str:
         ap("No se ha avisado de éstos. Un comprobador que cambia de color según la carga de la "
            "máquina está roto aunque su promesa esté bien, así que la lista es un hallazgo:")
         for tab, cuales in sorted(inestables.items()):
+            ap("- **" + tab + "** — " + ", ".join(cuales))
+    jubilados = informe.get("jubilados") or {}
+    if jubilados:
+        ap("")
+        ap("### 🪦 Desaparecieron de su tablero, y NO es que se hayan resuelto")
+        ap("")
+        ap("Su tablero contesta «desconocida» cuando se le pregunta por ellos: se retiraron. No "
+           "se cuentan como cierre —no se han resuelto, han dejado de existir— ni se devuelven a "
+           "la lista de rojos. Se dicen aquí una vez. Si alguno tendría que seguir existiendo, "
+           "esto es el aviso:")
+        for tab, cuales in sorted(jubilados.items()):
             ap("- **" + tab + "** — " + ", ".join(cuales))
     ap("")
     ap("## Los tableros")
@@ -831,6 +913,13 @@ def aviso_para_la_sesion(informe: dict) -> str:
                       "carga (" + "; ".join(k + ": " + ", ".join(v)
                                             for k, v in sorted(inestables.items()))
                       + ") — no es un rojo, es un comprobador roto")
+    jubilados = informe.get("jubilados") or {}
+    if jubilados:
+        cuantos = sum(len(v) for v in jubilados.values())
+        lineas.append("TABLEROS: " + str(cuantos) + " comprobador(es) ya no existen en su "
+                      "tablero (" + "; ".join(k + ": " + ", ".join(v)
+                                              for k, v in sorted(jubilados.items()))
+                      + ") — retirados, ni rojo ni cierre; si alguno deberia seguir, es un aviso")
     if not lineas:
         return ""
     lineas.append("   detalle: " + str(CARPETA_RONDAS / "ULTIMA.md"))
@@ -1006,6 +1095,7 @@ def main(argv: list[str]) -> int:
     # Un rojo NUEVO no se cree a la primera: se le vuelve a preguntar antes de molestar a nadie.
     # Ver `reconfirmar()` — la primera ronda de verdad dio cuatro falsas alarmas por carga.
     inestables = {}
+    jubilados = {}          # nombres que su tablero YA NO CONOCE: ni rojos ni cierres
     por_nombre = {t["nombre"]: t for t in vigilados}
     for t, ficha in zip(vigilados, resultados):
         t["resultado"] = ficha
@@ -1014,7 +1104,11 @@ def main(argv: list[str]) -> int:
         if problema:
             continue
         _di("  ... reconfirmando " + str(len(nuevos[tab])) + " rojo(s) nuevo(s) de " + tab)
-        confirmados, dudosos = reconfirmar(por_nombre[tab], exe, nuevos[tab])
+        confirmados, dudosos, jubilados_aqui = reconfirmar(por_nombre[tab], exe, nuevos[tab])
+        # Un jubilado en esta rama no deberia poder existir: la pasada completa acaba de
+        # listarlo como ROJO, asi que el tablero lo conoce. Si aun asi apareciera, se
+        # conserva la alarma en vez de tragarsela — en la duda, el rojo se queda.
+        confirmados = sorted(set(confirmados) | set(jubilados_aqui))
         if dudosos:
             inestables[tab] = dudosos
             _di("      " + str(len(dudosos)) + " no se reconfirman: " + ", ".join(dudosos))
@@ -1047,13 +1141,21 @@ def main(argv: list[str]) -> int:
         if problema:
             continue
         _di("  ... comprobando " + str(len(resueltos[tab])) + " cierre(s) de " + tab)
-        aun_rojos, de_verdad = reconfirmar(por_nombre[tab], exe, resueltos[tab])
+        aun_rojos, de_verdad, jubilados_aqui = reconfirmar(por_nombre[tab], exe, resueltos[tab])
         if aun_rojos:
             ficha = por_nombre[tab]["resultado"]
             ficha["rojos"] = sorted(set(ficha["rojos"]) | set(aun_rojos))
             ficha["verdes"] = max(0, ficha["verdes"] - len(aun_rojos))
             inestables.setdefault(tab, []).extend(aun_rojos)
             _di("      " + str(len(aun_rojos)) + " no estaban cerrados: " + ", ".join(aun_rojos))
+        if jubilados_aqui:
+            # 🔴 NO se reescriben en `ficha["rojos"]`, y ahi esta el arreglo entero: eso es lo
+            # que los devolvia manana a «los rojos de antes» para que volvieran a «resolverse»
+            # y a envenenar el lote. Tampoco cuentan como cierre: no se han resuelto, han
+            # dejado de existir. Se dicen una vez, en su propio apartado, y se acabo.
+            jubilados[tab] = sorted(jubilados_aqui)
+            _di("      " + str(len(jubilados_aqui)) + " ya no existen en su tablero: "
+                + ", ".join(sorted(jubilados_aqui)))
         if de_verdad:
             resueltos[tab] = de_verdad
         else:
@@ -1074,11 +1176,13 @@ def main(argv: list[str]) -> int:
         "nuevos_rojos": nuevos,
         "resueltos": resueltos,
         "inestables": inestables,
+        "jubilados": jubilados,
     }
     try:
         carpeta.mkdir(parents=True, exist_ok=True)
         _autoignorar(carpeta)
-        informe["aviso"] = avisar(resultados, nuevos, resueltos, huerfanos, ausentes, carpeta)
+        informe["aviso"] = avisar(resultados, nuevos, resueltos, huerfanos, ausentes,
+                                  carpeta, jubilados)
         cuerpo = _md(informe)
         (carpeta / ("ronda-" + fin.strftime("%Y%m%d-%H%M%S") + ".md")).write_text(
             cuerpo, encoding="utf-8")

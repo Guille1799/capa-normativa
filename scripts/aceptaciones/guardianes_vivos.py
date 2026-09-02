@@ -102,6 +102,23 @@ _CAUSAS_CONOCIDAS = {
 #: terminar (eso SI es muerte). Y reportar los hallazgos es trabajo de cada guardian —el
 #: healthcheck notifica, la regresion lanza su toast—, no de este comprobador.
 
+#: ⚠️ Pero esa linea dejaba un hueco, y estaba HABITADO. Medido el 2026-08-31 con `ralph-eu`
+#: dentro: **127 no lo elige el programa**. Es lo que devuelve un shell cuando NO ENCUENTRA que
+#: ejecutar, y por convencion ningun programa lo usa como veredicto propio. Cae del lado pequeño
+#: —donde vive «he mirado y he encontrado algo»— diciendo justo lo contrario: que no llego ni a
+#: empezar. Gritar no es morir, cierto; pero **no arrancar tampoco es gritar**.
+#:
+#: El caso real, y merece contarse entero: al sacar el arnes del repo PUBLICO
+#: `eu-political-observatory` para dejarlo presentable, eso llego a `main`; el worktree del robot
+#: se sincronizo con `main`, y la sincronizacion BORRO `scripts/ralph.sh` — que es justo lo que su
+#: lanzador ejecuta. Desde entonces la tarea arranca, no encuentra nada, y termina en 127 todos los
+#: dias. Limpiar el escaparate mato a su robot, y el guardian de los guardianes lo daba por vivo.
+_SIN_ARRANCAR = {
+    127: ". El shell NO ENCONTRO que ejecutar: el guion de esta tarea no existe o su ruta cambio. "
+         "La tarea arranca y termina sin haber hecho absolutamente nada",
+    126: ". El fichero existe pero NO ES EJECUTABLE (permisos, o falta el bit +x de un .sh)",
+}
+
 
 def _es_tuya(tarea: dict) -> bool:
     """El mismo criterio que el censo: es tuya si ejecuta un script que escribiste.
@@ -156,6 +173,12 @@ def muertos(tareas=None, hoy=None) -> list[tuple[str, str]]:
             fuera.append((nombre, f"su ultimo resultado no es un numero: {t.get('resultado')!r}"))
             continue
         if res in _RESULTADOS_TOLERADOS:
+            continue
+        if res in _SIN_ARRANCAR:
+            # Se comprueba ANTES del umbral de infraestructura porque 127 y 126 son numeros
+            # pequeños: sin esta rama caerian en «lo eligio el programa», que es lo contrario de
+            # lo que significan.
+            fuera.append((nombre, f"NO LLEGO A ARRANCAR: salio {res}" + _SIN_ARRANCAR[res]))
             continue
         if res >= _UMBRAL_INFRAESTRUCTURA:
             fuera.append((nombre, f"NO llego a terminar: {res} (0x{res & 0xFFFFFFFF:08X}) lo puso "
