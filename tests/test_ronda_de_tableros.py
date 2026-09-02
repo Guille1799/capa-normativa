@@ -335,32 +335,36 @@ def _tablero_falso(tmp_path, respuesta: str, codigo: int = 0):
 
 def test_el_rojo_que_insiste_se_confirma(tmp_path):
     t = _tablero_falso(tmp_path, "  " + ROJO_EMOJI + " uno   sigue roja")
-    confirmados, inestables = RONDA.reconfirmar(t, sys.executable, ["uno"])
+    confirmados, inestables, jubilados = RONDA.reconfirmar(t, sys.executable, ["uno"])
     assert confirmados == ["uno"]
     assert inestables == []
+    assert jubilados == [], "el tablero lo conoce: no es un jubilado"
 
 
 def test_el_rojo_que_al_repreguntar_esta_verde_NO_se_avisa(tmp_path):
     """El caso medido: `canario-de-los-hooks` rojo bajo carga, verde al preguntarle solo a él."""
     t = _tablero_falso(tmp_path, "  " + VERDE_EMOJI + " uno   estaba verde")
-    confirmados, inestables = RONDA.reconfirmar(t, sys.executable, ["uno"])
+    confirmados, inestables, jubilados = RONDA.reconfirmar(t, sys.executable, ["uno"])
     assert confirmados == []
     assert inestables == ["uno"], "y no se pierde: va al informe como hallazgo"
+    assert jubilados == []
 
 
 def test_si_la_repregunta_no_se_entiende_se_CONSERVA_la_alarma(tmp_path):
     """En la duda se conserva el rojo. Un guarda que se traga alarmas por no saber leer la
     respuesta es peor que uno que da alguna de más."""
     t = _tablero_falso(tmp_path, "aqui no hay veredictos que valgan", codigo=2)
-    confirmados, inestables = RONDA.reconfirmar(t, sys.executable, ["uno"])
+    confirmados, inestables, jubilados = RONDA.reconfirmar(t, sys.executable, ["uno"])
     assert confirmados == ["uno"]
     assert inestables == []
+    assert jubilados == [], ("salir 2 sin decir «desconocida: uno» NO es una jubilacion: es una "
+                             "averia, y una averia conserva la alarma")
 
 
 def test_sin_rojos_nuevos_no_se_repregunta_nada(tmp_path):
     """El coste de esto es cero el 99 % de los días, que es lo que lo hace asumible."""
     t = _tablero_falso(tmp_path, "no deberia llamarse", codigo=1)
-    assert RONDA.reconfirmar(t, sys.executable, []) == ([], [])
+    assert RONDA.reconfirmar(t, sys.executable, []) == ([], [], [])
 
 
 # ── lo NUEVO es lo que importa ───────────────────────────────────────────────────────────────
@@ -804,3 +808,188 @@ def test_la_ronda_NO_añade_una_promesa_propia_al_tablero():
     duplicadas = [n for n in tablero.COMPROBADORES if "ronda" in n]
     assert not duplicadas, ("la ronda no lleva promesa propia; su promesa es "
                             "`tableros-corren-solos`: " + ", ".join(duplicadas))
+
+
+# ── un nombre que el tablero YA NO CONOCE ────────────────────────────────────────────────────
+#
+# MEDIDO el 2026-09-02. El aviso decía «22 comprobadores cambian de color según la carga». Se
+# preguntó a los 22 a solas, dos veces cada uno: **cambian de color CERO.** Lo que había eran 5
+# nombres que su tablero no conoce, y `reconfirmar()` pidiendo el lote entero en una llamada:
+# `aceptacion.py` se para en el primero que no conoce (exit 2, sin veredictos), `leer_nombrados`
+# devuelve `None`, y con `None` se devolvían TODOS los nombres en el primer hueco — que en la
+# rama de `resueltos` es `aun_rojos`. Uno envenenaba a diez.
+#
+# Cuadraba exacto: 1 + 10 + 11 = 22, un desconocido como mínimo por lote, y el único tablero con
+# el lote limpio fue el único cuyo `resueltos` sobrevivió.
+#
+# Y se realimentaba sola —de 16 a 22 en una tarde— porque los `aun_rojos` se reescribían en
+# `ficha["rojos"]`: al día siguiente volvían a «resolverse» y a envenenar el lote otra vez.
+#
+# De dónde salen esos nombres, y las dos causas se van a repetir: jubilar bien un comprobador
+# (`aae4054` retiró dos a propósito) y que nazca en un árbol y no en el otro
+# (`sabotaje-del-cableado` está en `cn-ralph` y no en `capa-normativa`).
+
+_FALSO_JUBILA = '''import sys
+sys.stdout.reconfigure(encoding="utf-8")
+sys.stderr.reconfigure(encoding="utf-8")
+JUBILADOS = {jubilados!r}
+ROJOS = {rojos!r}
+VERDES = ["ok1", "ok2"]
+args = [a for a in sys.argv[1:]]
+if args:
+    # Se comporta como el tablero de verdad: recorre los nombres EN ORDEN y en cuanto encuentra
+    # uno que no conoce lo dice por stderr y sale 2, dejando el resto sin contestar.
+    for n in args:
+        if n in JUBILADOS:
+            print("desconocida: " + n + ". Conocidas: ok1, ok2", file=sys.stderr)
+            sys.exit(2)
+        print("  " + ("\\U0001F534" if n in {siguen_rojos!r} else "\\U0001F7E2") + " " + n + " x")
+    sys.exit(0)
+for n in VERDES:
+    print("  \\U0001F7E2 " + n + " bien")
+for n in ROJOS:
+    print("  \\U0001F534 " + n + " mal")
+print()
+print("  %d/%d promesas cumplidas." % (len(VERDES), len(VERDES) + len(ROJOS)))
+sys.exit(1 if ROJOS else 0)
+'''
+
+
+def _tablero_que_jubila(tmp_path, jubilados, rojos=(), siguen_rojos=()):
+    d = tmp_path / "repo" / "scripts"
+    d.mkdir(parents=True, exist_ok=True)
+    (d / "aceptacion.py").write_text(
+        _FALSO_JUBILA.format(jubilados=list(jubilados), rojos=list(rojos),
+                             siguen_rojos=list(siguen_rojos)), encoding="utf-8")
+    return {"nombre": "falso", "sub": "repo", "interprete": None, "cwd": tmp_path / "repo"}
+
+
+def _siete_que_jubilan(tmp_path, rojos, siguen_rojos, jubilados=()):
+    for _, sub, _ in RONDA._TABLEROS:
+        d = tmp_path / sub / "scripts"
+        d.mkdir(parents=True, exist_ok=True)
+        (d / "aceptacion.py").write_text(
+            _FALSO_JUBILA.format(jubilados=list(jubilados), rojos=list(rojos),
+                                 siguen_rojos=list(siguen_rojos)), encoding="utf-8")
+    return tmp_path
+
+
+def test_un_JUBILADO_no_arrastra_al_resto_del_lote(tmp_path):
+    """El test de la regresión, y el que fallaba antes del arreglo.
+
+    Con el código viejo esto devolvía `(["rojo", "jubilado", "verde"], [])`: los tres en el
+    primer hueco, porque el lote entero se quedaba sin leer. Ahora cada nombre trae su veredicto.
+    """
+    t = _tablero_que_jubila(tmp_path, jubilados=["jubilado"], siguen_rojos=["rojo"])
+    confirmados, inestables, jubilados = RONDA.reconfirmar(
+        t, sys.executable, ["rojo", "jubilado", "verde"])
+    assert confirmados == ["rojo"], "el rojo de verdad se conserva"
+    assert inestables == ["verde"], "y el que estaba verde se detecta, aunque vaya detrás del malo"
+    assert jubilados == ["jubilado"]
+
+
+def test_el_jubilado_no_tapa_a_los_que_van_DETRAS(tmp_path):
+    """El acoplamiento era de orden: el tablero se para en el primero que no conoce.
+
+    Poniéndolo el PRIMERO del lote, con el código viejo los dos siguientes no llegaban a
+    contestar nunca. Es el caso peor, no el cómodo.
+    """
+    t = _tablero_que_jubila(tmp_path, jubilados=["jubilado"], siguen_rojos=["rojo"])
+    confirmados, inestables, jubilados = RONDA.reconfirmar(
+        t, sys.executable, ["jubilado", "rojo", "verde"])
+    assert confirmados == ["rojo"] and inestables == ["verde"] and jubilados == ["jubilado"]
+
+
+def _tablero_que_escupe_por_stderr(tmp_path, texto_err, codigo=2):
+    """Un tablero de pega que escribe por STDERR, que es donde `aceptacion.py` dice «desconocida».
+
+    ⚠️ Existe porque mi primera version de la anti-sniff uso `_tablero_falso`, que imprime por
+    STDOUT — asi que el stderr llegaba vacio, el detector no podia encontrar nada, y el test
+    pasaba sin ejercitar lo que decia ejercitar. Lo cazo la mutacion «el detector se conforma con
+    que la palabra aparezca», que sobrevivio. Un test que no puede fallar no es un test.
+    """
+    d = tmp_path / "repo" / "scripts"
+    d.mkdir(parents=True, exist_ok=True)
+    (d / "aceptacion.py").write_text(
+        "import sys" + chr(10)
+        + "sys.stderr.reconfigure(encoding='utf-8')" + chr(10)
+        + "print(" + repr(texto_err) + ", file=sys.stderr)" + chr(10)
+        + "sys.exit(" + str(codigo) + ")" + chr(10), encoding="utf-8")
+    return {"nombre": "falso", "sub": "repo", "interprete": None, "cwd": tmp_path / "repo"}
+
+
+def test_una_AVERIA_no_se_lee_como_jubilacion(tmp_path):
+    """La otra dirección, y la que impide que esto se coma rojos buenos.
+
+    El tablero sale 2 y dice «desconocida» por stderr, pero de OTRO nombre. Preguntando por `uno`,
+    eso NO es una jubilación de `uno`: es una avería, y una avería conserva la alarma. Un
+    `"desconocida" in err` diría que sí — es el instrumento casando una mención que no habla de
+    lo que se le está preguntando.
+    """
+    t = _tablero_que_escupe_por_stderr(tmp_path, "desconocida: OTRO. Conocidas: ok1, ok2")
+    confirmados, inestables, jubilados = RONDA.reconfirmar(t, sys.executable, ["uno"])
+    assert confirmados == ["uno"], "en la duda se conserva la alarma"
+    assert jubilados == [], "la palabra estaba, pero no hablaba de `uno`"
+
+
+def test_y_cuando_SI_habla_de_el_si_es_una_jubilacion(tmp_path):
+    """El control del de arriba: si sólo exigiéramos que NO detecte, un detector muerto pasaría."""
+    t = _tablero_que_escupe_por_stderr(tmp_path, "desconocida: uno. Conocidas: ok1, ok2")
+    confirmados, inestables, jubilados = RONDA.reconfirmar(t, sys.executable, ["uno"])
+    assert jubilados == ["uno"] and confirmados == []
+
+
+def test_un_JUBILADO_no_vuelve_a_la_lista_de_rojos(tmp_path):
+    """El arreglo entero, de punta a punta: lo que cortaba la realimentación.
+
+    Un comprobador rojo ayer que hoy ya no existe. `comparar()` lo lee como «resuelto» y se le
+    repregunta. Antes acababa reescrito en `ficha["rojos"]`, así que mañana volvía a estar en
+    «los rojos de antes» y el ciclo no terminaba nunca.
+    """
+    raiz, informes = tmp_path / "arbol", tmp_path / "informes"
+    _siete_que_jubilan(raiz, ["jubilado"], ["jubilado"])
+    m = _cargar(RONDA_PROYECTOS=raiz, RONDA_INFORMES=informes)
+    m._TABLEROS = tuple((n, sub, None) for n, sub, _ in RONDA._TABLEROS)
+    m._toast = lambda t, c: True
+    m.main([])                                     # queda `jubilado` como rojo conocido
+
+    _siete_que_jubilan(raiz, [], [], jubilados=["jubilado"])   # se retira del tablero
+    avisos = []
+    m._toast = lambda t, c: avisos.append((t, c)) or True
+    m.main([])
+    informe = json.loads((informes / "ultima.json").read_text(encoding="utf-8"))
+
+    assert informe["jubilados"] == {n: ["jubilado"] for n, _, _ in RONDA._TABLEROS}, \
+        "se dice una vez, en su propio apartado"
+    assert all("jubilado" not in t["rojos"] for t in informe["tableros"]), \
+        "y NO vuelve a la lista de rojos: eso es lo que realimentaba el ciclo"
+    assert informe["resueltos"] == {}, "tampoco es un cierre: no se ha resuelto, ha dejado de existir"
+    assert not informe["inestables"], "ni un comprobador roto: el roto era el que preguntaba"
+    # ⚠️ Mi primera version de este test exigia `avisos == []` y estaba MAL: los siete tableros
+    # pasan de un rojo a cero, y eso ES un cambio de estado — callarlo seria el fallo contrario.
+    # Lo que hay que exigir es que el globo DIGA por que salta: sin la mencion, salia «0 rojos,
+    # se cerraron 0», cierto y vacio, que es como se aprende a ignorar un aviso.
+    assert len(avisos) == 1, "un cambio de estado se anuncia una vez"
+    assert "ya no existen en su tablero" in avisos[0][1], (
+        "el globo salta sin explicar por que: " + avisos[0][1])
+
+
+def test_los_jubilados_se_dicen_en_el_informe_y_en_el_aviso():
+    """Si no salieran, retirar un comprobador por error sería indistinguible de retirarlo bien."""
+    con = _informe()
+    con["jubilados"] = {"cn-ralph": ["sabotaje-del-cableado"]}
+    md = RONDA._md(con)
+    assert "sabotaje-del-cableado" in md
+    assert "NO es que se hayan resuelto" in md, (
+        "el nombre sin su explicacion se lee como un rojo mas; y sin exigirla, quitar el "
+        "encabezado sobrevive a la mutacion — sobrevivio")
+    aviso = RONDA.aviso_para_la_sesion(con)
+    assert "ya no existen en su tablero" in aviso
+    assert "sabotaje-del-cableado" in aviso
+
+
+def test_sin_jubilados_ni_el_informe_ni_el_aviso_los_mencionan():
+    """El silencio es lo que hace que hablar signifique algo. Sin esta dirección, un apartado
+    que sale siempre es decorado en una semana."""
+    assert "ya no existen en su tablero" not in RONDA.aviso_para_la_sesion(_informe())
+    assert "Desaparecieron de su tablero" not in RONDA._md(_informe())
