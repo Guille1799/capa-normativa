@@ -1,7 +1,7 @@
 #!/bin/sh
 # capa-normativa vigilante — guardián determinista compartido por TODOS los proyectos.
 # Unificado el 2026-08-17: hasta hoy había tres situaciones distintas (este shim con UN
-# detector en 2 repos, el CLI con dos en JobHunter, y NADA en eu_observatory y Contexto).
+# detector en dos repos, el CLI con dos en otro, y NADA en los dos restantes).
 # El script vive en UN sitio: tocarlo actualiza los cinco.
 #   detectores: secretos + sintaxis   ·   `punteros` fuera a propósito (deuda previa medida)
 #   salidas:    0 limpio · 1 hallazgos · 2 NO pudo ejecutarse (bloquea igual, a propósito)

@@ -82,7 +82,7 @@ No hay que elegirlo: hay que *medirlo*. El manifiesto no es una tabla de deseos,
 lo que hoy resuelve cada intérprete**, y el comprobador no exige que los números sean unos
 concretos — exige que **no hayan cambiado sin que nadie lo declare**. Así el examen no lo diseña
 quien lo aprueba: lo dicta la máquina. Y nace rojo solo, porque hoy hay divergencia real y medida
-(el venv de `mcp_smart_context` tiene `capa_normativa` **0.7.0** con el repo en **0.16.2**).
+(el venv de un proyecto vecino tiene `capa_normativa` **0.7.0** con el repo en **0.16.2**).
 
 **La lista canónica de guardianes** tiene la misma salida: la lista canónica es la que está
 registrada en `~/.claude/settings.json`, no una que yo escriba. La cifra objetivo es «los que haya»,
@@ -95,5 +95,5 @@ comprobador se pone rojo solo.
 ## Lo que sigue siendo de G
 
 Nada de lo de arriba toca criterio suyo. Lo que sí lo toca y se queda parado: los umbrales de salud
-(`arreglo-polz-profundidad`, `nutri-bug-6`) y las candidaturas de JobHunter — donde **`cand-cir`
+(`arreglo-polz-profundidad`, `nutri-bug-6`) y las de otro proyecto — donde **`cand-cir`
 cierra el 2026-08-31**.

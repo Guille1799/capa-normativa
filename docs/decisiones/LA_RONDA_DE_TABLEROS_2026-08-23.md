@@ -5,7 +5,7 @@
 | corre solo | no corre solo |
 |---|---|
 | el `pre-commit` de los cinco repos, en cada commit | **los siete tableros de aceptación completos** |
-| los tres Ralph de madrugada (23:00 / 23:30 / 00:00) | |
+| los tres robots, en tanda nocturna escalonada | |
 | `ContextWatcher-Healthcheck`, cada 30 min | |
 
 Los tableros son el instrumento con el que este arnés decide si una promesa está cumplida. Y eran
@@ -166,8 +166,8 @@ se declaran con su motivo, en vez de filtrarse a mano, y además hay un barrido 
 tablero que no esté ni declarado ni excluido sale denunciado como **huérfano** y pone la ronda en
 falta. Una lista escrita envejece en silencio; ésta no puede.
 
-La primera versión excluía por nombre de carpeta las cuatro `JobHunter-*` que había. **Ocho minutos
-después nació `JobHunter-herramienta`** —otro worktree del mismo repo, con su tablero dentro— y el
+La primera versión excluía por nombre de carpeta las cuatro `<proyecto-C>-*` que había. **Ocho minutos
+después nació `<proyecto-C>-herramienta`** —otro worktree del mismo repo, con su tablero dentro— y el
 test de huérfanos falló. No fue un susto teórico: fue el mecanismo cazándose a sí mismo antes de
 salir de la sesión.
 
@@ -179,12 +179,12 @@ mirando carpetas: **los doce tableros son cinco repos.**
 |---|---|---|
 | `capa-normativa` | `capa-normativa`, `cn-ralph` | las dos |
 | `eu-political-observatory` | `eu-political-observatory`, `eu-ralph` | sólo `eu-ralph` |
-| `mcp_smart_context` | `mcp_smart_context`, `mcp-ralph` | las dos |
-| `ponerse_wenorro` | `ponerse_wenorro/backend`, `pw-ralph/backend` | las dos |
-| `JobHunter` | 5 carpetas y subiendo | ninguna |
+| `<proyecto-A>` | `<proyecto-A>`, `<proyecto-A>-robot` | las dos |
+| `<proyecto-B>` | `<proyecto-B>/backend`, `<proyecto-B>-robot/backend` | las dos |
+| `<proyecto-C>` | 5 carpetas y subiendo | ninguna |
 
 Por eso hay dos listas y no una: `_REPOS_NO_VIGILADOS` saca un repo **con todos sus worktrees**
-(JobHunter, que abre ramas a menudo), y `_CARPETAS_NO_VIGILADAS` saca una carpeta suelta cuyo repo
+(<proyecto-C>, que abre ramas a menudo), y `_CARPETAS_NO_VIGILADAS` saca una carpeta suelta cuyo repo
 sí está vigilado por otra (`eu-political-observatory`, porque su tablero ya lo corre `eu-ralph` y
 meter las dos duplicaría cada rojo).
 

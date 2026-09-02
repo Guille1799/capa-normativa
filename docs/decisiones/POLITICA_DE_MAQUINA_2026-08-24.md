@@ -40,7 +40,7 @@ distintas:
 - Los de `eu` usan `$CLAUDE_PROJECT_DIR`. En un fichero **global** eso resuelve al proyecto
   **abierto**, así que buscarían su script dentro de `capa-normativa`, donde no existe.
 - Los de `mcp` llevan ruta absoluta. En un fichero global **correrían en todos los proyectos** —
-  incluido el gate de MRR de mcp dentro de `ponerse_wenorro`.
+  incluido el gate de MRR de un proyecto dentro del arbol de otro.
 
 ## La solución: un despachador por evento
 

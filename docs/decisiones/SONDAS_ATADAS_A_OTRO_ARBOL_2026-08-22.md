@@ -1,6 +1,6 @@
 # Cuatro comprobadores de capa-normativa juzgan el árbol equivocado
 
-**2026-08-22.** Medido al clasificar las 52 tareas bloqueadas con `mcp_smart_context/bin/contratar.py`.
+**2026-08-22.** Medido al clasificar las 52 tareas bloqueadas con `<proyecto-A>/bin/contratar.py`.
 
 ## Qué pasa
 
@@ -18,9 +18,9 @@ y el comprobador sigue mirando el checkout principal: **el veredicto no se mueve
 se bloquea, y no hay síntoma que apunte a la causa.
 
 > Es exactamente el fallo que `ralph_aislado` existe para cazar, dentro de los comprobadores del
-> propio arnés. En `ponerse_wenorro` apareció la misma noche y en la misma forma: las tres sondas
-> `AGUJERO-*` hardcodeaban la ruta a `ponerse_wenorro` y se arreglaron derivándola de `__file__`
-> (commit `3b129da` de `pw-ralph`).
+> propio arnés. En `<proyecto-B>` apareció la misma noche y en la misma forma: las tres sondas
+> `AGUJERO-*` hardcodeaban la ruta a `<proyecto-B>` y se arreglaron derivándola de `__file__`
+> (commit `3b129da` de `<proyecto-B>-robot`).
 
 ## Por qué cuesta verlo
 
@@ -36,7 +36,7 @@ salir de `Path(__file__).resolve()`, o sea de haberlo hecho bien. Solo delata a 
 
 ## El arreglo
 
-Derivar de `__file__`, como en `pw-ralph`:
+Derivar de `__file__`, como en `<proyecto-B>-robot`:
 
 ```python
 SCRIPTS = Path(__file__).resolve().parent.parent   # en vez de la ruta escrita a mano
@@ -44,13 +44,13 @@ SCRIPTS = Path(__file__).resolve().parent.parent   # en vez de la ruta escrita a
 
 Y la señal de que el arreglo es correcto **no es que el comprobador se ponga verde**: es que siga
 rojo mientras el agujero exista, pero ahora mirando su propio árbol. Las tres sondas de
-`ponerse_wenorro` siguieron rojas después de arreglarlas, y eso fue la confirmación, no el problema.
+`<proyecto-B>` siguieron rojas después de arreglarlas, y eso fue la confirmación, no el problema.
 
 ## Lo que NO se toca aquí
 
 Otros tres comprobadores de este repo (`inv-audit-settings-source-sh-no`,
 `inv-registro-md-session-start-sh`, `inv-capa-normativa-declarado-en-el`) salen `fuera-del-repo`:
-su arreglo vive en `~/.claude/` o en `mcp_smart_context`. Ésos no son de puntería sino de permiso,
+su arreglo vive en `~/.claude/` o en `<proyecto-A>`. Ésos no son de puntería sino de permiso,
 y **no pertenecen a una cola aislada por worktree** — encolarlos otra vez sería encolar otro
 bloqueo. Decisión de reparto pendiente con G.
 
@@ -137,10 +137,10 @@ checkout principal, que ya funcionaba y tenía que seguir funcionando).
 |---|---|---|
 | `cn-ralph` | 3 | **mismo defecto, hoy inocuo**: es un worktree de este mismo repo en `proyectos/cn-ralph`, así que su `RAIZ.parent` ya es `proyectos` por posición. Es el mismo fichero versionado: el arreglo le llega cuando `ralph/cn` integre. No se toca su copia — tocar un árbol hermano es el fallo que persigue este documento. |
 | `eu-ralph` | 0 | limpio |
-| `mcp-ralph` | 0 | limpio |
-| `mcp_smart_context` | 0 | limpio |
-| `ponerse_wenorro/backend` | 2 | **NO es el mismo defecto.** Ahí `RAIZ` es `backend/`, así que `RAIZ.parent` significa «la raíz de MI repo» (comprobado: hay `.git` en las tres), y se usa como `git -C`. Eso es relativo al propio árbol y es correcto en cualquier worktree. No se toca. |
-| `pw-ralph/backend` | 2 | igual que el anterior. No se toca. |
+| `<proyecto-A>-robot` | 0 | limpio |
+| `<proyecto-A>` | 0 | limpio |
+| `<proyecto-B>/backend` | 2 | **NO es el mismo defecto.** Ahí `RAIZ` es `backend/`, así que `RAIZ.parent` significa «la raíz de MI repo» (comprobado: hay `.git` en las tres), y se usa como `git -C`. Eso es relativo al propio árbol y es correcto en cualquier worktree. No se toca. |
+| `<proyecto-B>-robot/backend` | 2 | igual que el anterior. No se toca. |
 
 ---
 

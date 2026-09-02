@@ -97,8 +97,8 @@ No son 10 hooks: son **18**, y ocho necesitan una guarda que hoy no tienen.
 
 ```
 usuario  (~/.claude/settings.json)          9 hooks   (eran 10)
-eu-political-observatory · eu-ralph         2+2       usan $CLAUDE_PROJECT_DIR
-mcp_smart_context · mcp-ralph               2+2       rutas absolutas + --project mcp_smart_context
+proyecto A · su worktree del robot        2+2       usan $CLAUDE_PROJECT_DIR
+proyecto B · su worktree del robot        2+2       rutas absolutas + --project <nombre>
 ```
 
 En un fichero **global**, los de `eu-*` buscarían `preuse_dispatcher.py` en el proyecto que esté

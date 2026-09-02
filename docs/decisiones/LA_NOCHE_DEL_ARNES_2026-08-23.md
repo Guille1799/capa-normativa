@@ -1,6 +1,6 @@
 # La noche del arnés: nueve comprobadores que nunca se ejecutaron
 
-**2026-08-23, de madrugada.** El encargo era «todo lo que esté pendiente, y entre paso y paso
+**2026-08-23, en una tanda nocturna.** El encargo era «todo lo que esté pendiente, y entre paso y paso
 pregúntate si es lo más sólido». Esa segunda mitad del encargo cambió tres decisiones, y las tres
 están abajo.
 
@@ -42,7 +42,7 @@ sola, y esta vez se pudrió por el segundo camino: **la cola cambió debajo de l
 
 ### 3 · Cinco tareas estaban en la caja equivocada, no mal escritas
 
-Bloqueadas en `pw-ralph` y `eu-ralph` con el motivo correcto —*el arreglo vive fuera de este
+Bloqueadas en `<proyecto-B>-robot` y `eu-ralph` con el motivo correcto —*el arreglo vive fuera de este
 worktree*— cuando su arreglo vive en un repo que **tiene su propio worktree y su propia cola**.
 Re-ubicadas con el comprobador y la ruta reescrita a relativa: una tarea re-ubicada que conserve la
 ruta vieja se bloquea otra vez el primer día, y por lo mismo.
@@ -79,7 +79,7 @@ correcto que lo esté**: todo lo suyo es de una de esas dos clases.
 
 `capa_normativa.vigilante.arbol_propio` sólo vive en esta rama. Para que los otros tres tableros lo
 usen hace falta fusionar, y fusionar es decisión de G. Medido hoy sobre los cuatro tableros:
-**cn-ralph 5 sondas mal apuntadas · mcp-ralph 4 · pw-ralph 0 · eu-ralph 0** — los dos ceros son los
+**cn-ralph 5 sondas mal apuntadas · <proyecto-A>-robot 4 · <proyecto-B>-robot 0 · eu-ralph 0** — los dos ceros son los
 árboles cuyas sondas ya se arreglaron, o sea el antes y el después de la misma medida.
 
 ## Dos que quedan rotos, y por qué no los toqué
@@ -96,7 +96,7 @@ No es prosa: son comandos **PowerShell con el entrecomillado mal anidado** —`p
 escapa acaba como nombre de fichero. Que dejen basura es lo de menos: significa que **el comando no
 mide lo que su autor creía**, así que su veredicto no vale ni en rojo ni en verde.
 
-No los reescribí porque arreglar comillas anidadas de PowerShell a ojo, de madrugada y sin poder
+No los reescribí porque arreglar comillas anidadas de PowerShell a ojo, en una tanda nocturna y sin poder
 preguntar, es exactamente cómo se mete el siguiente fallo de esta familia. Y porque los dos están
 además en el grupo de *fuera del repo*, que espera decisión. `bin/contratar.py` ya los clasifica
 como `comando-roto` por el backtick, así que no se colarán en una cola por descuido.
