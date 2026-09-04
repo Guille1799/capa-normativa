@@ -66,7 +66,16 @@ remaining_tasks() {
   # secciones del CORE y el ^resultado: de un tablero). Anclar el NIVEL no es opcional.
   awk -v sec="$SECTION" '
     /^## / && index($0, sec) {ins=1; next}
-    ins && (/^## / || /^---[[:space:]]*$/) {ins=0}
+    # Una raya horizontal NO cierra la seccion: solo la cierra el siguiente `## `.
+    # Propagado de mcp_smart_context (commit 494fca7, 2026-09-04), donde esta misma
+    # linea SI cegaba: con la regla del `---` el awk contaba 0 tareas donde habia 6,
+    # porque una raya decorativa partia la seccion y las seis pendientes vivian
+    # debajo. Con la cola clavada en 0 el bucle no puede ver progreso, y la alarma de
+    # la cola que baja SIN COMMIT compara un numero que siempre vale 0: queda inerte.
+    # MEDIDO aqui el 2026-09-04 antes de tocar: 0 con la regla vieja y 0 sin ella, o
+    # sea que hoy NO cegaba. Pero la raya YA existe dentro de la seccion (linea 682
+    # del ledger ese dia): solo falta que alguien deje una tarea pendiente debajo.
+    ins && /^## / {ins=0}
     ins && /^- \[ \]/ {c++}
     END {print c+0}
   ' "$LEDGER"
