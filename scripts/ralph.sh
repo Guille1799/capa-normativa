@@ -87,6 +87,25 @@ export RALPH_ACTIVE=1
 # Señal-fichero para el watcher (F1): la env RALPH_ACTIVE no llega a un daemon aparte, pero un
 # fichero sí. El watcher (UP2) sondea .ralph_active y pausa el re-index mientras exista. Append PID
 # soporta varios Ralph en paralelo; se limpia en el trap EXIT.
+
+# ---- Guardia NINGUN-RALPH-ARRANCA-SOBRE-OTRO ----
+# Misma lógica kill -0 que _summary: distingue pid MSYS vivo de muerto.
+# Con pids vivos → exit 5 sin tocar la señal (ni añade el propio, ni borra el vivo).
+# Con señal rancia (todos muertos) → limpia y sigue, como ya hace _summary al terminar.
+# exit 5: código propio; los otros son exit 1=error, exit 2=stuck, exit 4=ya-verde.
+if [ -f ".ralph_active" ]; then
+  _vivos=""
+  while IFS= read -r _p; do
+    [[ "$_p" =~ ^[0-9]+$ ]] || continue
+    kill -0 "$_p" 2>/dev/null && _vivos="$_vivos $_p"
+  done < .ralph_active
+  if [ -n "$_vivos" ]; then
+    echo "TANDA VIVA: pids$_vivos — no arranco sobre otro robot"
+    exit 5
+  fi
+  rm -f .ralph_active
+fi
+
 echo "$$" >> .ralph_active
 
 RUNLOG="ralph_run_$(date '+%Y%m%d_%H%M%S').log"
@@ -142,6 +161,16 @@ stuck=0
 for i in $(seq 1 "$MAX"); do
   echo "" | tee -a "$RUNLOG"
   echo "=== Ralph iter $i/$MAX — $(date '+%Y-%m-%d %H:%M:%S') — stuck=$stuck ===" | tee -a "$RUNLOG"
+
+  # ---- e2 de LAS-DOS-COLAS-SE-PISAN: beber de main en cada iteracion, no solo al arrancar ----
+  # Solo con el arbol limpio y fuera de main: un merge con arbol sucio o en main es un error.
+  # Cuando choca: deshace y lo dice — seguir en silencio sobre la foto vieja es el fallo.
+  if [ -z "$(git status --porcelain 2>/dev/null)" ] && [ "$(git rev-parse --abbrev-ref HEAD 2>/dev/null)" != "main" ]; then
+    git merge --ff-only main >/dev/null 2>&1 \
+      || git merge --no-edit main >/dev/null 2>&1 \
+      || { git merge --abort 2>/dev/null; echo "SIN SINCRONIZAR: main y la rama del robot chocan" | tee -a "$RUNLOG"; }
+  fi
+
   REM_BEFORE="$(remaining_tasks)"
   HEAD_BEFORE="$(git rev-parse HEAD 2>/dev/null)"
   # $LEDGER y $LOG ya NO estan versionados (repo publico: ver .gitignore). Eso les quita la red
