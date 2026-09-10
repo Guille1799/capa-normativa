@@ -4,6 +4,27 @@
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 [![Python 3.10 | 3.12 | 3.14](https://img.shields.io/badge/python-3.10%20%7C%203.12%20%7C%203.14-blue.svg)](https://github.com/Guille1799/capa-normativa/blob/main/.github/workflows/ci.yml)
 
+> **In English.** The rest of this README is in Spanish. Here is what the library does.
+>
+> **Outside knowledge that governs code, as verifiable data.** For systems whose behaviour
+> depends on knowledge that comes from outside them — scientific literature, methodology,
+> regulation — and which contradicts itself, changes over time, and applies differently
+> depending on the subject.
+>
+> The code stops holding the numbers. It asks a registry, and gets **the value together with
+> where it came from and how strong the evidence is**. Three things follow, and they are
+> properties of the type rather than conventions someone has to remember:
+>
+> 1. **A malformed norm is never constructed.** If the registry does not load, the program
+>    does not start — rather than starting and being wrong later.
+> 2. **A recommendation resting on weak evidence cannot be phrased as a firm one.** The
+>    registry raises instead of returning it.
+> 3. **A value that fell back to a default says so**, so a general answer is never mistaken
+>    for one computed for this particular subject.
+>
+> The code block below reads the same in any language. `resolve()` returns the value, the
+> evidence behind it, how certain that evidence is, and whether it was a fallback.
+
 **Conocimiento externo que gobierna código, como datos verificables.**
 
 Para sistemas cuyo comportamiento depende de conocimiento que viene de fuera —literatura
