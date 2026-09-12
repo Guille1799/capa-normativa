@@ -25,16 +25,6 @@
 > The code block below reads the same in any language. `resolve()` returns the value, the
 > evidence behind it, how certain that evidence is, and whether it was a fallback.
 
-**Outside knowledge that governs code, as verifiable data.**
-
-For systems whose behaviour depends on knowledge that comes from outside them — scientific
-literature, methodology, regulation — and which also **contradicts itself, changes over
-time, and must apply differently depending on who is asking**.
-
-The code stops holding the numbers. It asks the registry, which returns **the value together
-with its provenance**. And a malformed norm **is never constructed**: if the registry itself
-fails to build, the program does not start.
-
 ```python
 from capa_normativa import NormRegistry
 
