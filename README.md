@@ -837,4 +837,9 @@ the one user the system had. Both problems turned out to be the same one: **a co
 between sources that gets resolved by picking one number produces a system tailor-made for
 one person; resolving it by branching produces one that works for anyone.**
 
+**How this was built.** Most commits here are co-authored with an AI assistant, and the commit
+trailers say so. The English README is a translation of the Spanish original
+([README.es.md](README.es.md)). The registry's own rule applies to the registry itself: a value
+should arrive with where it came from.
+
 MIT.
