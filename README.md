@@ -39,14 +39,14 @@ r.is_fallback  # False   → hubo rama específica para este sujeto
 
 ## Contents
 
-- [`SEM001` — the correct migration to the wrong number](#sem001-the-correct-migration-to-the-wrong-number)
+- [`SEM001` — the correct migration to the wrong number](#sem001--the-correct-migration-to-the-wrong-number)
 - [Illegal states that cannot be constructed](#illegal-states-that-cannot-be-constructed)
 - [Running the tests](#running-the-tests)
 - [Two modules](#two-modules)
-- [`init` — start here if you don't have a registry yet](#init-start-here-if-you-dont-have-a-registry-yet)
-- [`emit` — if your consumer is not Python](#emit-if-your-consumer-is-not-python)
-- [`validate` — check the registry without starting the app, and warn about what is about to expire](#validate-check-the-registry-without-starting-the-app-and-warn-about-what-is-about-to-expire)
-- [The watchdog (`vigilante`) — start here if all you want are the checks](#the-watchdog-vigilante-start-here-if-all-you-want-are-the-checks)
+- [`init` — start here if you don't have a registry yet](#init--start-here-if-you-dont-have-a-registry-yet)
+- [`emit` — if your consumer is not Python](#emit--if-your-consumer-is-not-python)
+- [`validate` — check the registry without starting the app, and warn about what is about to expire](#validate--check-the-registry-without-starting-the-app-and-warn-about-what-is-about-to-expire)
+- [The watchdog (`vigilante`) — start here if all you want are the checks](#the-watchdog-vigilante--start-here-if-all-you-want-are-the-checks)
 - [What it deliberately does NOT do](#what-it-deliberately-does-not-do)
 - [Expressiveness, deliberately poor](#expressiveness-deliberately-poor)
 - [Missing backing, declared as such](#missing-backing-declared-as-such)
