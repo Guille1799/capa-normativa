@@ -1,29 +1,31 @@
-"""Ninguna pieza del tablero puede quedarse INCAPAZ DE PONERSE ROJA sin que nadie lo note.
+"""No wiring piece of the board may stay UNABLE TO TURN RED without anyone noticing.
 
-## Qué hace, en una frase
+## What it does, in one sentence
 
-Coge cada pieza de **cableado** del tablero, le voltea sus `return False` —dejándola físicamente
-incapaz de dar un veredicto negativo— y corre la suite entera. Si nadie protesta, esa pieza no
-está vigilada por nada, y todos los comprobadores que cuelgan de ella son decorativos.
+It takes each **wiring** piece of the board, flips its `return False` — leaving it physically
+unable to return a negative verdict — and runs the whole suite. If nothing protests, that piece
+is watched by nothing, and every checker hanging off it is decorative.
 
-## Por qué existe, y por qué esta forma y no otra
+## Why it exists, and why this shape and no other
 
-`--verifica` tenía un pase adversarial que el 2026-08-30 se descubrió **muerto**: `ARTEFACTOS`
-estaba vacío, imprimía `0/0 verificados` —que en un informe se lee como un 100 %— y no podía
-revivir. Su única mentira era *plantar un fichero en el suelo*, y ninguno de los 33 comprobadores
-de esta casa decide mirando el suelo: todos preguntan a git, a GitHub o al sistema operativo. La
-máquina hablaba un idioma que aquí no se usa.
+`--verifica` had an adversarial pass that was found **dead** on 2026-08-30: `ARTEFACTOS` was
+empty, it printed `0/0 verificados` — which reads as 100% in a report — and it could not come
+back to life. Its only lie was *planting a file on the floor*, and none of this household's 33
+checkers decide by looking at the floor: all of them ask git, GitHub, or the operating system.
+The machine spoke a language nobody here uses.
 
-Ésta le da la vuelta: en vez de engañar al comprobador **por fuera**, lo opera **por dentro**.
+This one flips it around: instead of fooling the checker **from the outside**, it operates
+**from the inside**.
 
-## El argumento que decidió construirla, y no es de opinión
+## The argument that decided to build it, and it is not a matter of opinion
 
-Ese mismo día se midió seis veces, por métodos estáticos, qué partes del arnés estaban probadas:
-mirar si un test NOMBRA una función, contar `except` por su forma, buscar con `grep`. Las seis
-medidas salieron **falsas**, y las seis eran plausibles — números redondos con nombres de verdad
-al lado.
+That same day, six static methods were tried to measure what parts of the harness were tested:
+whether a test NAMES a function, counting `except` by its shape, searching with `grep`. All six
+measurements came back **false**, and all six were plausible — round numbers with real names
+next to them.
 
-Lo único que dijo la verdad fue romper la pieza y ver quién gritaba. Sobre esa primera corrida:
+The only thing that told the truth was breaking the piece and seeing who screamed. On that first
+run:
 
     _delega                7 comprobadores    694 passed   <- CIEGO
     _fabrica_bug          12 comprobadores      2 failed
@@ -32,25 +34,25 @@ Lo único que dijo la verdad fue romper la pieza y ver quién gritaba. Sobre esa
     guardia_de_commit      1 comprobador        3 failed
     revista_de_runtimes    1 comprobador      694 passed   <- CIEGO
 
-Ocho comprobadores colgando de dos piezas que nadie vigilaba. Ninguna medida estática lo vio.
+Eight checkers hanging off two pieces nobody was watching. No static measure had seen it.
 
-## Por qué esta mutación y no un catálogo de mutaciones
+## Why this mutation and not a catalog of mutations
 
-Las herramientas de mutación al uso generan decenas de variantes por función. Aquí sobra: la
-pregunta de este proyecto es una sola, **«¿puede este guardián decir que no?»**, y su negación es
-exactamente voltear los `return False`. Una mutación que corresponde 1:1 con el fallo que se teme
-vale más que cincuenta que no.
+Standard mutation tools generate dozens of variants per function. Here that is overkill: this
+project asks a single question, **"can this guardian say no?"**, and its negation is exactly
+flipping the `return False`s. One mutation that maps 1:1 to the failure being feared is worth
+more than fifty that do not.
 
-## Lo que NO prueba, dicho antes de que alguien lo confunda
+## What it does NOT prove, said before someone gets confused
 
-Que la suite cace el sabotaje demuestra que **alguien mira** esa pieza. NO demuestra que la mire
-bien, ni que el comprobador sea correcto. Es un suelo, no un techo.
+That the suite catches the sabotage proves that **someone is looking** at that piece. It does
+NOT prove they are looking well, or that the checker is correct. It is a floor, not a ceiling.
 
-## La trampa prohibida
+## The forbidden trap
 
-Si no se puede mutar —el árbol tiene cambios sin guardar, no hay pytest, no se puede escribir el
-fichero— esto es **MUDO**. Un 0 de 0 sería «todo verificado», que es la mentira exacta que mató a
-la máquina anterior.
+If it cannot mutate — the tree has unsaved changes, there is no pytest, the file cannot be
+written — this is **MUTE**. A 0 of 0 would read as "everything verified," which is the exact lie
+that killed the previous machine.
 """
 from __future__ import annotations
 
