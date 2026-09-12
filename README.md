@@ -60,6 +60,7 @@ r.is_fallback  # False   → hubo rama específica para este sujeto
 - [What it deliberately does NOT do](#what-it-deliberately-does-not-do)
 - [Expressiveness, deliberately poor](#expressiveness-deliberately-poor)
 - [Missing backing, declared as such](#missing-backing-declared-as-such)
+- [And what else lives in this repo, because holding it up required it](#and-what-else-lives-in-this-repo-because-holding-it-up-required-it)
 - [Structure](#structure)
 - [Installation](#installation)
 - [Migrating](#migrating)
@@ -681,6 +682,34 @@ Three rules hold this in place, so the new field cannot become a free-floating l
   obedience to a number nobody actually backs. If one band of the subject really can be
   binding and another cannot, **that is two norms with disjoint `when` clauses**, one
   declaring `null` where the other governs.
+
+## And what else lives in this repo, because holding it up required it
+
+An external-knowledge registry is worth nothing if no one checks that it still tells the
+truth. So this repository also holds **two pieces that are not the library itself**, and
+that govern the seven acceptance boards of a five-project household:
+
+- **`scripts/ronda_de_tableros.py`** — the round (`ronda`). Every morning it runs the
+  acceptance board for **each of the seven repositories and working trees**, each in its own
+  separate process with its own interpreter, so that one board blowing up does not take the
+  other six down with it. It leaves a human-readable report, a machine-readable one, and
+  thirty rounds of history. **It warns on a CHANGE of state, not every day**: a warning that
+  repeats identically gets learned as noise, and that had already happened here (nineteen
+  identical warnings in a row). Its exit code says whether **the round** ran, not whether the
+  boards are green — if it exited with an error for every red board, the task would show up
+  failing every single morning, and its result would stop meaning anything.
+- **`scripts/aceptaciones/censo_de_guardianes.py`** — the census (`censo`). It enumerates
+  everything that starts on its own on this machine — hooks, scheduled tasks, pre-commits,
+  boards — and requires each one to declare **what breaks if it dies**, with a minimum
+  length, because below that there is no room left for a real consequence. The list **is
+  derived from the live sources**, it is not kept by hand: whoever forgets to look is the
+  same person who forgot to write it down, so installing a new task turns the census red on
+  its own.
+
+Both exist because of the same failure, and it has a date: **something that used to run on
+its own stopped running, and no one noticed for 41 days.** That is where the rule they share
+with this package's watchdog comes from: *a mechanism that only works if someone remembers to
+look at it is not a mechanism.*
 
 ## Structure
 
