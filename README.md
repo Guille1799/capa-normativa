@@ -628,6 +628,29 @@ Tres reglas lo sujetan, para que el campo nuevo no sea una etiqueta libre:
   número que no sostiene nadie. Si una banda del sujeto sí puede obligar y otra no, **son dos
   normas con `when` disjuntos**, una declarando `null` donde gobierna la otra.
 
+## Y lo que este repo tiene además, porque hacía falta para sostenerlo
+
+Un registro de conocimiento externo no vale nada si nadie comprueba que sigue diciendo la verdad. Así que dentro
+de este repositorio viven también **dos piezas que no son la librería**, y que gobiernan los siete tableros de
+aceptación de una casa de cinco proyectos:
+
+- **`scripts/ronda_de_tableros.py` — la ronda.** Cada mañana ejecuta el tablero de aceptación de **cada uno de los
+  siete repositorios y árboles de trabajo**, cada uno en un proceso aparte con su propio intérprete, para que un
+  tablero que revienta no se lleve a los otros seis. Deja un informe legible, uno para máquinas, y treinta rondas
+  de historial. **Avisa en el CAMBIO de estado, no cada día**: un aviso que se repite idéntico se aprende a
+  ignorar, y eso ya había pasado aquí (diecinueve avisos iguales seguidos). Su código de salida dice si **la
+  ronda** corrió, no si los tableros están verdes — si saliera con error por cada rojo, la tarea aparecería
+  fallando todas las mañanas y su resultado dejaría de significar nada.
+- **`scripts/aceptaciones/censo_de_guardianes.py` — el censo.** Enumera todo lo que arranca solo en la máquina
+  —hooks, tareas programadas, pre-commits, tableros— y exige que cada uno declare **qué se rompe si muere**, con
+  un mínimo de longitud, porque por debajo de eso no cabe una consecuencia. La lista **se deduce de las fuentes
+  vivas**, no se mantiene a mano: quien se olvida de mirar es el mismo que se olvidó de apuntar, así que instalar
+  una tarea nueva pone el censo rojo por su cuenta.
+
+Las dos existen por el mismo fallo, y tiene fecha: **algo que corría solo dejó de correr y nadie se enteró en 41
+días.** De ahí sale la regla que comparten con el vigilante de este paquete: *un mecanismo que solo funciona si
+alguien se acuerda de mirarlo no es un mecanismo.*
+
 ## Estructura
 
 **El registro** lee tres ficheros del directorio que le pases:
