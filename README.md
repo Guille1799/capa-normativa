@@ -4,7 +4,7 @@
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 [![Python 3.10 | 3.12 | 3.14](https://img.shields.io/badge/python-3.10%20%7C%203.12%20%7C%203.14-blue.svg)](https://github.com/Guille1799/capa-normativa/blob/main/.github/workflows/ci.yml)
 
-> **In English.** The rest of this README is in Spanish. Here is what the library does.
+> Versión en español: [README.es.md](README.es.md)
 >
 > **Outside knowledge that governs code, as verifiable data.** For systems whose behaviour
 > depends on knowledge that comes from outside them — scientific literature, methodology,
@@ -25,15 +25,15 @@
 > The code block below reads the same in any language. `resolve()` returns the value, the
 > evidence behind it, how certain that evidence is, and whether it was a fallback.
 
-**Conocimiento externo que gobierna código, como datos verificables.**
+**Outside knowledge that governs code, as verifiable data.**
 
-Para sistemas cuyo comportamiento depende de conocimiento que viene de fuera —literatura
-científica, metodología, regulación— y que además **se contradice, cambia con el tiempo, y
-debe aplicarse distinto según a quién**.
+For systems whose behaviour depends on knowledge that comes from outside them — scientific
+literature, methodology, regulation — and which also **contradicts itself, changes over
+time, and must apply differently depending on who is asking**.
 
-El código deja de contener los números. Se los pide al registro, que devuelve **el valor
-junto a su procedencia**. Y una norma mal formada **no se construye**: si el registro no se
-construye, el programa no arranca.
+The code stops holding the numbers. It asks the registry, which returns **the value together
+with its provenance**. And a malformed norm **is never constructed**: if the registry itself
+fails to build, the program does not start.
 
 ```python
 from capa_normativa import NormRegistry
@@ -47,47 +47,70 @@ r.certainty    # 'baja'  → nunca podrá ser una recomendación fuerte
 r.is_fallback  # False   → hubo rama específica para este sujeto
 ```
 
+## Contents
+
+- [`SEM001` — the correct migration to the wrong number](#sem001-the-correct-migration-to-the-wrong-number)
+- [Illegal states that cannot be constructed](#illegal-states-that-cannot-be-constructed)
+- [Running the tests](#running-the-tests)
+- [Two modules](#two-modules)
+- [`init` — start here if you don't have a registry yet](#init-start-here-if-you-dont-have-a-registry-yet)
+- [`emit` — if your consumer is not Python](#emit-if-your-consumer-is-not-python)
+- [`validate` — check the registry without starting the app, and warn about what is about to expire](#validate-check-the-registry-without-starting-the-app-and-warn-about-what-is-about-to-expire)
+- [The watchdog (`vigilante`) — start here if all you want are the checks](#the-watchdog-vigilante-start-here-if-all-you-want-are-the-checks)
+- [What it deliberately does NOT do](#what-it-deliberately-does-not-do)
+- [Expressiveness, deliberately poor](#expressiveness-deliberately-poor)
+- [Missing backing, declared as such](#missing-backing-declared-as-such)
+- [Structure](#structure)
+- [Installation](#installation)
+- [Migrating](#migrating)
+- [Origin](#origin)
+
 ---
 
-# Dos módulos
+# Two modules
 
-Un artefacto, dos módulos, y **no se importan entre sí** (verificado por un test que lo comprueba
-por AST — una frontera que no se verifica es una frontera que deriva):
+One artifact, two modules, and **they never import each other** (verified by a test that
+checks it via AST — a boundary that is not verified is a boundary that drifts):
 
-| Módulo | Qué hace | Cuándo corre |
+| Module | What it does | When it runs |
 |---|---|---|
-| **`capa_normativa`** — el registro | los números viven como datos con procedencia y caducidad. **Fail-fast**: si algo está mal, el programa no arranca | en tu proceso, al arrancar |
-| **`capa_normativa.vigilante`** — el vigilante | chequeos **deterministas** sobre un repo. **Enumera** en vez de parar en el primer error | en pre-commit, en CI, o a mano |
+| **`capa_normativa`** — the registry | the numbers live as data with provenance and an expiry date. **Fail-fast**: if something is wrong, the program does not start | in your process, at startup |
+| **`capa_normativa.vigilante`** — the watchdog (`vigilante`) | **deterministic** checks over a repo. **Enumerates** findings instead of stopping at the first error | in pre-commit, in CI, or by hand |
 
-## `init` — empieza aquí si no tienes registro todavía
+## `init` — start here if you don't have a registry yet
 
 ```bash
 capa-normativa-init norms/            # crea schema.yaml, evidence.yaml y norms.yaml
 capa-normativa-validate norms/        # y compruébalo: sale verde tal cual
 ```
 
-Genera los tres YAML **comentados y válidos**: cargan y resuelven sin tocar nada. Traen **las dos
-formas que existen** —una norma constante con evidencia y una ramificada por un atributo del
-sujeto— porque con una sola, la primera norma real que ramifique se escribe adivinando.
+It generates the three YAML files **commented and valid**: they load and resolve without
+touching anything. They include **both forms that exist** — a constant norm with evidence,
+and one that branches on a subject attribute — because with only one form, the first real
+norm that branches gets written by guesswork.
 
-**Un generador cuya salida no valida es peor que no tenerlo**: la primera experiencia sería un error
-en un fichero que te acaba de dar el paquete, y no sabrías si el problema es tuyo o del ejemplo. Hay
-un test que lo fija y es el único que no se puede relajar.
+**A generator whose output does not validate is worse than not having one**: your first
+experience would be an error in a file the package just handed you, and you would not know
+whether the problem is yours or the example's. A test pins this down, and it is the one test
+that can never be relaxed.
 
-- **No sobreescribe.** Si ya hay ficheros sale con `1` y **no toca ninguno** — todo-o-nada, porque un
-  registro medio sobrescrito es peor que no haber tocado nada. `--forzar` si de verdad quieres.
-- **No trae dominio de nadie.** Los ejemplos son genéricos a propósito (un test lo comprueba): meter
-  aquí umbrales de nutrición o de entrenamiento ataría el paquete a su primer inquilino.
+- **It never overwrites.** If files already exist, it exits with `1` and **touches none of
+  them** — all-or-nothing, because a half-overwritten registry is worse than one left
+  untouched. Use `--forzar` (force) if you really mean it.
+- **It carries no one's domain.** The examples are deliberately generic (a test checks this):
+  putting nutrition or training thresholds in here would tie the package to its first tenant.
 
-Los comentarios explican **por qué** cada campo existe, no solo qué acepta — en particular que
-`subject_dimensions` es una **lista cerrada** y que eso es lo único que impide encadenar normas, y
-que una `expires` vencida **impide arrancar la aplicación**.
+The comments explain **why** each field exists, not just what it accepts — in particular
+that `subject_dimensions` is a **closed list**, that this is the only thing preventing norms
+from chaining into each other, and that an expired `expires` **stops the application from
+starting**.
 
-## `emit` — si tu consumidor no es Python
+## `emit` — if your consumer is not Python
 
-El registro se lee con `load()`+`resolve()` **en proceso Python**. `emit` saca las constantes a
-otro lenguaje **con su procedencia**, para el frontend en TypeScript, los umbrales en R, o un
-JSON universal.
+The registry is read with `load()`+`resolve()` **inside a Python process**. `emit` exports
+the constants to another language **together with their provenance** — for a TypeScript
+frontend, R thresholds, or a universal JSON file. Each call takes a `--formato` (format) and
+a `--salida` (output path):
 
 ```bash
 capa-normativa-emit norms/ --formato typescript --salida frontend/norms.ts
@@ -96,35 +119,38 @@ capa-normativa-emit norms/ --formato json       --salida build/norms.json
 capa-normativa-emit norms/ --formato python     --salida app/norms_gen.py
 ```
 
-**Y esto es lo que hace que `emit` no sea un problema nuevo:**
+**And this is what keeps `emit` from becoming a new problem:**
 
 ```bash
 capa-normativa-emit norms/ --formato typescript --salida frontend/norms.ts --check
 ```
 
-`--check` no escribe: **re-emite y compara**. Si difiere, sale con **1**. Commitea el fichero
-generado **y pon `--check` en CI** — es el patrón de `protobuf`, `OpenAPI` y
-`kubernetes/hack/verify-codegen.sh`. **Sin `--check`, `emit` añade un artefacto más que puede
-derivar, que es exactamente el problema que este paquete existe para impedir.**
+`--check` (check) does not write: it **re-emits and compares**. If the result differs, it
+exits with **1**. Commit the generated file **and put `--check` in CI** — this is the same
+pattern as `protobuf`, `OpenAPI`, and `kubernetes/hack/verify-codegen.sh`. **Without
+`--check`, `emit` adds one more artifact that can drift, which is exactly the problem this
+package exists to prevent.**
 
-Cada valor sale con su unidad, sus IDs de evidencia, su certeza, su fuerza y su caducidad:
+Each value comes out with its unit, its evidence IDs, its certainty, its strength, and its
+expiry date:
 
 ```typescript
 /** puntos porcentuales de grasa · ev=EV-0113 · certeza=baja · condicional · caduca=2027-01-30 */
 export const BIA_MEASUREMENT_ERROR_MARGIN = 3.0 as const;
 ```
 
-> **Si `emit` solo sacara números, habría reinventado el problema en un sitio nuevo.** Un
-> `EA_FLOOR <- 30` generado es el mismo número mágico, con un paso de build de por medio.
+> **If `emit` only exported numbers, it would have reinvented the problem in a new place.**
+> A generated `EA_FLOOR <- 30` is the same magic number, with a build step in between.
 
-**Solo emite las constantes** (las que no ramifican por el sujeto). Una que ramifica no se puede
-volcar sin reproducir su tabla de decisión y su hit policy en cada lenguaje, así que **no se
-emite y sale en `omitidas` con su motivo** — una ausencia silenciosa haría parecer completo al
-fichero generado. En el registro real del primer inquilino, medido el **2026-08-30**: **116 constantes emitidas, 42
-omitidas**, cada una con su razón. Y **lo que el registro no serviría tampoco se emite**:
-retiradas y bloqueadas quedan fuera, o `emit` sería la puerta de atrás.
+**It only emits the constants** (the ones that do not branch on the subject). One that
+branches cannot be dumped without reproducing its decision table and its hit policy in every
+language, so **it is not emitted, and it appears in `omitidas` (omitted) with its reason** —
+a silent absence would make the generated file look complete when it is not. Against the
+first tenant's real registry, measured on **2026-08-30**: **116 constants emitted, 42
+omitted**, each with its reason. And **anything the registry would not serve is not emitted
+either**: retired and blocked norms stay out, or `emit` would be a back door.
 
-## `validate` — comprueba el registro sin arrancar la app, y avisa de lo que va a caducar
+## `validate` — check the registry without starting the app, and warn about what is about to expire
 
 ```bash
 capa-normativa-validate norms/                          # 0 válido · 1 problemas · 2 no se pudo
@@ -133,55 +159,61 @@ capa-normativa-validate norms/ --falla-si-caduca-en 30  # para CI: el aviso pasa
 capa-normativa-validate norms/ --json                   # para consumo por máquina
 ```
 
-**No es `load()` con otro nombre.** Cubre dos huecos que `load()` deja, y ninguno es cosmético.
+**This is not `load()` under another name.** It covers two gaps that `load()` leaves open,
+and neither is cosmetic.
 
-### ① Una norma caducada es una caída de producción, y nada la anunciaba
+### ① An expired norm is a production outage, and nothing announced it
 
-Una norma `vigente` cuya `expires` ya pasó **hace que `load()` lance**: el día que caduca, **la
-aplicación no arranca**. Ese diseño es deliberado —es la mitad *«niégate a servir lo rancio»* del
-modelo de gettext— pero sin aviso previo es una mina: el mecanismo que te protege de la información
-vieja se manifiesta como un despliegue que falla un martes, sin relación aparente con nada que
-hayas tocado.
+A `vigente` (active) norm whose `expires` has already passed **makes `load()` raise**: on the
+day it expires, **the application does not start**. That design is deliberate — it is the
+*"refuse to serve what's stale"* half of the gettext model — but without advance warning it
+is a landmine: the mechanism that protects you from stale information shows up as a
+deployment failing on a Tuesday, with no apparent link to anything you touched.
 
-**`--avisa-en` es la otra mitad**, y `--falla-si-caduca-en` la convierte en un gate de CI. Caducar
-pronto **no** es un error —si lo fuera, alguien apagaría el aviso—, así que sale en verde con
-advertencia hasta que tú decidas lo contrario.
+**`--avisa-en` (warn-within) is the other half**, and `--falla-si-caduca-en`
+(fail-if-expiring-within) turns it into a CI gate. Expiring soon **is not** an error — if it
+were, someone would just turn the warning off — so it exits green with a warning until you
+decide otherwise.
 
-El gate mira **solo a las normas que EMITEN** (v0.16.1). Una `retirada` o `bloqueada` vencida se
-sigue reportando —una fecha muerta en el YAML miente a quien la lee— pero no lo falla: no emite
-valor, así que su caducidad no puede tirar nada. Hasta la v0.16.0 sí lo fallaba, y eso ponía un
-gate rojo por un no-motivo: en una norma que no emite, la fecha que manda es la de `retirement`,
-y ponerle además un `expires` solo duplica esa fecha donde no gobierna nada.
+The gate looks **only at norms that EMIT a value** (v0.16.1). An expired `retirada` (retired)
+or `bloqueada` (blocked) norm is still reported — a dead date in the YAML lies to whoever
+reads it — but it does not fail the gate: it emits no value, so its expiry cannot break
+anything downstream. Up to v0.16.0 it did fail the gate, and that turned it red for no real
+reason: on a norm that does not emit, the date that matters is `retirement`, and giving it an
+`expires` on top only duplicates a date that governs nothing.
 
-### ② `load()` para en el primer error; quien escribe YAML quiere los siete
+### ② `load()` stops at the first error; whoever writes the YAML wants all seven
 
-Mismo reparto que entre el registro y el vigilante: el registro **para** porque su trabajo es no
-arrancar; esto **enumera** porque su trabajo es que alguien arregle un fichero.
+Same split as between the registry and the watchdog: the registry **stops**, because its job
+is to refuse to start; this **enumerates**, because its job is to let someone fix a file.
 
-Se enumeran los errores **por norma**, que son independientes. Los de `schema.yaml` y de la
-evidencia **no**, y es deliberado: todo lo demás depende de ellos, así que seguir tras un esquema
-roto produce una cascada de errores derivados que oculta el único que importa.
+Errors are enumerated **per norm**, since norms are independent. Errors in `schema.yaml` and
+in the evidence file are **not** enumerated that way, and this is deliberate: everything else
+depends on them, so continuing past a broken schema produces a cascade of derived errors that
+buries the one that actually matters.
 
-> ⚠️ **No reimplementa ninguna comprobación**: llama al mismo validador que `load()`. Dos
-> validadores que se pretenden equivalentes divergen, y entonces `validate` diría verde sobre un
-> registro que no arranca — peor que no tenerlo. Un test lo comprueba por AST.
+> ⚠️ **It does not reimplement any check**: it calls the same validator `load()` uses. Two
+> validators that are supposed to be equivalent drift apart, and then `validate` would say
+> green over a registry that does not start — worse than not having it. A test checks this
+> via AST.
 
-### Lo que encontró en su primera corrida
+### What it found on its first run
 
-Contra el registro real del primer inquilino, y sin arrancar su aplicación:
+Against the first tenant's real registry, and without starting their application:
 
 ```
 ✗ [working_sets_by_mode] rama #0 viaja con certainty='baja' pero la MEJOR evidencia
   que ELLA cita es 'muy_baja'.
 ```
 
-Una rama que **se presentaba como más fiable que su única fuente**, heredando certeza de la rama de
-al lado. Habría impedido arrancar la app al actualizar el paquete. Eso es exactamente el caso de
-uso: enterarse antes, y sin levantar nada.
+A branch that **presented itself as more reliable than its own single source**, inheriting
+certainty from the branch next to it. It would have stopped the app from starting once the
+package was updated. That is exactly the use case: finding out beforehand, without standing
+anything up.
 
-## El vigilante — empieza por aquí si solo quieres los chequeos
+## The watchdog (`vigilante`) — start here if all you want are the checks
 
-No necesita el registro. Funciona en cualquier repo, incluso sin un solo `.yaml`.
+It does not need the registry. It works on any repo, even without a single `.yaml` file.
 
 ```bash
 capa-normativa-vigilante <ruta>                      # todos los detectores
@@ -190,47 +222,50 @@ capa-normativa-vigilante <dir-de-md> --detector punteros --tambien ../otro/docs
 capa-normativa-vigilante <ruta> --json               # salida para consumo por máquina
 ```
 
-**Contrato de salida**, porque el consumidor previsto es un agente sin contexto:
+**Output contract**, because the intended consumer is an agent with no context:
 
-| Código | Significa | Qué hacer |
+| Code | Means | What to do |
 |---|---|---|
-| **0** | limpio | nada |
-| **1** | hay hallazgos | arreglarlos: cada hallazgo **dice qué hacer** |
-| **2** | no se pudo ejecutar | investigar: «falló» y «encontró cosas» exigen reacciones opuestas |
+| **0** | clean | nothing |
+| **1** | there are findings | fix them: each finding **says what to do** |
+| **2** | could not run | investigate: "it failed" and "it found things" demand opposite reactions |
 
-### Los detectores
+### The detectors
 
-| Código | Caza | Nota |
+| Code | Catches | Note |
 |---|---|---|
-| **`SYN001`** | un `.py` versionado que no parsea | encontró un `SyntaxError` de **dos meses** que ningún otro mecanismo había visto |
-| **`PTR001`** | un puntero `§N.M` que no resuelve | no comprueba que la sección *diga* lo atribuido —eso no es automatizable—: comprueba que **exista**. Recorre el árbol **en profundidad** (ver el aviso de abajo) |
-| **`SEC001`** | una credencial con forma reconocible en un fichero versionado | escanea **todo** lo versionado, informes incluidos. El hallazgo **nunca contiene el secreto**. `# nosec` al final de la línea lo suprime |
-| **`TRI001`-`TRI007`** | el **trinquete**: una deuda declarada que solo puede decrecer | es API, no subcomando: necesita tu baseline y tu extractor. Ver abajo |
-| **`SEM001`** | una constante cuyo **nombre** dice `..._CAP` y resuelve una norma con `semantics: suelo` (o al revés) | es API: necesita el mapa `slug → semantics` de **tu** registro. Ver abajo |
+| **`SYN001`** | a versioned `.py` file that does not parse | it caught a **two-month-old** `SyntaxError` that no other mechanism had seen |
+| **`PTR001`** | a `§N.M` pointer that does not resolve | it does not check that the section *says* what is attributed to it — that is not automatable — it checks that it **exists**. It walks the tree **depth-first** (see the warning below) |
+| **`SEC001`** | a credential with a recognizable shape in a versioned file | it scans **everything** versioned, reports included. The finding **never contains the secret**. A `# nosec` at the end of the line suppresses it |
+| **`TRI001`-`TRI007`** | the **ratchet** (`trinquete`): a declared debt that can only shrink | this is an API, not a subcommand: it needs your baseline and your extractor. See below |
+| **`SEM001`** | a constant whose **name** says `..._CAP` (cap) but resolves a norm with `semantics: suelo` (floor) — or the other way round | this is an API: it needs the `slug → semantics` map for **your** registry. See below |
 
-### `SEM001` — la migración correcta al número equivocado
+### `SEM001` — the correct migration to the wrong number
 
-Es el detector más joven (`v0.13.0`) y nace de un fallo **medido**, no imaginado.
+This is the youngest detector (`v0.13.0`), and it comes from a **measured** failure, not an
+imagined one.
 
-Migrando una constante llamada `_PLANNED_LOAD_CARB_GKG_CAP` —un **tope** de carbohidrato extra— la
-herramienta de triaje la propuso como candidata a la norma `carb_floor_g_per_kg_ffm`, que es un
-**suelo** diario. Los dos valían `1.5`, y la candidatura era razonable: mismo valor, y los nombres
-comparten la palabra `CARB`. Lo único que lo impidió fue leer el comentario del sitio.
+While migrating a constant called `_PLANNED_LOAD_CARB_GKG_CAP` — a **cap** on extra
+carbohydrate — the triage tool proposed it as a candidate for the norm
+`carb_floor_g_per_kg_ffm`, which is a daily **floor**. Both were worth `1.5`, and the
+candidacy looked reasonable: same value, and the names share the word `CARB`. The only thing
+that stopped it was reading the comment at the call site.
 
-Después se midió qué habría pasado sin leerlo. Se hizo la migración equivocada con el ritual
-completo y se corrió el gate del proyecto:
+Afterwards, we measured what would have happened without reading it. The wrong migration was
+carried out with the full ritual, and the project's gate was run:
 
 ```
 2634 passed, 1 skipped, 1 xfailed
 ```
 
-**Verde.** Y se entiende: todo el arnés comprueba que el **valor** no cambie, y el valor era `1.5`
-antes y `1.5` después. **Nada miraba el significado.** El error habría quedado permanente e
-invisible — un techo funcionando como piso, con procedencia falsa y aspecto de estar resuelto.
+**Green.** And it makes sense: the entire harness checks that the **value** does not change,
+and the value was `1.5` before and `1.5` after. **Nothing looked at the meaning.** The error
+would have stayed permanent and invisible — a ceiling working as a floor, with a false
+provenance and the look of something already solved.
 
-Peor: la condición que lo hace posible —que los dos números coincidan— es exactamente la condición
-que hace que un triaje por valor te lo proponga. **No es un fallo raro: es el modo de fallo natural
-de este trabajo.**
+Worse: the condition that makes this possible — the two numbers matching — is exactly the
+condition that makes a value-based triage propose it to you. **This is not a rare failure:
+it is this kind of work's natural failure mode.**
 
 ```python
 from capa_normativa.vigilante import revisar_semantica
@@ -242,50 +277,54 @@ for h in revisar_semantica("backend", mapa):
     print(h)
 ```
 
-**Cómo se mantiene callado.** Exige **dos** condiciones a la vez: que el nombre traiga una palabra
-de polaridad *semántica*, y que la norma declare la contraria. Medido en su día sobre un backend real de 81 normas,
-daba **0 hallazgos** — y encuentra el caso de arriba en cuanto se introduce. Un slug que no esté en tu
-mapa se **ignora en silencio**, así que puedes pasar un mapa parcial sin generar ruido.
+**How it stays quiet.** It requires **two** conditions at once: that the name carries a word
+of *semantic* polarity, and that the norm declares the opposite one. Measured at the time
+against a real 81-norm backend, it gave **0 findings** — and it catches the case above the
+moment it is introduced. A slug that is not in your map is **silently ignored**, so you can
+pass a partial map without generating noise.
 
-`_MIN` y `_MAX` desnudos **no** están en el vocabulario, y es deliberado: en el proyecto de origen
-esa misma tentación marcaba el 100 % de las constantes, porque casi siempre son tamaños de muestra
-(`_MIN_READINGS`). Un señalizador que dispara para todo no señaliza nada.
+Bare `_MIN` and `_MAX` are **not** in the vocabulary, and this is deliberate: in the source
+project, that same temptation flagged 100% of the constants, because they are almost always
+sample sizes (`_MIN_READINGS`). A signal that fires on everything signals nothing.
 
-> ⚠️ **Lo que NO cubre, y conviene tenerlo claro para no confundirlo con cobertura:** dos
-> constantes que responden preguntas distintas cuando **ninguna** se llama tope ni suelo — cuatro
-> dosis de proteína (pre-entreno, post-entreno, pre-sueño…) son todas «gramos de proteína» y para
-> esto son invisibles. Ahí el único defensor sigue siendo **leer el comentario del sitio**. Este
-> detector tapa **una** clase de fallo: la que se pudo hacer determinista.
+> ⚠️ **What it does NOT cover, and it is worth being clear about it so it is never mistaken
+> for coverage:** two constants that answer different questions when **neither** is called
+> cap nor floor — four protein doses (pre-workout, post-workout, before sleep…) are all "grams
+> of protein," and to this detector they are invisible. There, the only defence is still
+> **reading the comment at the call site**. This detector closes **one** class of failure: the
+> one that could be made deterministic.
 
-> ⚠️ **Sin mapa devuelve `[]`.** Es el no-op silencioso, así que **comprueba con un test que tu
-> mapa llega lleno** (`assert len(mapa) >= N`). Un gate que no encuentra sus datos pasa en verde
-> sin haber mirado nada, y ese es el modo de fallo que este paquete existe para impedir.
+> ⚠️ **With no map, it returns `[]`.** That is the silent no-op, so **check with a test that
+> your map actually arrives full** (`assert len(mapa) >= N`). A gate that finds no data of its
+> own passes green without having looked at anything, and that is exactly the failure mode
+> this package exists to prevent.
 
-### ⚠️ Sobre `PTR001`: qué cuenta como «el corpus»
+### ⚠️ About `PTR001`: what counts as "the corpus"
 
-**Recorre el directorio en profundidad** (excluyendo `node_modules`, `venv`, `.git` y similares),
-y las cabeceras de los subdirectorios **también** cuentan como destino válido.
+**It walks the directory tree depth-first** (excluding `node_modules`, `venv`, `.git`, and the
+like), and the headers of subdirectories **also** count as valid targets.
 
-> **En la `v0.10.0` NO recorría**: solo miraba el primer nivel. Sobre un `docs/` con
-> subcarpetas decía **«limpio, 0 hallazgos»** y salía con **0** mientras había **8 punteros
-> colgantes** una carpeta más abajo. Un falso negativo es la peor forma de fallo para un
-> detector: da confianza. **Si usas la `0.10.0`, actualiza.**
+> **In `v0.10.0` it did NOT walk the tree**: it only looked at the top level. Over a `docs/`
+> with subfolders it said **"clean, 0 findings"** and exited with **0**, while there were
+> **8 dangling pointers** one folder down. A false negative is the worst possible failure for
+> a detector: it hands out confidence. **If you are on `0.10.0`, update.**
 >
-> Lo encontró un agente sin contexto adoptando el paquete con solo este README — no los tests
-> del propio detector, cuyos corpus eran todos de un nivel. *La forma del test copiaba la forma
-> del bug.*
+> It was found by a context-free agent adopting the package with only this README — not by
+> the detector's own tests, whose corpora were all a single level deep. *The shape of the
+> test copied the shape of the bug.*
 
-Y una consecuencia que conviene saber: al recorrer en profundidad aparecen **referencias a
-secciones de documentos ajenos** (una especificación, un estándar) escritas sin prefijo. Eso sale
-como colgante y es un falso positivo legítimo. Dos salidas: poner el documento delante en
-MAYÚSCULAS (`DMN §10.3`), o declarar su corpus con `--tambien`. **El detector no adivina qué es
-tuyo: se lo dices.**
+And a consequence worth knowing: walking the tree depth-first surfaces **references to
+sections of other documents** (a spec, a standard) written with no prefix. Those come out as
+dangling, and that is a legitimate false positive. Two ways out: put the document name in
+front, in CAPITALS (`DMN §10.3`), or declare its corpus with `--tambien` (also / include-too).
+**The detector never guesses what is yours: you tell it.**
 
-### El trinquete
+### The ratchet (`trinquete`)
 
-Un gate absoluto sale rojo el día 1 y **se desactiva**. El trinquete se calibra sobre el estado
-actual y solo prohíbe empeorar, así que entra en un repo con deuda sin bloquearlo. Y no muere de
-fatiga: no pide atención por evento, pide que un número no suba.
+An absolute gate exits red on day one and **gets turned off**. The ratchet calibrates itself
+against the current state and only forbids things getting worse, so it can enter a repo that
+already has debt without blocking it. And it does not die of alert fatigue: it does not ask
+for attention on every event, it only asks that a number never goes up.
 
 ```python
 from capa_normativa.vigilante import Trinquete
@@ -298,168 +337,173 @@ for h in t.revisar(mi_extractor_de_constantes()):
     print(h)          # cada uno con su código estable y su arreglo
 ```
 
-El **extractor y el vocabulario son tuyos**: este módulo no sabe qué constantes tiene tu dominio.
-Comprueba seis cosas, y **cada una salió de un fallo real**: entradas nuevas · valores cambiados sin
-cambiar el nombre · **entradas obsoletas** (una entrada que ya no existe es un *permiso de
-reentrada*: sin esta comprobación, lo migrado se puede volver a escribir a mano sin que nada se
-queje) · el tope superado · entradas sin explicar por qué siguen ahí · y **el tope flojo**, porque un
-tope por encima del recuento real es decoración.
+The **extractor and the vocabulary are yours**: this module does not know what constants your
+domain has. It checks six things, and **each one came from a real failure**: new entries ·
+values changed without changing the name · **stale entries** (an entry that no longer exists
+is a *re-entry permit*: without this check, what has already been migrated can be hand-written
+back in and nothing objects) · the ceiling exceeded · entries with no explanation for why
+they are still there · and **a ceiling set too loose**, because a ceiling above the real
+count is just decoration.
 
-Lo que **no** puede hacer, y el mensaje lo dice en vez de esconderlo: distinguir *«la deuda creció»*
-de *«el instrumento dejó de estar ciego»*. Eso es intención, y la intención no se calcula.
+What it **cannot** do, and the message says so instead of hiding it: tell apart *"the debt
+grew"* from *"the instrument stopped being blind."* That is a question of intent, and intent
+cannot be computed.
 
-### Cablearlo a un pre-commit
+### Wiring it into a pre-commit hook
 
 ```bash
 #!/bin/sh
 capa-normativa-vigilante . --detector sintaxis --detector secretos || exit 1
 ```
 
-⚠️ **Los hooks locales son cortesía: la copia que de verdad puede bloquear es la de CI.** Un
-pre-commit se salta con `--no-verify` y no existe en el clon de nadie más.
+⚠️ **Local hooks are a courtesy: the copy that can actually block is the one in CI.** A
+pre-commit hook is skipped with `--no-verify`, and it does not exist in anyone else's clone.
 
-### Por qué determinista y no un LLM
+### Why deterministic, and not an LLM
 
-Un detector que oscila **es otra respuesta viva más**: empeora el problema que viene a resolver. Y no
-cuesta tokens, así que sigue funcionando cuando el presupuesto baja. Los módulos del vigilante tienen
-un test que verifica por AST que **no importan nada de red** — la ley se mecaniza, no se confía.
+A detector that changes its mind **is just one more live response**: it makes the problem it
+is meant to solve worse. And it costs no tokens, so it keeps working when the budget runs
+low. The watchdog's modules have a test that verifies, via AST, that **they import nothing
+network-related** — the rule is mechanized, not trusted on faith.
 
 ---
 
-## Estados ilegales que no se pueden construir
+## Illegal states that cannot be constructed
 
-Cada uno corresponde a un modo de fallo real y observado:
+Each one corresponds to a real, observed failure mode:
 
-| No se construye si… | Evita |
+| It cannot be built if… | This avoids |
 |---|---|
-| `strength: vinculante` con certeza débil | tratar como dogma lo que la evidencia no sostiene |
-| certeza débil sin fecha de caducidad | que lo frágil se quede para siempre |
-| una norma vigente está **caducada** | que "revisar esto algún día" nunca llegue |
-| una rama no cita evidencia | números sin procedencia |
-| se cita evidencia **inexistente** | punteros colgantes |
-| **falta la rama del sujeto desconocido** | **especificar solo para quien tienes delante** |
-| dos normas comparten identificador | colisiones silenciosas entre documentos |
-| hay contradicción declarada sin resolución | recoger conflictos y no adjudicarlos nunca |
-| una norma retirada se intenta leer | el comentario fósil que sobrevive a su supersesión |
-| se cuela lógica en una condición | convertir esto en un motor de reglas |
-| **dos ramas matchean al mismo sujeto** | que el orden del fichero decida el valor |
-| **una norma ramifica por otra norma** | **encadenar reglas por la puerta de atrás** |
-| **dos rangos solapan** (`">=40"` y `">=60"`) | que un sujeto de 70 se lleve el valor de la banda equivocada |
-| **un rango está vacío** (`"[5,3]"`) | una rama muerta que cae al comodín sin avisar |
-| **una clave no se reconoce** (`valeu:`, `certainy:`) | que lo escrito y lo que hace el registro no coincidan |
-| **un `status` no se reconoce** (`vigent:`) | que una errata desactive la caducidad en silencio |
-| **un puntero apunta a una norma inexistente** | mandar al lector a algo que no está |
-| una norma **bloqueada** se intenta leer | resolver un conflicto a escondidas, por orden de fichero |
-| **una norma declara más certeza de la que sostiene su evidencia** | **que la escala de certeza sea decorativa** |
-| dos entradas de evidencia comparten `id` | colisiones en la capa que nunca se borra |
-| una cita antigua se marca como reciente | citar un clásico sin decir que lo es |
-| **se PREGUNTA por una dimensión no declarada** | **que una errata del llamante caiga al comodín en silencio** |
-| hay **dos** ramas del sujeto desconocido | que el orden del fichero decida el valor por defecto |
+| `strength: vinculante` (binding) with weak certainty | treating as dogma what the evidence does not support |
+| weak certainty with no expiry date | fragile knowledge staying forever |
+| an active (`vigente`) norm is **expired** | "review this some day" never arriving |
+| a branch cites no evidence | numbers with no provenance |
+| evidence that **does not exist** is cited | dangling pointers |
+| **the unknown-subject branch is missing** | **specifying only for the subject in front of you** |
+| two norms share an identifier | silent collisions between documents |
+| there is a declared contradiction with no resolution | collecting conflicts and never adjudicating them |
+| a retired norm is read | the fossil comment that outlives its own supersession |
+| logic sneaks into a condition | turning this into a rules engine |
+| **two branches match the same subject** | the file's order deciding the value |
+| **a norm branches on another norm** | **chaining rules through the back door** |
+| **two ranges overlap** (`">=40"` and `">=60"`) | a subject of 70 getting the value of the wrong band |
+| **a range is empty** (`"[5,3]"`) | a dead branch silently falling through to the wildcard |
+| **a key is not recognized** (`valeu:`, `certainy:`) | what is written and what the registry does no longer matching |
+| **a `status` is not recognized** (`vigent:`) | a typo silently disabling the expiry check |
+| **a pointer points to a norm that does not exist** | sending the reader to something that is not there |
+| a **blocked** (`bloqueada`) norm is read | resolving a conflict behind the scenes, by file order |
+| **a norm declares more certainty than its evidence supports** | **the certainty scale being purely decorative** |
+| two evidence entries share an `id` | collisions in the layer that is never deleted |
+| an old citation is marked as recent | citing a classic without saying it is one |
+| **a call asks for an undeclared dimension** | **a caller's typo silently falling through to the wildcard** |
+| there are **two** unknown-subject branches | the file's order deciding the default value |
 
-## Lo que NO hace, a propósito
+## What it deliberately does NOT do
 
-- **No ejecuta lógica.** Devuelve un valor y de dónde sale.
-- **No encadena normas.** El encadenamiento lo hace el código llamante, donde se depura.
+- **It runs no logic.** It returns a value and where it came from.
+- **It does not chain norms.** Chaining is done by the calling code, where it can be
+  debugged.
 
-Es la diferencia con un motor de reglas. Veinte años de experiencia documentada muestran que
-esos sistemas fracasan justo ahí: cuando las reglas dependen unas de otras aparecen
-prioridades, bucles y una depuración imposible, y los equipos acaban volviendo a código plano.
-Aquí la lógica se queda en tu lenguaje; solo salen **los valores y su respaldo**.
+This is the difference from a rules engine. Twenty years of documented experience show that
+those systems fail exactly there: once rules start depending on each other, priorities,
+loops, and impossible-to-debug chains appear, and teams end up going back to plain code.
+Here the logic stays in your own language; only **the values and their backing** come out.
 
-Desde la **v0.2.0** eso no es una promesa sino una comprobación — ver `subject_dimensions`.
+Since **v0.2.0** that is not a promise but a check — see `subject_dimensions`.
 
-## Expresividad, deliberadamente pobre
+## Expressiveness, deliberately poor
 
-Una condición solo puede ser **comodín**, **igualdad simple** o **rango numérico**
-(`">=100"`, `"[10,100)"`), **sobre una dimensión declarada del sujeto**. Nada más — ni
-disyunciones, ni composición, ni orden de evaluación. El límite **está en el código**, no en
-la documentación: intentar colar un operador falla.
+A condition can only be a **wildcard**, a **simple equality**, or a **numeric range**
+(`">=100"`, `"[10,100)"`), **over a declared subject dimension**. Nothing more — no
+disjunctions, no composition, no evaluation order. The limit **lives in the code**, not in
+the documentation: trying to sneak in an operator fails.
 
-### `subject_dimensions` — por qué existe (v0.2.0)
+### `subject_dimensions` — why it exists (v0.2.0)
 
-`schema.yaml` declara la lista **cerrada** de atributos del sujeto por los que se puede
-ramificar:
+`schema.yaml` declares the **closed** list of subject attributes a norm is allowed to branch
+on:
 
 ```yaml
 subject_dimensions: [kind, mode, size]
 ```
 
-Sin ella, *"una norma no puede referenciar a otra"* se cumplía por disciplina y no por
-construcción: el registro comprobaba la **forma** de la condición, pero no podía ver su
-**semántica**. Para el parser, `{otra_norma: ">=0.30"}` era un rango perfectamente válido —
-y pasaba. Se encontró usando el registro en producción, buscándolo a propósito; se coló al
-primer intento.
+Without it, *"a norm cannot reference another norm"* held by discipline, not by
+construction: the registry checked the **shape** of a condition but could not see its
+**meaning**. To the parser, `{otra_norma: ">=0.30"}` was a perfectly valid range — and it
+passed. This was found while using the registry in production, looking for it on purpose; it
+slipped through on the very first attempt.
 
-De regalo, caza las **erratas de dimensión**, que eran el peor modo de fallo posible: una
-clave mal escrita no matchea nunca, así que caía al fallback **en silencio** y devolvía el
-valor por defecto sin que nada fallara.
+As a bonus, it catches **dimension typos**, which were the worst possible failure mode: a
+misspelled key never matches, so it silently fell through to the fallback and returned the
+default value with nothing failing.
 
-> **Breaking respecto a v0.1.0**, y deliberadamente: hacerlo opcional habría dejado el
-> agujero abierto por defecto, que es la forma exacta de tener un límite que no impide nada.
-> Migrar es una línea — la unión de las claves `when` que ya usas.
+> **Breaking, relative to v0.1.0**, and deliberately so: making it optional would have left
+> the hole open by default, which is the exact shape of a limit that stops nothing. Migrating
+> is one line — the union of the `when` keys you already use.
 
-### Solapamiento entre rangos (v0.3.0)
+### Overlapping ranges (v0.3.0)
 
-Hasta la v0.2.0, *"dos ramas no pueden matchear al mismo sujeto"* se comprobaba comparando
-**conjuntos de pares**: detectaba igualdad y subsunción, pero dos rangos son literales
-distintos y convivían tan tranquilos. Con un eje partido en bandas eso no es un aviso que
-falta, es la **respuesta equivocada en silencio**:
+Up to v0.2.0, *"two branches cannot match the same subject"* was checked by comparing **sets
+of pairs**: it caught equality and subsumption, but two ranges are different literals, and
+they coexisted peacefully. With an axis split into bands, that is not a missing warning, it
+is the **wrong answer, given silently**:
 
 ```yaml
 - when: {age_band: ">=40"}   # master
 - when: {age_band: ">=60"}   # adulto mayor   ← nunca se alcanzaba
 ```
 
-Un sujeto de 70 se llevaba el valor de la primera rama del fichero. Ahora la pregunta que se
-hace el parser es la que de verdad importa —**¿existe algún sujeto que cumpla las dos
-ramas?**— resuelta con aritmética de intervalos sobre la gramática de rangos. Dos condiciones
-sobre dimensiones distintas no se estorban; el choque solo puede venir de las claves
-compartidas.
+A subject aged 70 got the value from the first branch in the file. Now the question the
+parser actually asks is the one that matters — **does any subject satisfy both branches?**
+— resolved with interval arithmetic over the range grammar. Two conditions over different
+dimensions do not get in each other's way; a clash can only come from shared keys.
 
-Se rechaza también el **rango vacío** (`"[5,3]"`, `"(4,4)"`): una rama que no puede matchear
-nunca cae al comodín y devuelve un valor plausible que no es el suyo.
+The **empty range** is now also rejected (`"[5,3]"`, `"(4,4)"`): a branch that can never
+match falls through to the wildcard and returns a plausible value that is not actually its
+own.
 
-No es breaking: si tus rangos ya eran disjuntos, no cambia nada. Si no lo eran, tenías un bug.
+Not breaking: if your ranges were already disjoint, nothing changes. If they were not, you
+had a bug.
 
-### Claves desconocidas (v0.4.0)
+### Unknown keys (v0.4.0)
 
-El parser aceptaba cualquier clave que no entendiera y la **descartaba en silencio**. Se
-encontró intentando poner `certainty` en una **rama**: se aceptaba, se tiraba, y `resolve()`
-seguía devolviendo la certeza de la norma — quien la escribió creía haber ramificado la
-confianza y no había hecho nada.
+The parser accepted any key it did not understand and **silently discarded it**. This was
+found while trying to put `certainty` on a **branch**: it was accepted, thrown away, and
+`resolve()` kept returning the norm's own certainty — whoever wrote it believed they had
+branched the confidence level, and had done nothing at all.
 
-El caso peor era una errata en `value`:
+The worst case was a typo in `value`:
 
 ```yaml
 - when: {kind: alpha}
   valeu: 55.0          # la norma CARGABA y emitía None
 ```
 
-…indistinguible de un `value: null` deliberado. Ahora ninguna de las dos construye, y el
-mensaje sugiere la clave correcta.
+…indistinguishable from a deliberate `value: null`. Now neither one builds, and the error
+message suggests the correct key.
 
-**Limitación declarada:** dentro de `adjudication` y `retirement` las claves siguen siendo
-libres. Son metadatos de prosa —quién adjudicó, con qué conflicto, por qué— y no gobiernan lo
-que el registro emite, así que una errata ahí es cosmética.
+**Declared limitation:** inside `adjudication` and `retirement`, keys are still free-form.
+They are prose metadata — who adjudicated, over what conflict, why — and they do not govern
+what the registry emits, so a typo there is cosmetic.
 
-No es breaking: solo rechaza claves que ya se estaban ignorando.
+Not breaking: it only rejects keys that were already being ignored.
 
-### Estados y punteros reales (v0.5.0)
+### Real statuses and real pointers (v0.5.0)
 
-Tres agujeros de la misma familia — *lo que declaras tiene que ser de verdad*:
+Three holes from the same family — *what you declare has to be real*:
 
-**`status` solo admite valores conocidos.** No es pulcritud: la caducidad se comprobaba
-`if status == "vigente"`, así que una errata la **desactivaba**. `status: vigent` con una
-fecha pasada cargaba y seguía emitiendo.
+**`status` only accepts known values.** This is not tidiness: expiry was checked with
+`if status == "vigente"`, so a typo **disabled it**. `status: vigent` with a past date used
+to load and keep emitting.
 
-**Los punteros apuntan a algo que existe.** `retirement.replaced_by` no se validaba, y el
-daño no era pasivo: el error de retirada **compone su mensaje con el puntero** y se lo
-enseña al lector como si fuera ayuda (`→ usa: norma_que_no_existe`). Ahora
-`replaced_by: []` sí es válido —*"no hay sustituto"* es una respuesta— pero tiene que estar
-escrito; antes el mensaje lo sugería y lo rechazaba a la vez.
+**Pointers point at something that exists.** `retirement.replaced_by` was not validated, and
+the damage was not passive: the retirement error **builds its message using the pointer**
+and shows it to the reader as if it were help (`→ usa: norma_que_no_existe`). Now
+`replaced_by: []` is a valid value — *"there is no replacement"* is a legitimate answer — but
+it has to be written; before, the message suggested it while also rejecting it.
 
-**`bloqueada` existe de verdad.** Una norma con evidencia en conflicto y sin adjudicar
-**se niega a emitir**:
+**`bloqueada` (blocked) genuinely exists.** A norm with conflicting, unadjudicated evidence
+**refuses to emit**:
 
 ```yaml
 status: bloqueada
@@ -472,24 +516,27 @@ blocking:
 NORMS.resolve("mi_umbral", kind="alpha")   # BlockedNormError, con el motivo dentro
 ```
 
-Emitir ahí sería resolver el conflicto a escondidas, eligiendo por orden de fichero. Una
-norma **tiene valor o está explícitamente bloqueada, nunca ambigua**.
+Emitting there would mean resolving the conflict behind the scenes, by picking whichever
+branch the file lists first. A norm **either has a value, or is explicitly blocked — never
+ambiguous.**
 
-Sus ramas **sí** pueden solaparse, y no es una excepción sino la semántica: son las
-candidatas en conflicto. Exigirle ramas disjuntas sería pedirle que estuviera adjudicada,
-que es justo lo que declara no estar. Tampoco se le exige caducidad: en una norma que no
-emite, caducar no significa nada.
+Its branches **can** overlap, and that is not an exception but the intended meaning: they
+are the conflicting candidates. Requiring disjoint branches here would be asking it to
+already be adjudicated, which is exactly what it declares itself not to be. It is not
+required to expire either: on a norm that emits nothing, expiring means nothing.
 
-No es breaking: `bloqueada` es nueva, y los otros dos solo rechazan lo que ya estaba roto.
+Not breaking: `bloqueada` is new, and the other two only reject what was already broken.
 
-### La capa ① evidencia, por fin verificada (v0.6.0)
+### Layer ① evidence, finally verified (v0.6.0)
 
-Durante cinco versiones el parser comprobó **solo los IDs** de la evidencia. Todo lo demás
-—qué dice la fuente, de qué año es, cuánto de fiable— entraba sin que nadie lo mirara.
+For five versions, the parser checked **only the IDs** of the evidence. Everything else —
+what the source says, what year it is from, how reliable it is — went in with no one looking
+at it.
 
-Lo grave era esto: **la certeza de una norma era autodeclarada**. R1 impide que algo
-`vinculante` tenga certeza débil… y bastaba escribir `alta` a mano para saltárselo, aunque
-toda la evidencia citada fuese la más floja de la escala. La escala entera era decorativa.
+The serious part was this: **a norm's certainty was self-declared**. R1 stops something
+`vinculante` (binding) from having weak certainty… and all it took to get around that was
+writing `alta` (high) by hand, even if all the cited evidence was the weakest on the scale.
+The whole scale was decorative.
 
 ```yaml
 # schema.yaml — todo opcional. El registro no sabe cómo se llaman TUS campos.
@@ -499,55 +546,58 @@ evidence_recent_field: reciente
 recency_horizon: 2018
 ```
 
-Con eso declarado: una norma no puede afirmar más de lo que sostiene su mejor fuente, dos
-entradas no pueden compartir `id`, y una cita antigua no puede marcarse como reciente
-—citar un clásico está bien, disfrazarlo no—.
+With that declared: a norm cannot claim more than its best source supports, two entries
+cannot share an `id`, and an old citation cannot be marked as recent — citing a classic is
+fine, disguising it is not.
 
-**Opt-in de verdad**: sin declarar los campos, el comportamiento es el de la v0.5.0.
+**Genuinely opt-in**: without declaring the fields, behaviour is the same as in v0.5.0.
 
-### La otra mitad del contrato: `resolve()` (v0.7.0)
+### The other half of the contract: `resolve()` (v0.7.0)
 
-Seis versiones protegiendo lo que se **escribe** en el YAML. Nadie miraba qué pasa cuando el
-código **pregunta** — y ahí estaba la mitad del contrato sin cubrir:
+Six versions spent protecting what gets **written** into the YAML. No one looked at what
+happens when the code **asks** — and that was half the contract left uncovered:
 
 ```python
 NORMS.resolve("pain_threshold", tisue="tendon")   # errata del llamante
 ```
 
-…se ignoraba en silencio y caía al comodín. Es la misma errata que `subject_dimensions`
-cerró del otro lado, y **peor**: en el fichero la escribes una vez, pero una llamada mal
-escrita puede estar en cualquiera de los treinta sitios que consultan el registro. En una
-norma de bandas el comodín significa *"no hay dato"*, así que la errata convierte una señal
-real en silencio.
+…was silently ignored and fell through to the wildcard. This is the same typo that
+`subject_dimensions` closed off from the other side, and **worse**: you write the file once,
+but a mistyped call can sit in any one of the thirty places that query the registry. In a
+banded norm, the wildcard means *"no data,"* so the typo turns a real signal into silence.
 
-Con ella, tres más de la misma familia:
+Alongside it, three more from the same family:
 
-- **`0` ya no es "dato ausente".** `missing` se calculaba por veracidad, así que un cero, un
-  `False` o una cadena vacía contaban como *"no me lo has dado"*. Un cero es un valor.
-- **El registro entrega copias, no sus tripas.** `value` y `matched` eran referencias: un
-  `.append()` de quien preguntaba cambiaba la norma para todos. Era la negación literal de
-  *"solo hay una copia"*.
-- **Como mucho UNA rama del sujeto desconocido.** Con dos, gana la última del fichero — el
-  orden decidiendo el valor, justo en el punto ciego que la regla anti-solapamiento se dejó
-  al excluir las ramas comodín *"porque solapan por definición"*. Las normas `bloqueada`
-  quedan fuera: sus ramas **son** las candidatas en conflicto.
+- **`0` is no longer "missing data."** `missing` was computed by truthiness, so a zero, a
+  `False`, or an empty string all counted as *"you gave me nothing."* A zero is a value.
+- **The registry hands out copies, not its own insides.** `value` and `matched` were
+  references: a `.append()` by whoever asked changed the norm for everyone. This was the
+  literal negation of *"there is only one copy."*
+- **At most ONE unknown-subject branch.** With two, the last one in the file wins — file
+  order deciding the value, right in the blind spot the anti-overlap rule left open when it
+  excluded wildcard branches *"because they overlap by definition."* `bloqueada` (blocked)
+  norms are excluded from this: their branches **are** the conflicting candidates.
 
-Lo único que puede requerir un cambio es lo primero — y si falla, ahí tenías un bug.
+The only one of these that might require a change on your side is the first one — and if it
+fails, you had a bug there.
 
-### Obligar por PRECAUCIÓN, y una afirmación que no afirma (v0.8.0)
+### Forcing via PRECAUTION, and a claim that does not claim (v0.8.0)
 
-Dos huecos que aparecieron migrando reglas de seguridad reales.
+Two gaps that turned up while migrating real safety rules.
 
-**`strength: precautorio`.** Hasta aquí una norma obligaba (`vinculante`) o no
-(`condicional`), y *"nada vinculante con certeza débil"* lo impedía cuando la evidencia era
-floja. En general acierta. Pero deja fuera un caso que existe:
+**`strength: precautorio` (precautionary).** Up to here, a norm either was binding
+(`vinculante`) or was conditional (`condicional`), and *"nothing binding with weak
+certainty"* stopped that when the evidence was thin. That is usually right. But it leaves out
+a case that actually exists:
 
-> Un veto **precautorio** obliga *precisamente porque* la evidencia es débil. No obliga
-> porque sepamos que hace daño: obliga porque **no sabemos que sea seguro**.
+> A **precautionary** veto is binding *precisely because* the evidence is weak. It is not
+> binding because we know it causes harm: it is binding because **we do not know it is
+> safe**.
 
-Con dos valores, esas reglas había que escribirlas `condicional` mientras el código las
-aplicaba a rajatabla — el registro describiendo mal lo que el sistema hace, y justo en
-seguridad. Ahora se declaran, a cambio de decir **de qué protegen**:
+With only two values, rules like that had to be written as `condicional` while the code
+enforced them without exception — the registry misdescribing what the system does, and in
+safety of all places. Now they can be declared as such, in exchange for saying **what they
+protect against**:
 
 ```yaml
 strength: precautorio
@@ -557,28 +607,29 @@ precaution: >
   No hay evidencia de que sea seguro a esta densidad; el veto no espera a tenerla.
 ```
 
-Para que no sea la puerta de atrás de la regla anterior, `precautorio` **exige** ese campo y
-**rechaza la certeza fuerte**: si la evidencia sostiene la regla, es `vinculante`, y decirlo
-así informa más. Y `strength` pasa a ser vocabulario cerrado — hasta ahora solo se comparaba
-contra el literal `"vinculante"`, así que `vinculnte` degradaba una norma obligatoria a
-sugerencia en silencio.
+So that this cannot become a back door around the rule above, `precautorio` **requires**
+that field and **rejects strong certainty**: if the evidence supports the rule outright, it
+is `vinculante`, and saying so is more informative. And `strength` becomes a closed
+vocabulary — until now it was only ever compared against the literal string
+`"vinculante"`, so a typo like `vinculnte` silently downgraded a binding norm to a mere
+suggestion.
 
-Los consumidores no deberían conocer el vocabulario: usa **`norm.is_binding`**. Todo
-`if strength == "vinculante"` escrito antes de la v0.8.0 dejó de ser correcto al aparecer
-`precautorio`, y falla **hacia el lado malo** — tratando un veto de seguridad como una
-sugerencia.
+Consumers should not know the vocabulary at all: use **`norm.is_binding`**. Every
+`if strength == "vinculante"` written before v0.8.0 stopped being correct once `precautorio`
+appeared, and it fails **in the wrong direction** — treating a safety veto as a suggestion.
 
-**Una evidencia `sin_respaldo` se rechaza donde está.** Antes se aceptaba y reventaba después,
-en la norma que la citara, culpando a la norma. Y no había salida: si la cita no puede
-declararse `sin_respaldo`, y si declara más se salta la regla de la certeza. La entrada era
-inutilizable por construcción y nada lo decía. Si un número no tiene fuente, va en la NORMA
-(`certainty: sin_respaldo` + `provenance_note`), sin entrada de evidencia.
+**A `sin_respaldo` (unsupported) piece of evidence is rejected where it lives.** It used to
+be accepted and blow up later, in whichever norm cited it, blaming the norm. And there was no
+way out: a citation cannot declare itself `sin_respaldo`, and declaring anything stronger
+breaks the certainty rule. The entry was unusable by construction, and nothing said so. If a
+number has no source, it belongs on the NORM itself (`certainty: sin_respaldo` +
+`provenance_note`), with no evidence entry at all.
 
-## Ausencia de respaldo, declarada
+## Missing backing, declared as such
 
-La mayoría de las constantes de un sistema real no tienen fuente. Si el registro las
-rechazara, se quedarían escondidas en el código — el problema de partida. Así que pueden
-entrar con `certainty: sin_respaldo`, a cambio de **decir de dónde salieron**:
+Most constants in a real system have no source. If the registry rejected them outright, they
+would stay hidden in the code — the very problem this started from. So they can enter with
+`certainty: sin_respaldo`, in exchange for **saying where they came from**:
 
 ```yaml
 certainty: sin_respaldo
@@ -586,17 +637,19 @@ provenance_note: >
   Nadie sabe de dónde salió. Estaba en el código sin cita ni comentario.
 ```
 
-*"Nadie lo sabe"* es una respuesta válida y mucho más útil que el silencio. Y por estar bajo
-el umbral de certeza débil, hereda gratis: no puede ser vinculante y **caduca sí o sí**.
+*"Nobody knows"* is a valid answer, and a far more useful one than silence. And because it
+sits below the weak-certainty threshold, it inherits two things for free: it can never be
+binding, and it **always expires**.
 
-> El objetivo no es que todo tenga evidencia. Es que **la ausencia de evidencia sea visible,
-> caduque, y no gobierne como si fuera dogma**.
+> The goal is not for everything to have evidence. It is for **the absence of evidence to be
+> visible, to expire, and to never govern as if it were dogma**.
 
-### …y declarada POR RAMA (v0.14.0)
+### …and declared PER BRANCH (v0.14.0)
 
-Hasta aquí eso era todo-o-nada **a nivel de norma**, así que *"esta rama está respaldada y
-esta otra es convención"* no se podía escribir: la norma mixta tenía que mentir en un sentido
-u otro — inflar la certeza de la rama sin respaldo, o borrar el respaldo real de la otra.
+Until this point that was all-or-nothing **at the norm level**, so *"this branch is backed
+and that other one is just convention"* could not be written down: a mixed norm had to lie in
+one direction or the other — inflating the certainty of the unsupported branch, or erasing
+the real backing of the other one.
 
 ```yaml
 certainty: sin_respaldo          # = la de su rama MÁS DÉBIL
@@ -611,35 +664,37 @@ branches:
     provenance_note: convención del motor — es lo que el código hace hoy, sin fuente
 ```
 
-Y donde se paga es en `resolve()`: **la certeza y la procedencia que recibes son las de la
-rama que contestó**, no las de la norma.
+And where this is paid off is in `resolve()`: **the certainty and the provenance you get
+back are the ones from the branch that answered**, not the norm's own.
 
-Tres reglas lo sujetan, para que el campo nuevo no sea una etiqueta libre:
+Three rules hold this in place, so the new field cannot become a free-floating label:
 
-- **Cada rama responde de SU evidencia.** La comprobación de que nadie afirma más de lo que
-  sostiene su fuente miraba la **unión** de todas las ramas, o sea la mejor fuente de la
-  norma entera — así que una rama que solo citaba una fuente floja viajaba con la certeza que
-  sostiene la fuente de su hermana. Ahora se mira rama a rama.
-- **La certeza de la norma es la de su rama más débil**, y se comprueba que la declarada
-  coincide. Sigue escrita a mano en vez de calcularse: es lo que lee un humano en el diff, y
-  lo que hay que impedir no es que exista — es que mienta.
-- **`strength` NO se parte.** El consumidor lee `norm.is_binding` sin saber qué rama le
-  contestó, así que una norma vinculante con una rama sin respaldo obligaría a obedecer un
-  número que no sostiene nadie. Si una banda del sujeto sí puede obligar y otra no, **son dos
-  normas con `when` disjuntos**, una declarando `null` donde gobierna la otra.
+- **Each branch answers for ITS OWN evidence.** The check that no one claims more than their
+  source supports used to look at the **union** of all branches — i.e. the best source across
+  the whole norm — so a branch citing only a thin source travelled with the certainty
+  supported by its sibling's source instead. Now it is checked branch by branch.
+- **The norm's certainty is that of its weakest branch**, and the declared value is checked
+  against it. It is still written by hand instead of computed: it is what a human reads in
+  the diff, and what needs to be stopped is not that it exists — it is that it lies.
+- **`strength` is NOT split per branch.** The consumer reads `norm.is_binding` without
+  knowing which branch answered, so a binding norm with one unsupported branch would force
+  obedience to a number nobody actually backs. If one band of the subject really can be
+  binding and another cannot, **that is two norms with disjoint `when` clauses**, one
+  declaring `null` where the other governs.
 
-## Estructura
+## Structure
 
-**El registro** lee tres ficheros del directorio que le pases:
+**The registry** reads three files from whatever directory you pass it:
 
-- `schema.yaml` — la escala de certeza y las dimensiones del sujeto, **declaradas, no
-  cableadas**: cada dominio usa las suyas.
-- `evidence.yaml` — lo que dicen las fuentes. **Append-only.** No gobierna nada directamente.
-- `norms.yaml` — lo que *tu* sistema hace. Es lo único que el código puede citar.
+- `schema.yaml` — the certainty scale and the subject dimensions, **declared, not
+  hard-wired**: each domain uses its own.
+- `evidence.yaml` — what the sources say. **Append-only.** It governs nothing directly.
+- `norms.yaml` — what *your* system does. This is the only file the code is allowed to cite.
 
-**El vigilante** no lee nada de eso: se le pasa una ruta y trabaja sobre lo que git conoce.
+**The watchdog** reads none of that: you pass it a path, and it works on whatever git knows
+about.
 
-## Correr los tests
+## Running the tests
 
 ```bash
 git clone https://github.com/Guille1799/capa-normativa.git
@@ -648,26 +703,28 @@ pip install -e ".[dev]"
 python -m pytest -q          # 666 passed, 18 skipped
 ```
 
-Verificado el **2026-08-30**: en un clon limpio, **666 passed, 18 skipped**. Los 18 que se
-saltan comprueban cosas de la máquina del autor y **dicen por qué** al saltarse; en esa máquina
-la suite da **683 passed, 1 skipped**. Se publica la cifra del clon porque es la que vas a ver tú. El CI los corre en **3.10, 3.12 y
-3.14** —las tres deliberadas, y el porqué de cada una está escrito en
-`.github/workflows/ci.yml`— y además pasa el vigilante **sobre este mismo repositorio**: un
-paquete que vende detectores y no se los aplica a sí mismo es difícil de defender.
+Verified on **2026-08-30**: on a clean clone, **666 passed, 18 skipped**. The 18 that get
+skipped check things specific to the author's own machine, and they **say why** when they
+skip; on that machine the suite gives **683 passed, 1 skipped**. The clean-clone number is
+the one published here because it is the one you will see. CI runs the suite on **3.10, 3.12,
+and 3.14** — all three deliberate, and the reason for each one is written in
+`.github/workflows/ci.yml` — and it also runs the watchdog **over this very repository**: a
+package that sells detectors and does not apply them to itself is hard to defend.
 
-## Instalación
+## Installation
 
 ```bash
 pip install git+https://github.com/Guille1799/capa-normativa.git@v0.17.0
 ```
 
-Instala las dos cosas: el registro (`from capa_normativa import NormRegistry`) y el comando
-`capa-normativa-vigilante`.
+This installs both things: the registry (`from capa_normativa import NormRegistry`) and the
+`capa-normativa-vigilante` command.
 
-> ⚠️ **No instales `v0.10.0`.** Hasta el 2026-08-14 este bloque fijaba ese tag, que es anterior a
-> **SEC001** (añadido en `v0.13.0`) y arrastra el bug de recorrido descrito más arriba: **solo miraba
-> el primer nivel** del árbol. La verificación en entorno limpio del 2026-08-11 era real, pero se hizo
-> **sobre ese tag antiguo** — se conserva la nota porque el método vale, no la versión.
+> ⚠️ **Do not install `v0.10.0`.** Until 2026-08-14 this block pinned that tag, which predates
+> **SEC001** (added in `v0.13.0`) and carries the tree-walking bug described above: **it only
+> looked at the top level** of the tree. The clean-environment verification from 2026-08-11 was
+> real, but it was run **against that old tag** — the note is kept because the method still
+> holds, not the version.
 
 <details>
 <summary>Sin instalar nada, desde un clon</summary>
@@ -677,51 +734,57 @@ PYTHONPATH=src python -m capa_normativa.vigilante.cli <ruta> --detector sintaxis
 ```
 </details>
 
-## Migrar
+## Migrating
 
-**De v0.13.0 a v0.14.0** — el YAML **no necesita cambios**: sin campos por rama, cada rama
-hereda la certeza de la norma y todo significa lo mismo. Dos cosas que sí pueden morder:
+**From v0.13.0 to v0.14.0** — the YAML **needs no changes**: with no per-branch fields, each
+branch inherits the norm's certainty and everything means the same thing it always did. Two
+things that can actually bite:
 
-1. La regla de la certeza pasa a mirarse **por rama**, así que puede rechazar una norma que
-   antes cargaba: aquella cuya rama floja viajaba con la certeza de la evidencia de su
-   hermana. No es daño colateral — es una inflación real que nadie veía. Medido en el primer
-   inquilino: **1 norma de 74**, y estaba `vigente` resolviendo en producción.
-2. `Resolution.certainty` es ahora la de **la rama**. Para una norma que no use los campos
-   nuevos es idéntica; si adoptas la procedencia por rama, cambia a propósito — hacia arriba
-   en la rama respaldada y hacia abajo en la que no.
+1. The certainty rule is now checked **per branch**, so it can reject a norm that used to
+   load: one whose thin branch travelled under the certainty of its sibling's evidence. This
+   is not collateral damage — it is a real inflation that nobody could see before. Measured
+   at the first tenant: **1 norm out of 74**, and it was `vigente` (active) and resolving in
+   production.
+2. `Resolution.certainty` is now the **branch's own**. For a norm that does not use the new
+   fields, it is identical; if you adopt per-branch provenance, it changes on purpose — up
+   for the backed branch, down for the one that is not.
 
-**De v0.7.0 a v0.8.0** — dos cosas. (1) Si tu `evidence.yaml` tiene entradas con la certeza
-más baja de tu escala, bórralas: no eran citables. (2) Busca `strength ==` en tu código y
-cámbialo por `norm.is_binding`, o `precautorio` te pasará por delante como si no obligara.
+**From v0.7.0 to v0.8.0** — two things. (1) If your `evidence.yaml` has entries at the lowest
+certainty on your scale, delete them: they were never citable. (2) Search your code for
+`strength ==` and replace it with `norm.is_binding`, or `precautorio` will slip right past it
+as if it were not binding.
 
-**De v0.6.0 a v0.7.0** — comprueba tus LLAMADAS: `resolve()` ya no acepta kwargs que no
-sean dimensiones declaradas. Si alguna falla, ahí tenías una errata que caía al comodín.
+**From v0.6.0 to v0.7.0** — check your CALLS: `resolve()` no longer accepts kwargs that are
+not declared dimensions. If any call fails now, you had a typo there that used to fall
+through to the wildcard.
 
-**De v0.5.0 a v0.6.0** — nada que hacer. R15 es opt-in: sin declarar los campos de tu
-evidencia en `schema.yaml`, no comprueba nada.
+**From v0.5.0 to v0.6.0** — nothing to do. R15 is opt-in: without declaring your evidence
+fields in `schema.yaml`, it checks nothing.
 
-**De v0.4.0 a v0.5.0** — nada que hacer. R14 solo rechaza estados y punteros que ya estaban rotos.
+**From v0.4.0 to v0.5.0** — nothing to do. R14 only rejects statuses and pointers that were
+already broken.
 
-**De v0.3.0 a v0.4.0** — nada que hacer. R13 solo rechaza claves que ya se ignoraban.
+**From v0.3.0 to v0.4.0** — nothing to do. R13 only rejects keys that were already being
+ignored.
 
-**De v0.2.0 a v0.3.0** — nada que hacer. R12 solo rechaza rangos que ya estaban mal.
+**From v0.2.0 to v0.3.0** — nothing to do. R12 only rejects ranges that were already wrong.
 
-**De v0.1.0 a v0.2.0** — una línea en `schema.yaml`. Si el registro no arranca, el mensaje
-dice qué falta:
+**From v0.1.0 to v0.2.0** — one line in `schema.yaml`. If the registry does not start, the
+message says what is missing:
 
 ```yaml
 subject_dimensions: [las, claves, de, tus, when]
 ```
 
-Si al declararlas descubres que una es el nombre de otra norma, eso **era** el bug: resuelve
-las dos por separado y compón el resultado en tu código.
+If declaring them makes you discover that one of them is actually the name of another norm,
+that **was** the bug: resolve the two separately, and compose the result in your own code.
 
-## Origen
+## Origin
 
-Extraído de un sistema de prescripción de entrenamiento y nutrición donde el mismo parámetro
-se re-decidía en cada sesión de trabajo, y donde los valores tendían a quedar ajustados al
-único usuario que había. Ambos problemas resultaron ser el mismo: **una contradicción entre
-fuentes que se resuelve eligiendo un número produce un sistema hecho a medida de una persona;
-resolverla ramificando produce uno que sirve para cualquiera.**
+Extracted from a training-and-nutrition prescription system where the same parameter kept
+getting re-decided in every work session, and where values tended to drift toward fitting
+the one user the system had. Both problems turned out to be the same one: **a contradiction
+between sources that gets resolved by picking one number produces a system tailor-made for
+one person; resolving it by branching produces one that works for anyone.**
 
 MIT.
