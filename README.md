@@ -51,6 +51,7 @@ r.is_fallback  # False   → hubo rama específica para este sujeto
 - [Expressiveness, deliberately poor](#expressiveness-deliberately-poor)
 - [Missing backing, declared as such](#missing-backing-declared-as-such)
 - [And what else lives in this repo, because holding it up required it](#and-what-else-lives-in-this-repo-because-holding-it-up-required-it)
+- [The saboteur — a checker that cannot go red is decorative](#the-saboteur--a-checker-that-cannot-go-red-is-decorative)
 - [Structure](#structure)
 - [Installation](#installation)
 - [Migrating](#migrating)
@@ -700,6 +701,36 @@ Both exist because of the same failure, and it has a date: **something that used
 its own stopped running, and no one noticed for 41 days.** That is where the rule they share
 with this package's watchdog comes from: *a mechanism that only works if someone remembers to
 look at it is not a mechanism.*
+
+## The saboteur — a checker that cannot go red is decorative
+
+It takes each **wiring** piece of `scripts/aceptacion.py`, flips its `return False` — leaving it
+physically unable to return a negative verdict — and runs the whole suite. If nothing protests,
+that piece is watched by nothing, and every checker hanging off it is decorative. It always
+restores the board in a `finally`, and checks the restore against a hash before moving on.
+
+It exists because six static measures of what the harness actually tested — naming, `except`
+shape, `grep` — were tried the same day, and the docstring says why none of them was trusted:
+
+> "The six measurements all came back **false**, and all six were plausible — round numbers
+> with real names next to them."
+
+Its first run:
+
+```
+_delega                7 comprobadores    694 passed   <- CIEGO
+_fabrica_bug          12 comprobadores      2 failed
+_fabrica_inv           9 comprobadores      1 failed
+canario_de_los_hooks   1 comprobador        5 failed
+guardia_de_commit      1 comprobador        3 failed
+revista_de_runtimes    1 comprobador      694 passed   <- CIEGO
+```
+
+Eight checkers were hanging off two pieces nobody was watching, and no static measure had seen
+it.
+
+- [`scripts/aceptaciones/sabotaje_del_cableado.py`](scripts/aceptaciones/sabotaje_del_cableado.py)
+- [`tests/test_sabotaje_del_cableado.py`](tests/test_sabotaje_del_cableado.py)
 
 ## Structure
 
