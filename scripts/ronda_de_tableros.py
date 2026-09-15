@@ -83,7 +83,14 @@ VENTANA_H = 48
 #: Cuántos tableros tiene que haber corrido la ronda para que valga. Es un SUELO, no un adorno:
 #: sin él, una ronda que descubre cero tableros escribe «0 rojos» y saldría verde. Aprobar en
 #: vacío es el modo de fallo más caro de un guarda, porque su silencio se lee como buenas noticias.
-SUELO_TABLEROS = 8
+#:
+#: Bajado de 8 a 7 el 2026-09-15, al retirarse `eu-ralph` (ver `_TABLEROS`). Bajar un suelo es
+#: siempre sospechoso, así que queda dicho por qué NO lo es aquí: el suelo existe para cazar
+#: tableros que desaparecen sin que nadie lo note, y este desapareció **con** aviso — la ronda
+#: llevaba desde el 2026-09-01 diciendo «7 de 8», o sea catorce días emitiendo un veredicto que
+#: ella misma consideraba inválido. Lo que se corrige es que el censo prometía ocho cuando ya sólo
+#: había siete: el guarda no se afloja, se le deja de mentir.
+SUELO_TABLEROS = 7
 
 #: Tiempo máximo por tablero. El de `capa-normativa` corre doce nodos de pytest, así que hay que
 #: ser generoso; pero un tablero colgado no puede secuestrar la ronda entera.
@@ -112,15 +119,20 @@ MUDO = chr(0x26AA)
 _TABLEROS = (
     ("capa-normativa", "capa-normativa", None),
     ("cn-ralph", "cn-ralph", None),
-    ("eu-ralph", "eu-ralph", None),
+    # `eu-ralph` estuvo aquí hasta el 2026-09-15. Se retira porque el worktree ya no existe:
+    # `eu-political-observatory` pasa a trabajarse a mano, por decisión de G. Su tablero llevaba
+    # muerto desde el 2026-08-31 por un efecto colateral que merece quedarse escrito —al limpiar
+    # el arnés del repo PÚBLICO, la sincronización nocturna del worktree borró sus propios
+    # ficheros—, y eu no se queda sin vigilancia: desde el 2026-09-15 corre pytest en cada push
+    # (.github/workflows/tests.yml en ese repo), que es una guarda que además VIAJA con el repo.
     ("mcp-ralph", "mcp-ralph", None),
     ("mcp_smart_context", "mcp_smart_context", "venv/Scripts/python.exe"),
     ("ponerse_wenorro", "ponerse_wenorro/backend", "venv/Scripts/python.exe"),
     ("pw-ralph", "pw-ralph/backend", "venv/Scripts/python.exe"),
     # Anadido el 2026-08-26. Faltaba, y no era inocuo: `jh-ralph` lleva corriendo cada
     # noche a las 02:00 desde hace dias, con 8 comprobadores propios que NADIE miraba.
-    # Se declara el worktree del BUCLE, no el checkout humano, igual que `eu-ralph` y
-    # `pw-ralph`. Sin interprete propio: `jh-ralph` no tiene venv.
+    # Se declara el worktree del BUCLE, no el checkout humano, igual que `pw-ralph`.
+    # Sin interprete propio: `jh-ralph` no tiene venv.
     ("jh-ralph", "jh-ralph", None),
 )
 
@@ -132,7 +144,7 @@ _TABLEROS = (
 #: rojo falso recurrente es exactamente cómo se aprende a ignorar los avisos.
 _REPOS_NO_VIGILADOS = {
     "JobHunter": ("su tablero lo corre `jh-ralph`, que es el worktree del bucle y el que entra "
-                  "en la ronda — igual que `eu-ralph` y `pw-ralph`. El REPO sigue excluido para "
+                  "en la ronda — igual que `pw-ralph`. El REPO sigue excluido para "
                   "que los `JobHunter-*` que G abre a menudo (5 el 2026-08-23) no salgan como "
                   "huérfanos; declarar un tablero no choca con excluir su repo, porque "
                   "`vigilados` sale de _TABLEROS sin consultar esta lista y el barrido de "

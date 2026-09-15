@@ -83,13 +83,6 @@ _DESCARTADOS: dict[str, str] = {
         "correcto, no mas flojo — se comprobo despues: sin este fichero, `_delega` sale ciego, que "
         "es la verdad. Siguen corriendo en la suite normal; lo que no pueden es hacer de oraculo "
         "sobre el fichero del que ellos mismos leen.",
-    "tests/test_ronda_de_tableros.py::test_los_siete_declarados_estan_en_esta_maquina":
-        "ROJO desde el 2026-08-31 por un motivo REAL y ajeno a este repo: al sacar el arnes del "
-        "repo publico eu-political-observatory, la sincronizacion del worktree del robot borro su "
-        "tablero entero, y ese test lo denuncia. Se descarta SOLO como oraculo —un juez que ya "
-        "grita no puede distinguir si ha gritado por lo mio— y sigue corriendo en la suite normal, "
-        "donde su rojo es la alarma. Se retira de aqui el dia que se decida que hacer con ese "
-        "worktree.",
 }
 
 
