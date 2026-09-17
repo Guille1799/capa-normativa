@@ -925,6 +925,27 @@ def aviso_para_la_sesion(informe: dict) -> str:
                       "carga (" + "; ".join(k + ": " + ", ".join(v)
                                             for k, v in sorted(inestables.items()))
                       + ") — no es un rojo, es un comprobador roto")
+    # ── El `--verifica` en rojo, que es una avería DISTINTA de un rojo ──────────────────────
+    #
+    # Hacía falta decirlo: el 2026-09-17 un tablero llevaba **días** con `--verifica` en
+    # `FALLA (1)` y se descubrió por casualidad, mirando la tabla del informe por otro motivo.
+    # Este aviso contaba los ROJOS y no decía nada de esa columna.
+    #
+    # 🔑 La diferencia es la que importa: un rojo del tablero es *«falta trabajo»*; un
+    # `--verifica` en rojo es *«esta fila no sabe ponerse verde»* — o sea que el tablero **mide
+    # menos de lo que parece**, y puede llevar dentro promesas ya cumplidas haciéndose pasar por
+    # pendientes. Lo segundo es peor, porque un rojo se ve y una fila muda no.
+    #
+    # ⚠️ El `exit` puede ser `None` («no se llegó a correr»), y eso NO es un fallo de mutación:
+    # es no haber podido mirar, y de eso ya avisa la línea de «la ronda no pudo mirarlo todo».
+    sin_mutar = [t.get("nombre") for t in informe.get("tableros", [])
+                 if (t.get("verifica") or {}).get("exit") not in (0, None)]
+    if sin_mutar:
+        lineas.append("TABLEROS: el `--verifica` FALLA en " + str(len(sin_mutar))
+                      + " tablero(s) (" + ", ".join(str(x) for x in sin_mutar)
+                      + ") — no es un rojo: es que alguna de sus filas no sabe ponerse verde, "
+                      "asi que ese tablero mide menos de lo que parece")
+
     jubilados = informe.get("jubilados") or {}
     if jubilados:
         cuantos = sum(len(v) for v in jubilados.values())
