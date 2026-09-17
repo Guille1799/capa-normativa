@@ -731,6 +731,9 @@ CUMPLIDAS = {
 }
 
 SIN_MUTACION = {
+    "nada-vive-solo-fuera-de-main":
+        "nace VERDE, no rojo: su artefacto es una AUSENCIA -que nada viva fuera de "
+        "main- y una ausencia no se fabrica creando un fichero",
     "sabotaje-del-cableado":
         "no se muta creando un fichero: su veredicto sale de MUTAR EL PROPIO TABLERO y correr la "
         "suite entera, asi que un artefacto en disco no cambia lo que conteste. Y mutarlo con la "
@@ -965,7 +968,71 @@ def sabotaje_del_cableado() -> tuple:
                    timeout=2400, corte=300)
 
 
+def nada_vive_solo_fuera_de_main():
+    u"""ROJO si algun fichero existe SOLO fuera de `main`: en un commit no fusionado, colgando de
+    un stash, o sin commitear en otro worktree de este repo.
+
+    ## Por que existe
+
+    Un agente que trabaja solo acumula sitios donde el trabajo se esconde: ramas de prueba que se
+    borran, commits vivos solo por el reflog, `stash` olvidados, worktrees abandonados. Y la
+    costumbre sana --limpiar lo que sobra-- es la que destruye lo que estaba escondido.
+
+    Caso real (2026-09-16, en otro repo de la misma maquina): un `stash` de 24 dias cuyo contenido
+    propio eran dos lineas de comentario sin valor. Era lo UNICO que mantenia alcanzable el commit
+    padre de una rama ya borrada, y ahi vivian los datos de prueba de un defecto abierto. Borrarlo
+    los habria destruido sin dejar rastro. **Lo que parecia basura era el ancla.**
+
+    ## No lo implementa: PREGUNTA a la pieza compartida
+
+    `agent-gates/bin/nada_vive_solo_fuera_de_main.py`, generica y solo-contesta. Aqui no se copia:
+    varias copias divergen, y una sola implementacion con varios consumidores es el patron que ya
+    usa el vigilante del `pre-commit`.
+
+    🔑 Y la ausencia cae del lado que DICE ALGO: si la pieza no esta, esto sale ROJO nombrandola.
+    Un comprobador que se pone verde porque su herramienta no aparecio es el peor modo de fallo
+    posible -- el hueco se tapa solo y nadie se entera.
+
+    ## Lo que NO pregunta, y es deliberado
+
+    No pregunta *«hay stashes?»*. Un stash no es un problema por existir, y eso saldria rojo cada
+    noche para siempre hasta que alguien lo borre: un aviso que no se apaga ensena a ignorar los
+    avisos, y encima empuja al gesto que destruye. Pregunta por el CONTENIDO --la linea mas
+    distintiva, buscada en la rama-- asi que un rescate renombrado y con cabecera cuenta como a
+    salvo.
+
+    En `SIN_MUTACION` porque nace VERDE: su artefacto es una ausencia, y una ausencia no se
+    fabrica.
+    """
+    # Importados AQUI y no arriba: es menos invasivo en un fichero de 1.200 lineas que ya
+    # funciona, y hace la funcion autocontenida -- se puede mover de tablero copiandola.
+    import subprocess
+    import sys
+
+    #: Ficheros cuya perdida se ACEPTA por escrito, con su motivo. Es la unica exencion y queda en
+    #: el diff para que alguien pueda discutirla.
+    ACEPTADOS = {
+        ".prueba_hook.txt": "fichero de una linea para probar un hook; se regenera al probarlo",
+    }
+
+    pieza = RAIZ_PROYECTOS / "agent-gates" / "bin" / "nada_vive_solo_fuera_de_main.py"
+    if not pieza.exists():
+        return False, "falta " + str(pieza) + ": NO se pudo comprobar, y eso no es un aprobado"
+    try:
+        r = subprocess.run([sys.executable, str(pieza), "--repo", str(RAIZ),
+                            "--acepta", *ACEPTADOS],
+                           capture_output=True, text=True, stdin=subprocess.DEVNULL, timeout=300,
+                           encoding="utf-8", errors="replace")
+    except Exception as e:  # noqa: BLE001
+        return False, "no pude ejecutar la pieza (" + type(e).__name__ + "): no se pudo medir"
+    primera = (r.stdout.strip().splitlines() or ["sin salida"])[0]
+    if r.returncode == 0:
+        return True, primera
+    return False, primera + (" [exit 2: no se pudo medir]" if r.returncode == 2 else "")
+
+
 COMPROBADORES = {
+    "nada-vive-solo-fuera-de-main": nada_vive_solo_fuera_de_main,
     "sabotaje-del-cableado": sabotaje_del_cableado,
     "ci-de-los-publicos-en-verde": ci_de_los_publicos_en_verde,
     "exenciones-no-suben": exenciones_no_suben,
