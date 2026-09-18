@@ -101,7 +101,22 @@ BASELINE = Path(__file__).resolve().parent / "exenciones_baseline.json"
 #: cambio. Esta entra junto con el comprobador que hace que la deuda deje de ser invisible — el que
 #: destapo que `_delega` y `revista_de_runtimes` podian quedarse incapaces de ponerse rojas sin que
 #: ninguna de las 694 pruebas se enterara. Sube el numero de exentos y baja el de ciegos.
-TOPE = int(os.environ.get("CN_TOPE_EXENCIONES") or 34)
+#:
+#: 2026-09-18, 34 -> 35. Entra `nada-vive-solo-fuera-de-main`, y su exencion es estructural por
+#: el motivo mas limpio de los treinta y cinco: su artefacto es una AUSENCIA -que nada viva fuera
+#: de `main`-, y una ausencia no se fabrica plantando un fichero. Lo unico que se puede plantar es
+#: justo lo contrario de lo que tendria que demostrar.
+#:
+#: Pero la subida llega TARDE, y eso es lo que de verdad hay que leer aqui: el comprobador entro
+#: en `SIN_MUTACION` el 2026-09-17 con el commit c898bbd, que metio sus 67 renglones en el tablero
+#: y NO metio nada mas -- ni el test que lo respalda, ni este numero. O sea que la exencion nº 35
+#: vivio un dia entera sin coartada y con el tope en 34. El trinquete hizo exactamente lo suyo: se
+#: puso rojo esa misma noche y no dejo de estarlo hasta hoy.
+#:
+#: Asi que esta subida no lo silencia. Llega DETRAS de
+#: `tests/test_nada_vive_solo_fuera_de_main.py`, que es lo que faltaba; el numero se mueve el
+#: ultimo, y solo porque ya hay quien haya visto a ese comprobador cambiar de color.
+TOPE = int(os.environ.get("CN_TOPE_EXENCIONES") or 35)
 
 #: Las dos formas que puede tener una coartada hoy. El vocabulario obliga a clasificar: una entrada
 #: sin clase reconocida es una exención que nadie ha mirado.

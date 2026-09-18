@@ -1,4 +1,9 @@
 {
+  "nada-vive-solo-fuera-de-main": {
+    "value": "tests/test_nada_vive_solo_fuera_de_main.py",
+    "clase": "test-nombrado",
+    "reason": "nace VERDE, no rojo: su artefacto es una AUSENCIA -que nada viva fuera de main- y una ausencia no se fabrica creando un fichero. Su cambio de color lo cubre tests/test_nada_vive_solo_fuera_de_main.py,"
+  },
   "sabotaje-del-cableado": {
     "value": "tests/test_sabotaje_del_cableado.py",
     "clase": "test-nombrado",

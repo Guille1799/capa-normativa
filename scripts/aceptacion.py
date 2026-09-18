@@ -733,7 +733,14 @@ CUMPLIDAS = {
 SIN_MUTACION = {
     "nada-vive-solo-fuera-de-main":
         "nace VERDE, no rojo: su artefacto es una AUSENCIA -que nada viva fuera de "
-        "main- y una ausencia no se fabrica creando un fichero",
+        "main- y una ausencia no se fabrica creando un fichero. Su cambio de color lo "
+        "cubre tests/test_nada_vive_solo_fuera_de_main.py, que le falsifica la pieza "
+        "compartida a la que pregunta: VERDE cuando contesta que no hay nada escondido, "
+        "ROJO cuando encuentra algo -y comprobando que dice QUE-, y las TRES formas de no "
+        "haber podido mirar, que nunca son un aprobado: la pieza ausente -nombrandola-, la "
+        "pieza que no se puede ejecutar, y su exit 2, que se declara NO SE PUDO MEDIR y no "
+        "rojo a secas. Tambien fija la PREGUNTA: que le pasa ESTE repo y los ACEPTADOS, "
+        "porque una pieza generica a la que no se le dice donde mirar contesta que todo bien",
     "sabotaje-del-cableado":
         "no se muta creando un fichero: su veredicto sale de MUTAR EL PROPIO TABLERO y correr la "
         "suite entera, asi que un artefacto en disco no cambia lo que conteste. Y mutarlo con la "
