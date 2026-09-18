@@ -28,6 +28,7 @@ hueco se tapa solo y nadie se entera.
 from __future__ import annotations
 
 import importlib.util
+import json
 import subprocess
 from pathlib import Path
 
@@ -154,3 +155,53 @@ def test_la_exencion_de_SIN_MUTACION_apunta_a_ESTE_fichero():
     sin quien la respalde -- y eso es exactamente lo que este fichero existe para impedir."""
     motivo = str(TB.SIN_MUTACION["nada-vive-solo-fuera-de-main"])
     assert Path(__file__).name in motivo
+
+
+# --- y una vez sin doble: que la pieza se EJECUTE de verdad --------------------------------------
+# Rescatado el 2026-09-18 de un test GEMELO que otra sesion escribio en paralelo y dejo suelto,
+# sin trackear, en el worktree cn-ralph. Aquel fichero repetia seis de estas siete pruebas --y
+# fallaba su propia auto-referencia, porque la exencion ya apuntaba a ESTE fichero-- pero traia una
+# que aqui faltaba y que no es un duplicado: todas las de arriba sustituyen `subprocess.run`, asi
+# que comprueban la FORMA de la llamada y nunca llegan a lanzar nada. Si el tablero dejara de
+# invocar a la pieza, seguirian verdes. Esta planta un script de verdad y exige su huella.
+
+_PIEZA_DE_VERDAD = (
+    "import json, sys\n"
+    "from pathlib import Path\n"
+    "Path(r{huella!r}).write_text(json.dumps(sys.argv[1:]), encoding='utf-8')\n"
+    "print('la pieza ha contestado')\n"
+    "sys.exit({codigo})\n"
+)
+
+
+def _pieza_que_deja_huella(monkeypatch, tmp_path, codigo=0):
+    """Planta una pieza EJECUTABLE y devuelve el fichero donde apuntara sus argv."""
+    huella = tmp_path / "argv.json"
+    pieza = tmp_path / "agent-gates" / "bin" / "nada_vive_solo_fuera_de_main.py"
+    pieza.parent.mkdir(parents=True, exist_ok=True)
+    pieza.write_text(_PIEZA_DE_VERDAD.format(huella=str(huella), codigo=codigo), encoding="utf-8")
+    monkeypatch.setattr(TB, "RAIZ_PROYECTOS", tmp_path)
+    return huella
+
+
+def test_el_verde_NO_es_por_no_haber_corrido(monkeypatch, tmp_path):
+    """Un verde tiene que traer la huella de la ejecucion, o es el aprobado en vacio.
+
+    Aqui NO se sustituye `subprocess.run`: la pieza de pega es un script de verdad que se lanza de
+    verdad. Es la unica de este fichero que se enteraria si el tablero dejara de invocarla.
+    """
+    huella = _pieza_que_deja_huella(monkeypatch, tmp_path, codigo=0)
+    ok, motivo = TB.nada_vive_solo_fuera_de_main()
+    assert ok, motivo
+    assert huella.is_file(), "la pieza no llego a ejecutarse y el comprobador dijo VERDE"
+    argv = json.loads(huella.read_text(encoding="utf-8"))
+    assert "--repo" in argv and str(TB.RAIZ) in argv, "no le paso el repo a mirar: " + str(argv)
+
+
+def test_el_rojo_tampoco_es_por_no_haber_corrido(monkeypatch, tmp_path):
+    """El gemelo del de arriba, en la otra direccion: un rojo tambien tiene que venir de haber
+    preguntado. Un comprobador que se pone rojo sin lanzar nada es igual de mudo que uno verde."""
+    huella = _pieza_que_deja_huella(monkeypatch, tmp_path, codigo=1)
+    ok, _ = TB.nada_vive_solo_fuera_de_main()
+    assert ok is False
+    assert huella.is_file(), "dijo ROJO sin haber llegado a ejecutar la pieza"
