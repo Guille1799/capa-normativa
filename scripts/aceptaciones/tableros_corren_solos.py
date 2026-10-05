@@ -8,8 +8,10 @@ Tres cosas, y hacen falta las tres:
    —su acción nombra `aceptacion.py` o `ronda_de_tableros`— y su última ejecución terminó bien y
    fue hace menos de 48 h.
 2. **Y dejó evidencia de haber corrido de verdad.** Hay un informe de ronda fresco, escrito por la
-   tarea (no por una persona), que cubre los siete tableros, con todos legibles y sin ninguno
-   huérfano ni desaparecido.
+   tarea (no por una persona), que cubre todos los tableros del censo menos las bajas declaradas,
+   con todos legibles y sin ninguno huérfano ni desaparecido. Ese denominador ya no es un número
+   a mano (2026-10-04): sale de `CENSO_DE_TABLEROS` y `BAJAS_DE_TABLEROS` en la ronda, y un censo
+   que no cuadra —o que ha ENCOGIDO en su historial de git— también es rojo.
 3. **`--verifica` también corre.** Porque es quien vigila a los vigilantes: comprueba que cada
    comprobador sabe ponerse rojo. Un tablero que corre solo pero cuyos comprobadores han dejado de
    saber fallar es peor que ninguno — da verdes que no significan nada.
@@ -106,6 +108,16 @@ def informe_de_la_ronda():
     return None if m is None else m.leer_ultimo()
 
 
+def historial_del_censo():
+    """Los nombres que el censo de la ronda ha tenido alguna vez segun git: `(nombres, None)`, o
+    `(None, motivo)` si no se pudo preguntar. Punto de inyeccion para los tests, igual que
+    `tareas()` e `informe_de_la_ronda()`."""
+    m = _ronda()
+    if m is None:
+        return None, "no existe scripts/ronda_de_tableros.py"
+    return m.censo_en_el_historial()
+
+
 #: `SCHED_S_TASK_RUNNING` (0x41301). Windows lo pone en `LastTaskResult` MIENTRAS la tarea corre.
 #:
 #: ⚠️ Sin esto la ronda se ponia ROJA A SI MISMA en cada informe que escribia, y es una trampa de
@@ -161,11 +173,20 @@ def main() -> int:
               " corrido ni uno")
         return 1
 
+    # La mitad del censo que el registro de HOY no puede ver: un tablero borrado del censo y de la
+    # ronda en el mismo commit. Sin historial no hay respuesta, y eso es rojo, no «no encogio».
+    historico, sin_historial = historial_del_censo()
+    if sin_historial:
+        print("ROJO: no se pudo leer el historial del censo de la ronda (" + str(sin_historial)
+              + "): sin el no se ve un tablero borrado del censo y de la ronda a la vez, y eso NO"
+              " es «el censo no ha encogido»")
+        return 1
+
     # El arranque que se le entrega al veredicto es el de la tarea MAS reciente que haya terminado
     # bien. Asi las dos mitades se apoyan en la misma medida en vez de preguntar dos veces.
     arranque = max(dt.datetime.fromisoformat(t["ultimo"]) for t in vivas)
     ok, motivo = ronda.veredicto(informe_de_la_ronda(), dt.datetime.now(), arranque,
-                                 verifica_por_tarea=bool(corre_verifica))
+                                 verifica_por_tarea=bool(corre_verifica), historico=historico)
     if not ok:
         print("ROJO: " + motivo)
         return 1

@@ -241,6 +241,198 @@ def test_rojo_con_un_tablero_declarado_que_desaparecio():
     assert "ya no estan" in motivo
 
 
+# ── el censo: el denominador no baja en silencio (LA-RONDA-TIENE-SU-DENOMINADOR-A-MANO) ─────
+#
+# Hasta el 2026-10-04 el suelo era un `7` escrito a mano. Un tablero que se iba CON aviso y uno
+# que se iba SIN él dejaban el mismo rastro: una línea menos en `_TABLEROS` y un número menos en
+# el suelo. Estos tests le dan a `censo_en_regla` cada forma del segundo caso por separado.
+
+def _sin(nombre: str) -> tuple:
+    """`_TABLEROS` sin el tablero `nombre`: el gesto exacto de dar de baja uno."""
+    return tuple(t for t in RONDA._TABLEROS if t[0] != nombre)
+
+
+_MOTIVO_DE_SOBRA = "un motivo de verdad, con mas de cuarenta caracteres para que absuelva"
+
+
+def test_el_censo_real_cuadra_y_el_suelo_sale_de_el():
+    """El control: sin este, un censo que siempre dijera ROJO pasaría todos los de abajo."""
+    ok, motivo = RONDA.censo_en_regla()
+    assert ok, motivo
+    assert RONDA.SUELO_TABLEROS == len(set(RONDA.CENSO_DE_TABLEROS) - set(RONDA.BAJAS_DE_TABLEROS))
+    assert RONDA.SUELO_TABLEROS == len(RONDA._TABLEROS)
+
+
+def test_un_tablero_que_sale_de_la_ronda_SIN_baja_es_ROJO():
+    """El agujero de la ficha: borrar la línea de `_TABLEROS` ya no basta para que se vaya."""
+    ok, motivo = RONDA.censo_en_regla(tableros=_sin("jh-ralph"))
+    assert not ok
+    assert "SALIERON" in motivo and "jh-ralph" in motivo
+
+
+def test_y_con_su_baja_bien_declarada_es_VERDE_y_el_suelo_baja_con_ella():
+    """La salida legítima sigue siendo posible: cuesta una fecha y un motivo, y el suelo la sigue."""
+    bajas = dict(RONDA.BAJAS_DE_TABLEROS, **{"jh-ralph": ("2026-10-04", _MOTIVO_DE_SOBRA)})
+    ok, motivo = RONDA.censo_en_regla(tableros=_sin("jh-ralph"), bajas=bajas)
+    assert ok, motivo
+    uno_menos = RONDA.SUELO_TABLEROS - 1
+    informe = _informe(corridos=uno_menos, tableros=_informe()["tableros"][:uno_menos])
+    ok, motivo = RONDA.veredicto(informe, AHORA, ARRANQUE_FRESCO,
+                                 tableros=_sin("jh-ralph"), bajas=bajas)
+    assert ok, motivo
+    # Y sin la baja, ese mismo informe corto es rojo: el suelo no bajó solo.
+    assert not RONDA.veredicto(informe, AHORA, ARRANQUE_FRESCO)[0]
+
+
+def test_un_tablero_nuevo_sin_censar_es_ROJO():
+    ok, motivo = RONDA.censo_en_regla(tableros=RONDA._TABLEROS + (("nuevo", "nuevo", None),))
+    assert not ok
+    assert "sin censar" in motivo and "nuevo" in motivo
+
+
+@pytest.mark.parametrize("entrada,dice", [
+    (("15-09-2026", _MOTIVO_DE_SOBRA), "no trae fecha"),
+    ((None, _MOTIVO_DE_SOBRA), "no trae fecha"),
+    (("2026-10-04", "porque si"), "no absuelve"),
+    ("2026-10-04", "no trae fecha"),
+])
+def test_una_baja_mal_declarada_no_absuelve(entrada, dice):
+    bajas = dict(RONDA.BAJAS_DE_TABLEROS, **{"jh-ralph": entrada})
+    ok, motivo = RONDA.censo_en_regla(tableros=_sin("jh-ralph"), bajas=bajas)
+    assert not ok
+    assert dice in motivo and "jh-ralph" in motivo
+
+
+def test_una_baja_de_quien_sigue_en_la_ronda_miente():
+    bajas = dict(RONDA.BAJAS_DE_TABLEROS, **{"jh-ralph": ("2026-10-04", _MOTIVO_DE_SOBRA)})
+    ok, motivo = RONDA.censo_en_regla(bajas=bajas)
+    assert not ok
+    assert "SIGUE en la ronda" in motivo
+
+
+def test_una_baja_de_un_nombre_que_no_esta_en_el_censo_es_errata():
+    bajas = dict(RONDA.BAJAS_DE_TABLEROS, **{"jh-raph": ("2026-10-04", _MOTIVO_DE_SOBRA)})
+    ok, motivo = RONDA.censo_en_regla(bajas=bajas)
+    assert not ok
+    assert "no esta en el censo" in motivo
+
+
+@pytest.mark.parametrize("censo", [(), "capa-normativa", ("capa-normativa", ""),
+                                   {"capa-normativa": 1}])
+def test_un_censo_que_no_es_una_lista_de_nombres_es_NO_SE_PUDO_MEDIR(censo):
+    """Sin censo no hay denominador, y eso no es «no ha bajado nada»."""
+    ok, motivo = RONDA.censo_en_regla(censo=censo)
+    assert not ok
+    assert "no se pudo medir" in motivo
+
+
+def test_el_censo_que_ENCOGIO_en_su_historial_es_ROJO_aunque_hoy_cuadre():
+    """La otra mitad, la que el registro de hoy no puede ver: el tablero se borra de `_TABLEROS`
+    Y del censo en el mismo commit. Hoy todo cuadra —por eso sin `historico` sale verde, y el test
+    lo exige para que quede dicho—; lo que lo delata es que el nombre sigue en el historial."""
+    censo = tuple(n for n in RONDA.CENSO_DE_TABLEROS if n != "jh-ralph")
+    sin_mirar = RONDA.censo_en_regla(tableros=_sin("jh-ralph"), censo=censo)
+    assert sin_mirar[0], "sin historial no se ve: por eso el comprobador SIEMPRE se lo da"
+    ok, motivo = RONDA.censo_en_regla(tableros=_sin("jh-ralph"), censo=censo,
+                                      historico=set(RONDA.CENSO_DE_TABLEROS))
+    assert not ok
+    assert "ENCOGIO" in motivo and "jh-ralph" in motivo
+
+
+def test_veredicto_es_ROJO_si_el_censo_no_cuadra():
+    """Un informe perfecto no salva un denominador roto: el rojo sale por el censo, y lo dice."""
+    ok, motivo = RONDA.veredicto(_informe(), AHORA, ARRANQUE_FRESCO, tableros=_sin("jh-ralph"))
+    assert not ok
+    assert "censo de la ronda no cuadra" in motivo
+
+
+def test_veredicto_NO_lee_el_suelo_escrito_sino_el_censo():
+    """Si alguien vuelve a escribir el suelo a mano, el veredicto no se entera: lo calcula él."""
+    m = _cargar()
+    m.SUELO_TABLEROS = 3
+    corto = _informe(corridos=3, tableros=_informe()["tableros"][:3])
+    ok, motivo = m.veredicto(corto, AHORA, ARRANQUE_FRESCO)
+    assert not ok
+    assert "solo corrio 3" in motivo
+
+
+# ── el historial del censo: se calibra con un repo de git DE VERDAD ──────────────────────────
+
+def _repo_con_censo(raiz: Path, versiones: list) -> Path:
+    """Un repo con un `scripts/ronda_de_tableros.py` que pasa por las `versiones` del censo, un
+    commit por versión. Cada versión es el texto de dentro del literal."""
+    (raiz / "scripts").mkdir(parents=True, exist_ok=True)
+    assert _git("init", "-q", cwd=raiz).returncode == 0
+    for i, dentro in enumerate(versiones):
+        (raiz / "scripts" / "ronda_de_tableros.py").write_text(
+            "X = 1" + chr(10) + chr(10) + "CENSO_DE_TABLEROS = (" + chr(10) + dentro
+            + ")" + chr(10) + chr(10) + "BAJAS = {}" + chr(10), encoding="utf-8")
+        _git("add", "-A", cwd=raiz)
+        hecho = _git("-c", "user.email=t@local", "-c", "user.name=t", "commit", "-qm",
+                     "version " + str(i), cwd=raiz)
+        assert hecho.returncode == 0, hecho.stderr.decode("utf-8", "replace")
+    return raiz
+
+
+def test_el_historial_ve_un_nombre_BORRADO_del_censo(tmp_path):
+    """El caso cuya respuesta se conoce: `b` estuvo y se borró, `d` se añadió, y lo que hay en un
+    comentario no es un nombre. Si el lector no devuelve exactamente esto, no hay medida."""
+    repo = _repo_con_censo(tmp_path, [
+        '    "a",' + chr(10) + '    "b",' + chr(10) + '    "c",' + chr(10),
+        '    "a",' + chr(10) + '    "c",' + chr(10),
+        '    "a",' + chr(10) + '    "c",' + chr(10) + '    "d",  # no "falso"' + chr(10),
+    ])
+    nombres, motivo = RONDA.censo_en_el_historial(repo)
+    assert motivo is None, motivo
+    assert nombres == {"a", "b", "c", "d"}
+
+
+def test_sin_censo_en_el_historial_es_NO_SE_PUDO_MEDIR(tmp_path):
+    (tmp_path / "scripts").mkdir()
+    (tmp_path / "scripts" / "ronda_de_tableros.py").write_text("X = 1" + chr(10), encoding="utf-8")
+    _git("init", "-q", cwd=tmp_path)
+    _git("add", "-A", cwd=tmp_path)
+    _git("-c", "user.email=t@local", "-c", "user.name=t", "commit", "-qm", "sin censo", cwd=tmp_path)
+    nombres, motivo = RONDA.censo_en_el_historial(tmp_path)
+    assert nombres is None and "no encuentra el censo" in motivo
+
+
+def test_fuera_de_un_repo_es_NO_SE_PUDO_MEDIR(tmp_path):
+    nombres, motivo = RONDA.censo_en_el_historial(tmp_path)
+    assert nombres is None and motivo
+
+
+def test_un_clon_SUPERFICIAL_es_NO_SE_PUDO_MEDIR_y_no_un_conjunto(tmp_path):
+    """El de la CI: con `--depth 1` el borrado de antes del corte no se ve. Contestar con lo que
+    sí se ve sería aprobar por no haber mirado."""
+    origen = _repo_con_censo(tmp_path / "origen", [
+        '    "a",' + chr(10) + '    "b",' + chr(10),
+        '    "a",' + chr(10),
+    ])
+    hecho = _git("clone", "-q", "--depth", "1", origen.as_uri(), str(tmp_path / "somero"),
+                 cwd=tmp_path)
+    assert hecho.returncode == 0, hecho.stderr.decode("utf-8", "replace")
+    nombres, motivo = RONDA.censo_en_el_historial(tmp_path / "somero")
+    assert nombres is None and "superficial" in motivo
+
+
+def test_el_historial_REAL_del_censo_no_ha_encogido():
+    """La mitad de mundo real: el lector, sobre el historial de ESTE repo. Se salta —diciendo
+    por qué— en un clon superficial (la CI) y mientras el censo no esté commiteado."""
+    import subprocess
+    somero = _git("rev-parse", "--is-shallow-repository", cwd=RAIZ)
+    if somero.returncode != 0 or somero.stdout.decode().strip() != "false":
+        pytest.skip("clon superficial o sin git: el historial no esta entero aqui")
+    en_head = subprocess.run(["git", "-C", str(RAIZ), "show", "HEAD:scripts/ronda_de_tableros.py"],
+                             capture_output=True, timeout=60)
+    if b"CENSO_DE_TABLEROS = (" not in en_head.stdout:
+        pytest.skip("el censo aun no esta commiteado: no hay historial que leer")
+    nombres, motivo = RONDA.censo_en_el_historial()
+    assert motivo is None, motivo
+    assert nombres and nombres <= set(RONDA.CENSO_DE_TABLEROS), sorted(
+        nombres - set(RONDA.CENSO_DE_TABLEROS))
+
+
 # ── leer la salida de un tablero: el color viaja en un emoji ─────────────────────────────────
 
 _SALIDA_REAL = (

@@ -28,9 +28,13 @@ GUION = RAIZ / "scripts" / "aceptaciones" / "tableros_corren_solos.py"
 
 
 def _chk():
+    """El comprobador con un historial del censo SANO inyectado (el censo de hoy, sin nada
+    borrado). Sin esto cada test preguntaría a git por el historial real, y en la CI —clon
+    superficial— saldría rojo por eso y no por lo que el test dice probar."""
     spec = importlib.util.spec_from_file_location("chk_tableros", str(GUION))
     m = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(m)
+    m.historial_del_censo = lambda: (set(_m.CENSO_DE_TABLEROS), None)
     return m
 
 
@@ -186,3 +190,27 @@ def test_sin_poder_leer_las_tareas_es_ROJO_y_no_verde():
     m = _chk()
     m.tareas = lambda: []
     assert m.main() == 1
+
+
+def test_un_censo_que_ENCOGIO_en_su_historial_es_ROJO(capsys):
+    """Todo lo demas perfecto —el mismo mundo que el control verde—, pero el historial dice que
+    hubo un tablero en el censo que hoy no esta: alguien lo borro de la ronda y del censo a la
+    vez, y el suelo bajo sin decirlo (LA-RONDA-TIENE-SU-DENOMINADOR-A-MANO)."""
+    m = _chk()
+    m.tareas = lambda: [_tarea("C:\\proyectos\\ronda_de_tableros.cmd")]
+    m.informe_de_la_ronda = _informe_sano
+    m.historial_del_censo = lambda: (set(_m.CENSO_DE_TABLEROS) | {"tablero-borrado"}, None)
+    assert m.main() == 1
+    salida = capsys.readouterr().out
+    assert "ENCOGIO" in salida and "tablero-borrado" in salida, salida
+
+
+def test_sin_poder_leer_el_historial_del_censo_es_ROJO_y_no_verde(capsys):
+    """Un clon superficial, git que no contesta, un censo sin commitear: «no he podido mirar» no
+    es «no ha encogido»."""
+    m = _chk()
+    m.tareas = lambda: [_tarea("C:\\proyectos\\ronda_de_tableros.cmd")]
+    m.informe_de_la_ronda = _informe_sano
+    m.historial_del_censo = lambda: (None, "el clon es superficial")
+    assert m.main() == 1
+    assert "no se pudo leer el historial del censo" in capsys.readouterr().out

@@ -80,17 +80,59 @@ TAREA = "ronda-de-tableros"
 #: Más apretado produciría rojos falsos, y un rojo falso al día es cómo se aprende a ignorar.
 VENTANA_H = 48
 
+#: El CENSO de la ronda: todo tablero que ha estado alguna vez en `_TABLEROS`. Es una lista
+#: LITERAL y sólo CRECE: un tablero que sale de la ronda no sale de aquí, se escribe en
+#: `BAJAS_DE_TABLEROS` con su fecha y su motivo.
+#:
+#: Existe porque el suelo era un número escrito a mano (LA-RONDA-TIENE-SU-DENOMINADOR-A-MANO,
+#: decisión de G del 2026-10-03). El 2026-09-15 se bajó de 8 a 7 al retirarse `eu-ralph`, y
+#: bajarlo estaba bien —ese tablero se fue CON aviso—, pero el gesto era idéntico al de un tablero
+#: que se va SIN aviso: borrar su línea de `_TABLEROS` y restar uno al suelo. Desde fuera las dos
+#: cosas se veían igual. Ahora la segunda es roja (`censo_en_regla`) y la primera cuesta escribir
+#: por qué.
+#:
+#: Es el patrón de mcp_smart_context (`CENSO_DEL_TABLERO` + `BAJAS_DEL_TABLERO`, comprobador
+#: `el-denominador-no-baja-en-silencio`) con sus DOS mitades: el censo contra el registro de hoy
+#: (`censo_en_regla`), y el censo contra su propio historial (`censo_en_el_historial`), para que
+#: borrar un nombre del censo y de `_TABLEROS` en el mismo commit tampoco pase callado.
+#:
+#: Nació el 2026-10-04 con los ocho nombres que `_TABLEROS` ha tenido según
+#: `git log -L '/^_TABLEROS = (/,/^)/:scripts/ronda_de_tableros.py'`: siete desde el 2026-08-23,
+#: `jh-ralph` desde el 2026-08-26, y `eu-ralph` hasta el 2026-09-15. Sacados de la fuente, no de
+#: memoria. Su tamaño no se escribe en ninguna parte.
+CENSO_DE_TABLEROS = (
+    "capa-normativa",
+    "cn-ralph",
+    "eu-ralph",
+    "mcp-ralph",
+    "mcp_smart_context",
+    "ponerse_wenorro",
+    "pw-ralph",
+    "jh-ralph",
+)
+
+#: Las BAJAS: nombre -> ("AAAA-MM-DD", "motivo"). Un tablero que sale de la ronda a propósito se
+#: queda en el censo y se escribe aquí. Quitar una baja con el tablero aún fuera vuelve a ser rojo.
+BAJAS_DE_TABLEROS = {
+    "eu-ralph": ("2026-09-15",
+                 "el worktree del bucle ya no existe: eu-political-observatory pasa a trabajarse a"
+                 " mano por decision de G, y desde ese dia lo vigila pytest en cada push"
+                 " (.github/workflows/tests.yml de ese repo), una guarda que viaja con el repo"),
+}
+
+#: Mínimo del motivo de una baja, el mismo que usa mcp_smart_context para las suyas: por debajo
+#: de esto no cabe una razón, sólo una excusa.
+_MINIMO_DEL_MOTIVO_DE_BAJA = 40
+
 #: Cuántos tableros tiene que haber corrido la ronda para que valga. Es un SUELO, no un adorno:
 #: sin él, una ronda que descubre cero tableros escribe «0 rojos» y saldría verde. Aprobar en
 #: vacío es el modo de fallo más caro de un guarda, porque su silencio se lee como buenas noticias.
 #:
-#: Bajado de 8 a 7 el 2026-09-15, al retirarse `eu-ralph` (ver `_TABLEROS`). Bajar un suelo es
-#: siempre sospechoso, así que queda dicho por qué NO lo es aquí: el suelo existe para cazar
-#: tableros que desaparecen sin que nadie lo note, y este desapareció **con** aviso — la ronda
-#: llevaba desde el 2026-09-01 diciendo «7 de 8», o sea catorce días emitiendo un veredicto que
-#: ella misma consideraba inválido. Lo que se corrige es que el censo prometía ocho cuando ya sólo
-#: había siete: el guarda no se afloja, se le deja de mentir.
-SUELO_TABLEROS = 7
+#: Y ya NO se escribe a mano: es el censo menos las bajas. Hasta el 2026-10-04 era un `7`, bajado
+#: de 8 el 2026-09-15; ahora bajarlo exige declarar una baja, y una baja exige fecha y motivo.
+#: `veredicto()` no lee esta constante —calcula el suyo del censo y las bajas que le den—: está
+#: para los tests y para quien lea el fichero.
+SUELO_TABLEROS = len(set(CENSO_DE_TABLEROS) - set(BAJAS_DE_TABLEROS))
 
 #: Tiempo máximo por tablero. El de `capa-normativa` corre doce nodos de pytest, así que hay que
 #: ser generoso; pero un tablero colgado no puede secuestrar la ronda entera.
@@ -125,6 +167,7 @@ _TABLEROS = (
     # el arnés del repo PÚBLICO, la sincronización nocturna del worktree borró sus propios
     # ficheros—, y eu no se queda sin vigilancia: desde el 2026-09-15 corre pytest en cada push
     # (.github/workflows/tests.yml en ese repo), que es una guarda que además VIAJA con el repo.
+    # Su salida está declarada en `BAJAS_DE_TABLEROS`; sin esa línea, `censo_en_regla` sale ROJO.
     ("mcp-ralph", "mcp-ralph", None),
     ("mcp_smart_context", "mcp_smart_context", "venv/Scripts/python.exe"),
     ("ponerse_wenorro", "ponerse_wenorro/backend", "venv/Scripts/python.exe"),
@@ -1003,9 +1046,147 @@ def ultimo_arranque_de_la_tarea(nombre: str = TAREA) -> datetime | None:
     return None if cuando.year < 2000 else cuando
 
 
+# ── el censo: ningún tablero sale de la ronda sin decirlo ────────────────────────────────────
+
+def censo_en_regla(tableros=None, censo=None, bajas=None, historico=None) -> tuple[bool, str]:
+    """¿Cuadran el registro de la ronda (`_TABLEROS`), su censo y sus bajas? Función pura.
+
+    Los rojos son los de `el-denominador-no-baja-en-silencio` en mcp_smart_context:
+
+    * un tablero del censo que ya no está en `_TABLEROS` y **no tiene baja** (el agujero);
+    * un tablero de `_TABLEROS` **sin censar** (lo que no está censado se podría ir sin que se note);
+    * una baja **mal declarada** (sin fecha AAAA-MM-DD, o con un motivo de menos de
+      `_MINIMO_DEL_MOTIVO_DE_BAJA` caracteres), o de un nombre que no está en el censo;
+    * una baja de algo que **sigue en la ronda**: la baja miente;
+    * y, si se le da `historico` (los nombres que el censo ha tenido alguna vez, según git), un
+      nombre que **estuvo en el censo y ya no está**: el censo ENCOGIÓ, que es la forma de bajar el
+      suelo borrando el tablero de los dos sitios a la vez.
+
+    Un censo o unas bajas sin la forma esperada son «no se pudo medir», nunca verde: sin censo no
+    hay denominador que comparar, y eso no es «no ha bajado nada».
+    """
+    from datetime import date
+    tableros = _TABLEROS if tableros is None else tableros
+    censo = CENSO_DE_TABLEROS if censo is None else censo
+    bajas = BAJAS_DE_TABLEROS if bajas is None else bajas
+    if not (isinstance(censo, (tuple, list)) and censo
+            and all(isinstance(n, str) and n.strip() for n in censo)):
+        return False, ("no se pudo medir: el censo no es una lista no vacia de nombres, y sin censo"
+                       " no hay denominador que comparar")
+    if not isinstance(bajas, dict):
+        return False, "no se pudo medir: las bajas no son un dict de nombre -> (fecha, motivo)"
+    try:
+        en_ronda = [str(t[0]) for t in tableros]
+    except (TypeError, IndexError):
+        return False, "no se pudo medir: el registro de tableros no tiene la forma (nombre, ...)"
+
+    en_censo, ronda = set(censo), set(en_ronda)
+    quejas = []
+    fuera = sorted(en_censo - ronda - set(bajas))
+    if fuera:
+        quejas.append(str(len(fuera)) + " tablero(s) SALIERON de la ronda sin baja declarada ("
+                      + ", ".join(fuera) + "): la ronda corre " + str(len(ronda)) + " y el censo"
+                      " dice " + str(len(en_censo - set(bajas))) + ". Si es a proposito, escribe"
+                      " la baja en BAJAS_DE_TABLEROS con fecha y motivo")
+    nuevos = sorted(ronda - en_censo)
+    if nuevos:
+        quejas.append(str(len(nuevos)) + " tablero(s) NUEVO(S) sin censar (" + ", ".join(nuevos)
+                      + "): anadelos a CENSO_DE_TABLEROS, o se podrian ir sin que nadie lo note")
+    repetidos = sorted({n for n in censo if list(censo).count(n) > 1}
+                       | {n for n in en_ronda if en_ronda.count(n) > 1})
+    if repetidos:
+        quejas.append("nombre(s) repetido(s) en el censo o en la ronda: " + ", ".join(repetidos))
+    for nombre, entrada in sorted(bajas.items()):
+        fecha, motivo = (tuple(entrada) if isinstance(entrada, (tuple, list)) and len(entrada) == 2
+                         else (None, None))
+        try:
+            date.fromisoformat(str(fecha))
+            fecha_ok = True
+        except ValueError:
+            fecha_ok = False
+        largo = len(str(motivo or "").strip())
+        if not fecha_ok:
+            quejas.append("la baja de `" + str(nombre) + "` no trae fecha AAAA-MM-DD: no absuelve")
+        elif largo < _MINIMO_DEL_MOTIVO_DE_BAJA:
+            quejas.append("la baja de `" + str(nombre) + "` trae un motivo de " + str(largo)
+                          + " caracteres (minimo " + str(_MINIMO_DEL_MOTIVO_DE_BAJA) + "): eso no"
+                          " es una razon, y no absuelve")
+        if nombre not in en_censo:
+            quejas.append("baja de `" + str(nombre) + "`, que no esta en el censo: o es una errata"
+                          " o se borro del censo")
+        if nombre in ronda:
+            quejas.append("`" + str(nombre) + "` esta dado de baja y SIGUE en la ronda: la baja"
+                          " miente. Quita la baja o quita el tablero")
+    if historico is not None:
+        encogido = sorted(set(historico) - en_censo)
+        if encogido:
+            quejas.append("el censo ENCOGIO: " + ", ".join(encogido) + " estuvo/estuvieron en"
+                          " CENSO_DE_TABLEROS y ya no esta(n). Una baja se escribe en"
+                          " BAJAS_DE_TABLEROS; borrar el nombre del censo es bajar el suelo sin"
+                          " decirlo")
+    if quejas:
+        return False, "; ".join(quejas)
+    n_bajas = len(bajas)
+    return True, (str(len(en_censo)) + " tablero(s) en el censo, "
+                  + ("1 baja declarada" if n_bajas == 1 else str(n_bajas) + " bajas declaradas")
+                  + ("" if historico is None else ", y el censo no ha encogido en su historial"))
+
+
+#: El trozo del fuente que es el censo, como lo entiende `git log -L`: desde la línea que lo abre
+#: hasta el primer `)` en la columna 0. Si alguien le cambia esa forma, el historial deja de poder
+#: leerse y `censo_en_el_historial` lo dice, en vez de contestar «no ha encogido».
+_RANGO_DEL_CENSO = "/^CENSO_DE_TABLEROS = (/,/^)/"
+
+
+def censo_en_el_historial(repo: Path = None) -> tuple:
+    """Todo nombre que ha estado ALGUNA VEZ en `CENSO_DE_TABLEROS`, según git: `(nombres, None)`,
+    o `(None, motivo)` si no se pudo preguntar.
+
+    Es la otra mitad del censo. `censo_en_regla` lo compara con el `_TABLEROS` de HOY, así que no
+    ve que alguien borre un tablero de los dos sitios en el mismo commit: el suelo bajaría y todo
+    cuadraría. El historial sí lo ve, porque lo borrado sigue en él. Es UNA llamada a
+    `git log -L`, que sigue ese trozo del fichero por todos los commits que lo tocaron; cuenta
+    cada nombre que aparezca en cualquiera de sus versiones, añadido, quitado o de contexto.
+
+    Un clon superficial (`--depth`, el de la CI) no tiene el historial entero, y entonces la
+    respuesta es «no se pudo medir», no un conjunto: lo que se borró antes del corte no se ve, y
+    contestar con lo que sí se ve sería aprobar por no haber mirado.
+    """
+    repo = Path(repo) if repo is not None else Path(__file__).resolve().parent.parent
+    try:
+        somero = subprocess.run(["git", "-C", str(repo), "rev-parse", "--is-shallow-repository"],
+                                capture_output=True, timeout=60)
+        if somero.returncode != 0:
+            return None, "git no reconoce " + repo.name + " como repositorio"
+        if somero.stdout.decode("utf-8", "replace").strip() != "false":
+            return None, ("el clon es superficial: lo que se borro del censo antes del corte no se"
+                          " ve")
+        r = subprocess.run(["git", "-C", str(repo), "log", "--no-color", "--format=", "-L",
+                            _RANGO_DEL_CENSO + ":scripts/ronda_de_tableros.py"],
+                           capture_output=True, timeout=120)
+    except Exception as e:
+        return None, "no se pudo lanzar git (" + type(e).__name__ + ")"
+    if r.returncode != 0:
+        err = r.stderr.decode("utf-8", "replace").strip().splitlines()
+        return None, ("git no encuentra el censo en el historial ("
+                      + (err[0] if err else "exit " + str(r.returncode))[:120] + ")")
+    nombres = set()
+    for linea in r.stdout.decode("utf-8", "replace").splitlines():
+        if linea.startswith(("diff --git", "--- ", "+++ ", "@@")):
+            continue
+        codigo = linea[1:].split("#", 1)[0]
+        for doble, simple in re.findall(r'"([^"]*)"|' + r"'([^']*)'", codigo):
+            nombres.add(doble or simple)
+    nombres.discard("")
+    if not nombres:
+        return None, "el historial del censo no trae ningun nombre: algo no se ha leido bien"
+    return nombres, None
+
+
 def veredicto(informe: dict | None, ahora: datetime, arranque: datetime | None,
-              ventana_h: int = VENTANA_H, suelo: int = SUELO_TABLEROS,
-              verifica_por_tarea: bool = False) -> tuple[bool, str]:
+              ventana_h: int = VENTANA_H, suelo: int | None = None,
+              verifica_por_tarea: bool = False, tableros=None, censo=None, bajas=None,
+              historico=None) -> tuple[bool, str]:
     """¿Está la ronda corriendo SOLA y completa? Función pura: se le da el mundo, no lo mira.
 
     Que sea pura es lo que la hace comprobable por mutación — se le puede pasar un informe viejo,
@@ -1014,6 +1195,12 @@ def veredicto(informe: dict | None, ahora: datetime, arranque: datetime | None,
     El orden de las preguntas no es casual: primero *¿ha arrancado sola?*, después *¿hay informe
     fresco?*, y sólo al final *¿está completo?*. Así el motivo que se imprime señala la causa
     más de fondo, en vez de la más visible.
+
+    *¿Está completo?* empieza por el denominador: el censo tiene que cuadrar con `_TABLEROS` y con
+    sus bajas (`censo_en_regla`), y el suelo SALE de ahí —censo menos bajas— salvo que se le dé
+    otro. `historico` son los nombres que el censo ha tenido según git; quien llama de verdad
+    (`scripts/aceptaciones/tableros_corren_solos.py`) se lo da siempre, y sin él no se mira si el
+    censo encogió.
     """
     if arranque is None:
         return False, ("la tarea '" + TAREA + "' no existe o NUNCA ha arrancado: registrada no es "
@@ -1036,6 +1223,12 @@ def veredicto(informe: dict | None, ahora: datetime, arranque: datetime | None,
     if informe.get("lanzador") != "tarea-programada":
         return False, ("el ultimo informe lo lanzo una persona a mano: eso demuestra que el "
                        "guion funciona, no que la ronda corra sola")
+    censo_ok, del_censo = censo_en_regla(tableros, censo, bajas, historico)
+    if not censo_ok:
+        return False, "el censo de la ronda no cuadra: " + del_censo
+    if suelo is None:
+        suelo = len(set(CENSO_DE_TABLEROS if censo is None else censo)
+                    - set(BAJAS_DE_TABLEROS if bajas is None else bajas))
     corridos = int(informe.get("corridos") or 0)
     if corridos < suelo:
         return False, ("la ronda solo corrio " + str(corridos) + " tablero(s) de los " + str(suelo)
@@ -1070,7 +1263,7 @@ def veredicto(informe: dict | None, ahora: datetime, arranque: datetime | None,
                   + " tableros con su --verifica (" + str(rojos) + " rojo(s) recogidos, que es su "
                   "trabajo" + ("" if not mutacion_mal else "; --verifica falla en "
                                + ", ".join(str(x) for x in mutacion_mal) + ", avisado aparte")
-                  + ")")
+                  + "); censo: " + del_censo)
 
 
 # ── main ─────────────────────────────────────────────────────────────────────────────────────
