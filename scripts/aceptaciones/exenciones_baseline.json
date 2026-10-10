@@ -50,7 +50,7 @@
     "reason": "no se muta creando un fichero: su condicion que importa es que el hook GRITE ante una carga envenenada, y eso lo prueba montando un repo de pega e intentando un commit real. Un touch pasa las dos prim"
   },
   "tableros-corren-solos": {
-    "value": "tests/test_tableros_corren_solos.py",
+    "value": "tests/test_ronda_de_tableros.py, tests/test_tableros_corren_solos.py",
     "clase": "test-nombrado",
     "reason": "no se muta creando un fichero: su rojo sale de preguntarle al Programador de tareas de Windows si algo ejecuta `aceptacion.py` y `--verifica`, y si esa ejecucion termino bien y es reciente. Su ROJO lo"
   },
