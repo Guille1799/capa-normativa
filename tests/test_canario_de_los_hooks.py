@@ -65,17 +65,6 @@ sys.exit(0)
 """
 
 
-@pytest.fixture(autouse=True)
-def sin_espacios_en_las_rutas(tmp_path):
-    """El canario lanza los hooks con `shell=True` y los identifica partiendo por espacios.
-
-    Con un intérprete o un temporal en una ruta con espacios, el fixture no se podría montar y el
-    fallo se leería como un defecto del canario. Mejor decir que no se puede medir aquí.
-    """
-    if " " in sys.executable or " " in str(tmp_path):
-        pytest.skip("hay espacios en el interprete o en el temporal: el sandbox no se puede montar")
-
-
 def _sandbox(tmp_path: Path, cuerpo: str) -> Path:
     """Un `settings.json` de pega que registra un único hook, escrito ahí mismo."""
     guion = tmp_path / HOOK
@@ -243,3 +232,36 @@ def test_el_VERDE_no_lleva_el_numero_de_hooks_escrito_a_mano(tmp_path):
         "el numero vuelve a estar escrito a mano en el tablero: " + motivo)
     assert " 1 hook" in motivo or " 1 " in motivo, (
         f"el sandbox monta UN hook y el mensaje no lo refleja: {motivo}")
+
+
+# ── con espacios en las rutas (CANARIO-DE-HOOKS-SE-SALTA-CON-ESPACIOS, 2026-10-11) ──────────────
+#
+# Este fichero se SALTABA entero si el interprete o el temporal llevaban un espacio: el canario
+# partia el comando por espacios y no reconocia el hook. Un test saltado se lee como verde, asi que
+# en una maquina con espacios el canario podia estar roto sin que nadie lo viera. Ahora el canario
+# lee la ruta entera y estos dos casos lo fijan.
+
+def test_un_hook_en_una_RUTA_CON_ESPACIOS_se_reconoce_por_su_nombre(tmp_path):
+    """El verde Y el rojo: si no lo reconociera, los dos saldrian «SIN carga envenenada declarada»."""
+    con_espacios = tmp_path / "con espacios"
+    con_espacios.mkdir()
+    ok, motivo = _tablero(_sandbox(con_espacios, _GRITA)).canario_de_los_hooks()
+    assert ok is True, motivo
+    ok, motivo = _tablero(_sandbox(con_espacios, _SE_LA_TRAGA)).canario_de_los_hooks()
+    assert ok is False and "NO grita" in motivo, motivo
+    assert "SIN carga envenenada" not in motivo, "lo nombro por el interprete, no por su fichero: " + motivo
+
+
+def test_un_INTERPRETE_con_espacios_va_entrecomillado_y_el_hook_se_nombra_igual(tmp_path):
+    """Sin ejecutar nada: la linea de ordenes que el canario lanzara con `shell=True`, y el nombre."""
+    ajustes = tmp_path / "settings.json"
+    ajustes.write_text(json.dumps({"hooks": {"Stop": [{"hooks": [
+        {"type": "command", "command": "C:/Program Files/Py/python.exe",
+         "args": ["C:/con espacios/" + HOOK]}]}]}}), encoding="utf-8")
+    os.environ["CLAUDE_SETTINGS"] = str(ajustes)
+    spec = importlib.util.spec_from_file_location("canario_con_espacios", str(CANARIO))
+    c = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(c)
+    (_, cmd), = c.hooks_registrados()
+    assert cmd == '"C:/Program Files/Py/python.exe" "C:/con espacios/' + HOOK + '"', cmd
+    assert c._nombre(cmd) == HOOK, c._nombre(cmd)

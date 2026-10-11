@@ -33,6 +33,7 @@ from __future__ import annotations
 
 import ast
 import json
+import shlex
 import subprocess
 import os
 import sys
@@ -167,17 +168,38 @@ def hooks_registrados() -> list[tuple[str, str]]:
                 args = c.get("args") or []
                 if isinstance(args, str):
                     args = [args]
+                # El ejecutable tambien se entrecomilla si lleva espacios y va solo (los `args` aparte): sin
+                # eso, `shell=True` partiria `C:/Program Files/.../python.exe` en dos (2026-10-11).
+                if args and " " in cmd and not cmd.startswith('"'):
+                    cmd = '"' + cmd + '"'
                 partes = [cmd] + ['"' + str(a) + '"' if " " in str(a) else str(a) for a in args]
                 fuera.append((evento, " ".join(partes)))
     return fuera
 
 
+def _trozos(cmd: str) -> list[str]:
+    """El comando partido como lo parte el shell, CON sus comillas: una ruta con espacios es UN trozo.
+
+    CANARIO-DE-HOOKS-SE-SALTA-CON-ESPACIOS (2026-10-11). Se partia por espacios a secas, y un hook registrado
+    como `python "C:/con espacios/doc_decision_gate.py"` daba los trozos `"C:/con` y
+    `espacios/doc_decision_gate.py"`: ninguno acaba en `.py`, asi que el canario lo llamaba `python.exe`, lo
+    denunciaba por no tener caso y `compilan()` ni lo miraba. Su test lo sabia y se SALTABA con espacios en
+    la ruta — y un test saltado se lee como verde. Ahora la ruta se lee entera y el test ya no se salta.
+    """
+    s = cmd.replace(chr(92), "/")
+    try:
+        return shlex.split(s, posix=True)
+    except ValueError:      # comillas sin cerrar: mejor partir mal que reventar el canario entero
+        return s.split()
+
+
 def _nombre(cmd: str) -> str:
     """Un identificador legible del hook, para poder declararle un caso sin pegar el comando."""
-    for trozo in cmd.replace(chr(92), "/").split():
+    trozos = _trozos(cmd)
+    for trozo in trozos:
         if trozo.endswith((".py", ".sh")):
             return trozo.rsplit("/", 1)[-1]
-    return cmd.split()[0].rsplit("/", 1)[-1]
+    return (trozos or [cmd])[0].rsplit("/", 1)[-1]
 
 
 def robustez() -> list[str]:
@@ -228,7 +250,7 @@ def compilan() -> list[str]:
     problemas = []
     for evento, cmd in hooks_registrados():
         ruta = None
-        for trozo in cmd.replace(chr(92), "/").split():
+        for trozo in _trozos(cmd):
             if trozo.endswith(".py"):
                 ruta = Path(trozo)
                 break
