@@ -105,6 +105,43 @@ def test_si_no_se_puede_preguntar_devuelve_None_y_no_False(repo, monkeypatch):
     assert m.es_publico(repo) is None
 
 
+_TOKENS_QUE_GH_PREFIERE = ("GH_TOKEN", "GITHUB_TOKEN", "GH_ENTERPRISE_TOKEN", "GITHUB_ENTERPRISE_TOKEN")
+
+
+@pytest.mark.skipif(not GUARDA.is_file(), reason="la guarda compartida no esta instalada")
+def test_un_TOKEN_HEREDADO_no_le_llega_a_gh_y_el_resto_del_entorno_si(repo, monkeypatch):
+    """ESCAPARATE-GH-CON-TOKEN-HEREDADO. Un `GITHUB_TOKEN` viejo o revocado en el entorno de quien empuja
+    —lo mete cualquier `load_dotenv` del `.env` de mcp— le gana a la sesion guardada de `gh`: `gh` falla o
+    no ve el repo, `es_publico` da None y el push de un repo PUBLICO sale sin revisar. Paso de verdad en el
+    tablero el 2026-10-02 (65076f8). La pregunta tiene que hacerse con la sesion guardada, siempre.
+
+    Y el RESTO del entorno tiene que llegar: sin el, `gh` no encuentra ni su configuracion, falla, y es el
+    mismo agujero por el otro lado. Sin red: `gh` es un espia que contesta PUBLIC."""
+    m = _cargar(GUARDA, "guarda_bajo_prueba")
+    _git("-C", str(repo), "remote", "add", "origin", "https://github.com/x/y.git")
+    for t in _TOKENS_QUE_GH_PREFIERE:
+        monkeypatch.setenv(t, "token-de-pega-revocado")
+    monkeypatch.setenv("VARIABLE_QUE_GH_PUEDE_NECESITAR", "se-queda")
+
+    class Publico:
+        returncode, stdout, stderr = 0, '{"visibility": "PUBLIC"}', ""
+
+    visto = {}
+    real = m.subprocess.run
+
+    def espia(cmd, *a, **k):
+        if isinstance(cmd, (list, tuple)) and cmd and cmd[0] == "gh":
+            visto["env"] = k.get("env")
+            return Publico()
+        return real(cmd, *a, **k)
+
+    monkeypatch.setattr(m.subprocess, "run", espia)
+    assert m.es_publico(repo) is True
+    assert visto["env"] is not None, "gh hereda el entorno ENTERO: el token viejo le llega"
+    assert not set(_TOKENS_QUE_GH_PREFIERE) & {k.upper() for k in visto["env"]}, sorted(visto["env"])
+    assert visto["env"].get("VARIABLE_QUE_GH_PUEDE_NECESITAR") == "se-queda", "se quito el entorno entero"
+
+
 # ---------- la guarda de la guarda -------------------------------------------
 
 
