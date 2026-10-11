@@ -156,3 +156,49 @@ def test_una_entrada_SIN_campo_CADUCA_no_se_inventa_un_vencimiento(registro):
     monkeypatch.setattr(m, "REGISTRO", reg)
     ok, motivo = m.registro_sin_caducados()
     assert ok is True, motivo
+
+
+# --- Una CADUCA que no se puede leer no puede vencer NUNCA (CADUCA-CON-BARRAS-NUNCA-VENCE, 2026-10-11) ----------
+#
+# Reproducido ese dia sobre una copia del tablero: `CADUCA: 10/10/2026` (vencida) salia VERDE en silencio, porque
+# el `re.search` de `cerrar` solo conocia `YYYY-MM-DD` y lo demas era `return`; y `CADUCA: 2026-02-30` reventaba
+# el comprobador entero con ValueError. «No se pudo leer la fecha» no es «no ha vencido». Una cabecera SIN
+# `CADUCA:` sigue sin acusarse (test de arriba): no es una entrada con fecha.
+
+def _con_caduca_cruda(caduca: str, estado: str | None = None) -> str:
+    lineas = ["## Cosa de pega — montada para este test",
+              "- QUE ES: una entrada inventada, no toca nada del sistema.",
+              "- CADUCA: " + caduca + " -> si nadie la usa, se quita."]
+    if estado is not None:
+        lineas.append("- ESTADO: " + estado)
+    return chr(10).join(lineas) + chr(10)
+
+
+@pytest.mark.parametrize("caduca", ["31/08/2026", "2026/08/31", "2026-02-30", "pronto", ""])
+def test_una_CADUCA_que_no_se_puede_leer_es_ROJO_y_lo_dice(registro, caduca):
+    reg, escribir, monkeypatch = registro
+    m = _tablero()
+    escribir(_con_caduca_cruda(caduca, "activo"))
+    monkeypatch.setattr(m, "REGISTRO", reg)
+    ok, motivo = m.registro_sin_caducados()
+    assert ok is False and "CADUCA ilegible" in motivo, motivo
+
+
+def test_una_CADUCA_ilegible_pero_ya_RETIRADA_es_VERDE(registro):
+    """Retirada ya aplico su regla: que su fecha no se lea no la hace vigente."""
+    reg, escribir, monkeypatch = registro
+    m = _tablero()
+    escribir(_con_caduca_cruda("31/08/2026", "RETIRADO el 2026-09-01"))
+    monkeypatch.setattr(m, "REGISTRO", reg)
+    ok, motivo = m.registro_sin_caducados()
+    assert ok is True, motivo
+
+
+def test_una_CADUCA_ISO_con_puntuacion_detras_SI_se_lee(registro):
+    """El borde contrario: `2099-12-31,` es una fecha legible con una coma pegada, no una ilegible."""
+    reg, escribir, monkeypatch = registro
+    m = _tablero()
+    escribir(_con_caduca_cruda("2099-12-31,", "activo"))
+    monkeypatch.setattr(m, "REGISTRO", reg)
+    ok, motivo = m.registro_sin_caducados()
+    assert ok is True, motivo

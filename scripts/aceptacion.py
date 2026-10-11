@@ -405,21 +405,34 @@ def registro_sin_caducados() -> tuple[bool, str]:
     if not reg.exists():
         return False, "no existe " + str(reg) + ": la norma no puede hacerse cumplir sin registro"
     hoy = datetime.date.today()
-    vencidas = []
+    vencidas, ilegibles = [], []
     bloque, titulo = [], None
     def cerrar(titulo, bloque):
+        # Una CADUCA que no se puede leer no puede vencer NUNCA, y eso era silencio hasta el 2026-10-11
+        # (CADUCA-CON-BARRAS-NUNCA-VENCE): una fecha que no casaba `YYYY-MM-DD` (`31/08/2026`) hacia `return`, y
+        # una imposible (`2026-02-30`) reventaba el comprobador entero. «No se pudo leer la fecha» no es «no ha
+        # vencido»: es rojo, salvo que la entrada ya este RETIRADA. Una cabecera SIN `CADUCA:` sigue sin
+        # acusarse: no es una entrada con fecha (test_una_entrada_SIN_campo_CADUCA_no_se_inventa_un_vencimiento).
         if not titulo:
             return
         texto = chr(10).join(bloque)
-        m = re.search(r"CADUCA:\s*(\d{4})-(\d{2})-(\d{2})", texto)
-        if not m:
+        estado = re.search(r"ESTADO:\s*(.+)", texto)
+        retirada = "RETIRADO" in (estado.group(1) if estado else "").upper()
+        campo = re.search(r"^[ \t]*(?:-[ \t]*)?CADUCA:[ \t]*(\S*)", texto, re.M)
+        if not campo:
             return
-        fecha = datetime.date(int(m.group(1)), int(m.group(2)), int(m.group(3)))
+        m = re.match(r"(\d{4})-(\d{2})-(\d{2})(?!\d)", campo.group(1))
+        try:
+            fecha = datetime.date(int(m.group(1)), int(m.group(2)), int(m.group(3))) if m else None
+        except ValueError:
+            fecha = None
+        if fecha is None:
+            if not retirada:
+                ilegibles.append(titulo[:42] + " (CADUCA: " + campo.group(1)[:12] + ")")
+            return
         if fecha >= hoy:
             return
-        estado = re.search(r"ESTADO:\s*(.+)", texto)
-        dice = (estado.group(1) if estado else "").upper()
-        if "RETIRADO" not in dice:
+        if not retirada:
             vencidas.append(titulo[:42] + " (caduco " + fecha.isoformat() + ")")
     for linea in reg.read_text("utf-8", errors="replace").splitlines():
         if linea.startswith("## "):
@@ -427,9 +440,10 @@ def registro_sin_caducados() -> tuple[bool, str]:
             titulo, bloque = linea[3:].strip(), []
         bloque.append(linea)
     cerrar(titulo, bloque)
-    if vencidas:
-        return False, (str(len(vencidas)) + " entrada(s) vencidas sin retirar: "
-                       + "; ".join(vencidas))[:200]
+    if vencidas or ilegibles:
+        cuentas = ([str(len(vencidas)) + " entrada(s) vencidas sin retirar"] if vencidas else []) + (
+            [str(len(ilegibles)) + " con una CADUCA ilegible (no puede vencer nunca)"] if ilegibles else [])
+        return False, (", ".join(cuentas) + ": " + "; ".join(vencidas + ilegibles))[:200]
     return True, "ninguna entrada de REGISTRO.md esta vencida sin aplicar su regla"
 
 
