@@ -84,11 +84,13 @@ def test_cero_guardianes_es_ROJO_aunque_el_censo_este_impecable(monkeypatch):
 # --- la ficha: qué cuenta como descrito -------------------------------------
 
 
-def _con_censo(m, tmp_path: Path, texto: str, vivos: list[str], monkeypatch):
+def _con_censo(m, tmp_path: Path, texto: str, vivos: list[str], monkeypatch, existen=()):
+    """`existen`: lo que existe sin ser guardian enumerado (una tarea binaria, una rutina)."""
     censo = tmp_path / "GUARDIANES.md"
     censo.write_text(texto, encoding="utf-8")
     monkeypatch.setattr(m, "CENSO", censo)
     monkeypatch.setattr(m, "guardianes", lambda: (vivos, []))
+    monkeypatch.setattr(m, "existentes", lambda: (set(existen), []), raising=False)
     return m.censo_de_guardianes()
 
 
@@ -147,6 +149,38 @@ def test_el_censo_puede_tener_de_mas(tmp_path, monkeypatch):
     """`OllamaServe` no lo enumera el criterio, pero describirlo no puede poner nada rojo."""
     m = _cargar()
     texto = FICHA_BUENA + "\n## `tarea:OllamaServe`\n**Tipo:** sirve\n**Si muere:** la cadena de validacion con Ollama deja de responder.\n"
+    ok, msg = _con_censo(m, tmp_path, texto, ["tarea:ralph-cn"], monkeypatch,
+                         existen={"tarea:OllamaServe"})
+    assert ok is True, msg
+
+
+def test_una_ficha_de_algo_que_ya_no_existe_es_ROJO(tmp_path, monkeypatch):
+    """La VUELTA. El 2026-10-16 el censo describia `eu-ralph` un mes despues de su baja, y dos
+    tareas de JOB Assist tres dias despues de quitarlas, en verde: «de mas» se permitia sin mirar
+    si existia."""
+    m = _cargar()
+    texto = FICHA_BUENA + ("\n## `tarea:JobHunter-Run`\n**Tipo:** ejecuta\n"
+                           "**Si muere:** deja de correr el proceso de busqueda de empleo, con plazo.\n")
+    ok, msg = _con_censo(m, tmp_path, texto, ["tarea:ralph-cn"], monkeypatch)
+    assert ok is False
+    assert "tarea:JobHunter-Run" in msg and "YA NO EXISTE" in msg
+
+
+def test_el_ejemplo_entre_vallas_no_es_una_ficha(tmp_path, monkeypatch):
+    """El ejemplo del formato iba entre vallas y pasaba por la ficha real de `tarea:ralph-cn`."""
+    m = _cargar()
+    texto = "# Censo\n\n```markdown\n" + FICHA_BUENA.split("\n", 2)[2] + "```\n"
+    ok, msg = _con_censo(m, tmp_path, texto, ["tarea:ralph-cn"], monkeypatch)
+    assert ok is False
+    assert "tarea:ralph-cn" in msg
+
+
+def test_un_encabezado_de_seccion_no_es_una_ficha(tmp_path, monkeypatch):
+    """«## Hooks de `eu` (y su gemelo `eu-ralph`)» salia como la ficha `eu`; con la vuelta seria un
+    rojo fantasma por algo que nadie escribio como ficha."""
+    m = _cargar()
+    texto = "# Censo\n\n## Hooks de `eu-political-observatory` (y su gemelo `eu-ralph`)\n\n" + \
+        FICHA_BUENA.split("\n", 2)[2]
     ok, msg = _con_censo(m, tmp_path, texto, ["tarea:ralph-cn"], monkeypatch)
     assert ok is True, msg
 
@@ -161,6 +195,8 @@ def test_contra_la_maquina_real_enumera_las_cuatro_familias():
     vivos, rotas = m.guardianes()
     assert not rotas, f"fuentes que no se pudieron enumerar: {rotas}"
     familias = {g.split(":")[0] for g in vivos}
-    assert familias == {"hook", "tarea", "pre-commit", "tablero"}, familias
+    assert familias == {"hook", "tarea", "pre-commit", "tablero", "servicio"}, familias
+    minimo = {"servicio": 3}  # los tres de Servy (2026-10-16); el resto, cinco como poco
     for familia in familias:
-        assert sum(1 for g in vivos if g.startswith(familia + ":")) >= 5, f"{familia} sospechosamente vacia"
+        assert sum(1 for g in vivos if g.startswith(familia + ":")) >= minimo.get(familia, 5), \
+            f"{familia} sospechosamente vacia"
