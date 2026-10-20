@@ -4,6 +4,25 @@
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 [![Python 3.10 | 3.12 | 3.14](https://img.shields.io/badge/python-3.10%20%7C%203.12%20%7C%203.14-blue.svg)](https://github.com/Guille1799/capa-normativa/blob/main/.github/workflows/ci.yml)
 
+**Qué es:** Una librería de Python para programas que siguen reglas sacadas de estudios o de normativas.
+Lo normal es que esos números estén escritos tal cual en el código y que, al cabo de un tiempo, nadie sepa
+de dónde salieron. Aquí el programa los pide —por ejemplo, «¿cuánta proteína debería comer esta persona?»—
+y recibe el número, el estudio del que sale y lo fiable que es ese estudio.
+
+**Cómo funciona:** Las reglas viven en su propio fichero, cada una con su fuente y con lo fuerte que es la
+evidencia. Al arrancar, la librería revisa todas: si una está mal escrita, el programa no arranca. Y una regla
+con evidencia débil no se puede presentar como una recomendación firme.
+
+**Estado:** activo (revisado 2026-10-20).
+
+**Cómo se arranca:** `pip install git+https://github.com/Guille1799/capa-normativa.git@v0.17.0`, o desde un
+clon: `pip install -e ".[dev]"` y `python -m pytest -q`.
+
+**Cuaderno:** privado, fuera de este repositorio. Las decisiones de diseño están en `docs/decisiones/`.
+
+**Qué demuestra:** Que se puede hacer que un programa se niegue a funcionar con reglas mal hechas, en vez de
+descubrir después que dio un mal consejo.
+
 > **In English.** The rest of this README is in Spanish. Here is what the library does.
 >
 > **Outside knowledge that governs code, as verifiable data.** For systems whose behaviour

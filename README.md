@@ -4,6 +4,25 @@
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 [![Python 3.10 | 3.12 | 3.14](https://img.shields.io/badge/python-3.10%20%7C%203.12%20%7C%203.14-blue.svg)](https://github.com/Guille1799/capa-normativa/blob/main/.github/workflows/ci.yml)
 
+**What it is:** A Python library for programs that follow rules taken from studies or regulations.
+Usually those numbers are written straight into the code, and after a while nobody knows where they
+came from. Here the program asks for them instead — say, "how much protein should this person eat?" —
+and gets back the number, the study it comes from, and how reliable that study is.
+
+**How it works:** The rules live in their own file, each one with its source and how strong the
+evidence is. When the program starts, the library checks every rule: if one is badly written, the
+program won't start at all. And a rule backed by weak evidence can't be shown as a firm recommendation.
+
+**Status:** active (reviewed 2026-10-20).
+
+**How to run:** `pip install git+https://github.com/Guille1799/capa-normativa.git@v0.17.0`, or from a
+clone: `pip install -e ".[dev]"` and `python -m pytest -q`.
+
+**Notebook:** private, outside this repo. Design decisions are in `docs/decisiones/`.
+
+**What it demonstrates:** That you can make a program refuse to run on bad rules, instead of finding
+out later that it gave wrong advice.
+
 > Versión en español: [README.es.md](README.es.md)
 >
 > **Outside knowledge that governs code, as verifiable data.** For systems whose behaviour
