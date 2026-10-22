@@ -186,6 +186,15 @@ def test_patrones_nuevos_de_google_y_supabase(tmp_path: Path):
     assert len(ficheros) == 3, f"falta algún patrón nuevo: {ficheros}"
 
 
+def test_coge_la_clave_de_riot_y_no_su_prefijo_suelto(tmp_path: Path):
+    falso = "RGAPI" + "-" + "-".join(["a" * 8, "b" * 4, "c" * 4, "d" * 4, "e" * 12])
+    repo = _repo_git(tmp_path, {
+        "etl.R": f'api_key <- "{falso}"\n',
+        "doc.md": "la clave de Riot empieza por RGAPI- y caduca a las 24 h\n",
+    })
+    assert [(h.fichero, "(riot-api)" in h.mensaje) for h in revisar_secretos(repo)] == [("etl.R", True)]
+
+
 def test_el_nombre_de_variable_SUPABASE_no_es_un_secreto(tmp_path: Path):
     """Guardia de regresión de una medición, no una opinión: `SUPABASE.{0,20}(key|KEY)` se
     propuso como patrón y se rechazó porque daba 35 aciertos y los 35 eran falsos. Si alguien

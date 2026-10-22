@@ -65,6 +65,10 @@ PATRONES: dict[str, re.Pattern[str]] = {
     "google-oauth": re.compile(r"\bAQ\.[A-Za-z0-9_-]{40,}"),
     "supabase-secret": re.compile(r"sb_secret_[A-Za-z0-9_-]{20,}"),
     "supabase-pat": re.compile(r"sbp_[a-f0-9]{40}"),
+    # La clave de la API de Riot Games: `RGAPI-` y un UUID. Medida el 2026-10-21 sobre lo versionado de los 22
+    # repos de la casa: 3 ficheros, los 3 con claves reales (dos en un repo y la copia que de ellas hizo una
+    # auditoria en otro), 0 falsos positivos.
+    "riot-api": re.compile(r"RGAPI-[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}"),
 }
 
 _SUPRESION = re.compile(r"#\s*(?:nosec|noqa)\b")
