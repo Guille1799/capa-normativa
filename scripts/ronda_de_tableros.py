@@ -60,6 +60,7 @@ import re
 import shutil
 import subprocess
 import sys
+import threading
 import time
 from datetime import datetime
 from pathlib import Path
@@ -461,6 +462,99 @@ def _entorno_limpio() -> dict:
     return entorno
 
 
+#: Cada tablero corre en su PROPIA consola, oculta, y no en la de la ronda. Medido el 2026-10-21 y
+#: el 2026-10-22: la ronda murió dos días seguidos con 0xC000013A (STATUS_CONTROL_C_EXIT), que es
+#: lo que deja una señal de consola. Una señal de consola llega a TODOS los procesos que comparten
+#: esa consola, así que con los tableros dentro de la de la ronda, una sola señal mataba la ronda
+#: y el tablero que estuviera corriendo. Fuera de ella, el tablero no la oye.
+_CONSOLA_PROPIA = getattr(subprocess, "CREATE_NO_WINDOW", 0)
+
+#: El informe A MEDIAS. Hasta el 2026-10-22 la ronda solo escribía al final, y una muerte a medias
+#: perdía TODO lo medido: el 22-oct murió con cuatro tableros terminados (1 h 10 min de trabajo) y
+#: no dejó ni uno. Ahora cada tablero se guarda aquí al terminar; si la ronda acaba bien, este
+#: fichero se borra, y si no, la ronda siguiente lo encuentra y lo guarda como `interrumpida-*`.
+EN_CURSO = "en_curso.json"
+
+#: Los eventos de consola de Windows, por su número (`SetConsoleCtrlHandler`).
+_EVENTOS_DE_CONSOLA = {0: "CTRL_C", 1: "CTRL_BREAK", 2: "CTRL_CLOSE", 5: "CTRL_LOGOFF",
+                       6: "CTRL_SHUTDOWN"}
+
+
+def guardar_en_curso(carpeta: Path, parcial: dict) -> str | None:
+    """Escribe el informe a medias. Devuelve el error si no pudo (no lanza: es un extra, no la ronda)."""
+    try:
+        carpeta.mkdir(parents=True, exist_ok=True)
+        (carpeta / EN_CURSO).write_text(json.dumps(parcial, ensure_ascii=False, indent=1),
+                                        encoding="utf-8")
+        return None
+    except OSError as e:
+        return type(e).__name__ + ": " + str(e)[:120]
+
+
+def rescatar_interrumpida(carpeta: Path) -> dict | None:
+    """Si la ronda anterior murió a medias, guarda lo que midió y devuelve su resumen.
+
+    El `en_curso.json` que encuentra una ronda al arrancar es, por construcción, de una ronda que
+    no llegó al final (la que acaba bien lo borra). Se renombra a `interrumpida-<inicio>.json` en
+    vez de borrarse: lo que midió es la única pista de por qué murió.
+    """
+    f = carpeta / EN_CURSO
+    try:
+        datos = json.loads(f.read_text(encoding="utf-8"))
+    except FileNotFoundError:
+        return None
+    except (OSError, ValueError) as e:
+        datos = {"ilegible": type(e).__name__}
+    sello = re.sub(r"[^0-9]", "", str(datos.get("iniciado", "")))[:14] or "sin-fecha"
+    destino = carpeta / ("interrumpida-" + sello + ".json")
+    try:
+        f.replace(destino)
+    except OSError:
+        destino = f
+    return {"iniciado": datos.get("iniciado"), "fichero": destino.name,
+            "terminados": [t.get("nombre") for t in datos.get("tableros") or []],
+            "senales": datos.get("senales") or [], "ultimo_latido": datos.get("latido")}
+
+
+def escuchar_senales(apunta, aguanta: bool):
+    """Engancha un oyente de eventos de consola (solo Windows). Devuelve el oyente, o None.
+
+    Cada evento se APUNTA (con su nombre y su hora) antes de nada: hasta el 2026-10-22 la ronda
+    moría muda y solo el código de salida decía que había sido una señal, no cuál ni cuándo.
+
+    `aguanta` es True en la ronda PROGRAMADA: delante de su consola no hay nadie, así que un Ctrl+C
+    o un Ctrl+Break no es la intención de una persona, y la ronda lo apunta y sigue. A mano no
+    aguanta: el Ctrl+C de quien la lanzó la para, como siempre. CTRL_CLOSE, LOGOFF y SHUTDOWN no se
+    pueden aguantar (Windows mata el proceso a los pocos segundos): se apuntan y punto.
+
+    ⚠️ El oyente hay que guardarlo vivo mientras corre la ronda: si el recolector se lo lleva,
+    Windows llamaría a memoria liberada.
+    """
+    if os.name != "nt":
+        return None
+    try:
+        import ctypes
+        from ctypes import wintypes
+    except ImportError:
+        return None
+    tipo = ctypes.WINFUNCTYPE(wintypes.BOOL, wintypes.DWORD)
+
+    def oyente(evento):
+        try:
+            apunta(_EVENTOS_DE_CONSOLA.get(evento, "evento-" + str(evento)))
+        except Exception:
+            pass
+        return bool(aguanta and evento in (0, 1))
+
+    cb = tipo(oyente)
+    try:
+        if not ctypes.windll.kernel32.SetConsoleCtrlHandler(cb, True):
+            return None
+    except (AttributeError, OSError):
+        return None
+    return cb
+
+
 def correr_verifica(t: dict, exe: str) -> dict:
     """El `--verifica` del tablero: la prueba por mutación de sus propios comprobadores.
 
@@ -477,7 +571,7 @@ def correr_verifica(t: dict, exe: str) -> dict:
     try:
         r = subprocess.run([exe, "scripts/aceptacion.py", "--verifica"], cwd=str(t["cwd"]),
                            env=_entorno_limpio(), capture_output=True,
-                           timeout=TIMEOUT_VERIFICA_S)
+                           timeout=TIMEOUT_VERIFICA_S, creationflags=_CONSOLA_PROPIA)
     except subprocess.TimeoutExpired:
         return {"exit": None, "duracion_s": round(time.monotonic() - t0, 1),
                 "resumen": "se cuelga (>" + str(TIMEOUT_VERIFICA_S // 60) + " min)"}
@@ -505,7 +599,8 @@ def correr_tablero(t: dict) -> dict:
     t0 = time.monotonic()
     try:
         r = subprocess.run([exe, "scripts/aceptacion.py"], cwd=str(t["cwd"]), env=entorno,
-                           capture_output=True, timeout=TIMEOUT_TABLERO_S)
+                           capture_output=True, timeout=TIMEOUT_TABLERO_S,
+                           creationflags=_CONSOLA_PROPIA)
     except subprocess.TimeoutExpired:
         return dict(base, estado="caido", verdes=0, rojos=[], cumplidas=[], exit=None,
                     duracion_s=round(time.monotonic() - t0, 1), verifica=sin_verifica,
@@ -589,7 +684,7 @@ def _repreguntar_uno(t: dict, exe: str, nombre: str) -> str:
     try:
         r = subprocess.run([exe, "scripts/aceptacion.py", nombre], cwd=str(t["cwd"]),
                            env=_entorno_limpio(), capture_output=True,
-                           timeout=TIMEOUT_TABLERO_S)
+                           timeout=TIMEOUT_TABLERO_S, creationflags=_CONSOLA_PROPIA)
     except (subprocess.TimeoutExpired, OSError):
         return "sin-leer"                            # sin respuesta se conserva la alarma
     veredictos = leer_nombrados(r.stdout.decode("utf-8", "replace"), [nombre])
@@ -842,6 +937,18 @@ def _md(informe: dict) -> str:
        + str(round(informe["duracion_s"] / 60, 1)) + " min · "
        + str(informe["corridos"]) + " de " + str(informe["declarados"]) + " tableros.")
     ap("")
+    for s in informe.get("senales") or []:
+        ap("- ⚠️ Recibió una señal de consola: **" + s.get("evento", "?") + "** a las "
+           + s.get("hora", "?") + ", y siguió.")
+    previa = informe.get("interrumpida_anterior")
+    if previa:
+        ap("- ⚠️ **La ronda anterior murió a medias** (iniciada " + str(previa.get("iniciado"))
+           + "): terminó " + str(len(previa.get("terminados") or [])) + " tablero(s); señales: "
+           + (", ".join(s.get("evento", "?") + " " + s.get("hora", "?")
+                        for s in previa.get("senales") or []) or "ninguna apuntada")
+           + ". Lo que midió está en `" + str(previa.get("fichero")) + "`.")
+    if informe.get("senales") or previa:
+        ap("")
     nuevos = informe.get("nuevos_rojos") or {}
     ap("## Lo nuevo")
     ap("")
@@ -1003,7 +1110,8 @@ def aviso_para_la_sesion(informe: dict) -> str:
 
 
 def _rotar(carpeta: Path, cuantos: int = 30) -> None:
-    viejos = sorted(carpeta.glob("ronda-*.md"))[:-cuantos]
+    viejos = (sorted(carpeta.glob("ronda-*.md"))[:-cuantos]
+              + sorted(carpeta.glob("interrumpida-*.json"))[:-cuantos])
     for v in viejos:
         try:
             v.unlink()
@@ -1303,10 +1411,49 @@ def main(argv: list[str]) -> int:
     t0 = time.monotonic()
     inicio = datetime.now()
     resultados = []
+
+    # Lo que dejó a medias la ronda anterior, si murió: se guarda y se dice, antes de pisarlo.
+    interrumpida = rescatar_interrumpida(carpeta)
+    if interrumpida:
+        _di("  ⚠️ la ronda anterior (iniciada " + str(interrumpida["iniciado"]) + ") MURIO A MEDIAS:"
+            + " terminó " + str(len(interrumpida["terminados"])) + " tablero(s), último latido "
+            + str(interrumpida["ultimo_latido"]) + ", señales: "
+            + (", ".join(s.get("evento", "?") + " " + s.get("hora", "?")
+                         for s in interrumpida["senales"]) or "ninguna")
+            + " — guardado en " + interrumpida["fichero"])
+
+    senales: list[dict] = []
+    cerrojo = threading.Lock()
+    fallo_al_guardar = []
+
+    def _parcial() -> dict:
+        return {"version": 1, "iniciado": inicio.strftime("%Y-%m-%dT%H:%M:%S"),
+                "lanzador": "tarea-programada" if programada else "a mano", "parcial": True,
+                "latido": datetime.now().strftime("%Y-%m-%dT%H:%M:%S"),
+                "corridos": len(resultados), "tableros": list(resultados), "senales": list(senales)}
+
+    def _guarda() -> None:
+        with cerrojo:
+            err = guardar_en_curso(carpeta, _parcial())
+        if err and not fallo_al_guardar:
+            fallo_al_guardar.append(err)
+            _di("  ⚠️ no se pudo guardar el informe a medias (" + err + "): si la ronda muere, se"
+                " pierde lo medido")
+
+    def _apunta(evento: str) -> None:
+        senales.append({"evento": evento, "hora": datetime.now().strftime("%Y-%m-%dT%H:%M:%S")})
+        _di("  ⚠️ SEÑAL DE CONSOLA: " + evento + " a las " + senales[-1]["hora"]
+            + (" — la ronda programada la apunta y sigue" if programada and evento in
+               ("CTRL_C", "CTRL_BREAK") else ""))
+        _guarda()
+
+    oyente = escuchar_senales(_apunta, aguanta=programada)   # noqa: F841 — vivo hasta el final
+    _guarda()
     for t in vigilados:
         _di("  ... " + t["nombre"])
         r = correr_tablero(t)
         resultados.append(r)
+        _guarda()
         v = r.get("verifica") or {}
         _di("      " + r["estado"] + " · " + str(r["verdes"]) + " verdes · "
             + str(len(r.get("rojos", []))) + " rojos · --verifica=" + str(v.get("exit"))
@@ -1403,6 +1550,8 @@ def main(argv: list[str]) -> int:
         "resueltos": resueltos,
         "inestables": inestables,
         "jubilados": jubilados,
+        "senales": senales,
+        "interrumpida_anterior": interrumpida,
     }
     try:
         carpeta.mkdir(parents=True, exist_ok=True)
@@ -1418,6 +1567,10 @@ def main(argv: list[str]) -> int:
         # Se escribe SIEMPRE, aunque sea vacio: asi el fichero de ayer no se queda diciendo lo de
         # ayer. Un aviso que no se apaga al resolverse ensena a ignorar los avisos.
         (carpeta / "AVISO.txt").write_text(aviso_para_la_sesion(informe), encoding="utf-8")
+        # El informe entero ya está escrito: el de a medias sobra. Si no se pudiera borrar, la
+        # ronda siguiente lo tomaría por una muerte; por eso se borra DESPUÉS de `ultima.json`.
+        with cerrojo:
+            (carpeta / EN_CURSO).unlink(missing_ok=True)
         _rotar(carpeta)
     except OSError as e:
         _di("RONDA SIN INFORME: no se pudo escribir en " + str(carpeta) + " — " + str(e))

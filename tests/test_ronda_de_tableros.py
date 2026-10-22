@@ -1185,3 +1185,136 @@ def test_sin_jubilados_ni_el_informe_ni_el_aviso_los_mencionan():
     que sale siempre es decorado en una semana."""
     assert "ya no existen en su tablero" not in RONDA.aviso_para_la_sesion(_informe())
     assert "Desaparecieron de su tablero" not in RONDA._md(_informe())
+
+
+# ── la ronda que muere a medias (2026-10-21 y 2026-10-22: dos muertes con 0xC000013A) ──────────
+
+class _Muerte(BaseException):
+    """Lo que hace una señal de consola: no es un Exception, nadie la atrapa por el camino."""
+
+
+def test_la_ronda_que_muere_a_medias_deja_lo_medido_y_la_siguiente_lo_dice(tmp_path):
+    """El caso feo entero, con tableros de verdad: muere en el tercero, y la siguiente lo cuenta.
+
+    Hasta el 2026-10-22 una muerte a medias no dejaba NADA: ese día murió con cuatro tableros
+    terminados (1 h 10 min) y el último informe siguió siendo el del 20-oct.
+    """
+    raiz, informes = tmp_path / "arbol", tmp_path / "informes"
+    _siete_falsos(raiz, ["uno"], ["uno"])
+    m = _cargar(RONDA_PROYECTOS=raiz, RONDA_INFORMES=informes)
+    m._TABLEROS = tuple((n, sub, None) for n, sub, _ in RONDA._TABLEROS)
+    m._toast = lambda titulo, cuerpo: True
+    de_verdad, llamadas = m.correr_tablero, []
+
+    def muere_en_el_tercero(t):
+        llamadas.append(t["nombre"])
+        if len(llamadas) == 3:
+            raise _Muerte()
+        return de_verdad(t)
+
+    m.correr_tablero = muere_en_el_tercero
+    with pytest.raises(_Muerte):
+        m.main([])
+    a_medias = json.loads((informes / m.EN_CURSO).read_text(encoding="utf-8"))
+    assert a_medias["parcial"] is True
+    assert [t["nombre"] for t in a_medias["tableros"]] == llamadas[:2], \
+        "lo que se midió antes de morir tiene que estar guardado"
+    assert all(t["rojos"] == ["uno"] for t in a_medias["tableros"])
+    assert not (informes / "ultima.json").exists(), "una ronda a medias no es una ronda"
+
+    m.correr_tablero = de_verdad
+    assert m.main([]) == 0
+    assert not (informes / m.EN_CURSO).exists(), "la ronda que acaba bien no deja el de a medias"
+    interrumpidas = list(informes.glob("interrumpida-*.json"))
+    assert len(interrumpidas) == 1, "lo que midió la muerta se guarda, no se pisa"
+    informe = json.loads((informes / "ultima.json").read_text(encoding="utf-8"))
+    previa = informe["interrumpida_anterior"]
+    assert previa["terminados"] == llamadas[:2]
+    assert previa["fichero"] == interrumpidas[0].name
+    assert "murió a medias" in m._md(informe)
+
+
+def test_una_ronda_entera_no_dice_que_la_anterior_muriera(tmp_path):
+    """La otra dirección: sin muerte, ni fichero de a medias ni frase. Un aviso que sale siempre
+    no avisa de nada."""
+    codigo, informe, _ = _ronda_de_mentira(tmp_path, rojos=[], siguen_rojos=[])
+    assert codigo == 0
+    assert informe["interrumpida_anterior"] is None and informe["senales"] == []
+    assert not (tmp_path / "informes" / RONDA.EN_CURSO).exists()
+    assert not list((tmp_path / "informes").glob("interrumpida-*.json"))
+    assert "murió a medias" not in RONDA._md(informe)
+    assert "señal de consola" not in RONDA._md(informe)
+
+
+@pytest.mark.skipif(os.name != "nt", reason="los eventos de consola son de Windows")
+@pytest.mark.parametrize("aguanta", [True, False])
+def test_el_oyente_apunta_cada_senal_y_solo_aguanta_las_que_puede(aguanta):
+    """Se registra un oyente DE VERDAD en Windows y se le llama con cada evento.
+
+    Programada (aguanta=True): Ctrl+C y Ctrl+Break se apuntan y se tragan, la ronda sigue. A mano
+    no se tragan: el Ctrl+C de una persona la para. Los de cierre nunca, porque Windows mata
+    igual. Y TODOS se apuntan, que es lo que faltaba: la ronda moría muda.
+    """
+    import ctypes
+    apuntadas = []
+    oyente = RONDA.escuchar_senales(apuntadas.append, aguanta=aguanta)
+    assert oyente is not None, "Windows no aceptó el oyente: la ronda seguiría muriendo muda"
+    try:
+        assert [oyente(e) for e in (0, 1, 2, 5, 6)] == [aguanta, aguanta, False, False, False]
+    finally:
+        ctypes.windll.kernel32.SetConsoleCtrlHandler(oyente, False)
+    assert apuntadas == ["CTRL_C", "CTRL_BREAK", "CTRL_CLOSE", "CTRL_LOGOFF", "CTRL_SHUTDOWN"]
+
+
+_DICE_SU_CONSOLA = '''
+import ctypes, os
+lista = (ctypes.c_uint32 * 64)()
+n = ctypes.windll.kernel32.GetConsoleProcessList(lista, 64)
+print("COMPARTE" if os.getppid() in list(lista[:n]) else "PROPIA")
+'''
+
+
+@pytest.mark.skipif(os.name != "nt", reason="las consolas compartidas son de Windows")
+def test_cada_tablero_corre_en_su_propia_consola(tmp_path):
+    """Mitad de mundo real: un hijo de verdad mira con quién comparte consola.
+
+    Una señal de consola llega a todos los procesos de esa consola; con los tableros dentro de la
+    de la ronda, una sola señal se llevaba a los dos. El control (sin la bandera) prueba que el
+    instrumento VE el compartir: si este pytest no tiene consola, no hay nada que probar y se dice.
+    """
+    import ctypes
+    import subprocess
+    if not ctypes.windll.kernel32.GetConsoleWindow():
+        pytest.skip("este pytest corre sin consola: no se puede ver si un hijo la compartiría")
+    guion = tmp_path / "consola.py"
+    guion.write_text(_DICE_SU_CONSOLA, encoding="utf-8")
+
+    def corre(flags):
+        return subprocess.run([sys.executable, str(guion)], capture_output=True, text=True,
+                              timeout=60, creationflags=flags).stdout.strip()
+
+    assert corre(0) == "COMPARTE", "el control falla: el instrumento no ve el compartir"
+    assert corre(RONDA._CONSOLA_PROPIA) == "PROPIA"
+
+
+def test_las_tres_llamadas_a_un_tablero_usan_su_propia_consola(tmp_path, monkeypatch):
+    """Que la bandera exista no basta: tiene que llegar a las TRES llamadas que arrancan un
+    tablero (la pasada, el `--verifica` y la repregunta). Una que se la deje es la puerta por la
+    que la señal vuelve a matar."""
+    m = _cargar()
+    vistas = []
+
+    class _Hecho:
+        returncode, stdout, stderr = 0, b"", b""
+
+    def run(cmd, **kw):
+        vistas.append((cmd[-1], kw.get("creationflags")))
+        return _Hecho()
+
+    monkeypatch.setattr(m.subprocess, "run", run)
+    t = {"nombre": "x", "sub": "x", "cwd": tmp_path, "interprete": None}
+    m._interprete_de = lambda t: (sys.executable, None)
+    m.correr_tablero(t)
+    m._repreguntar_uno(t, sys.executable, "algo")
+    assert [c for c, _ in vistas] == ["scripts/aceptacion.py", "--verifica", "algo"]
+    assert all(f == m._CONSOLA_PROPIA for _, f in vistas), vistas
