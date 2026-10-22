@@ -200,3 +200,40 @@ def test_contra_la_maquina_real_enumera_las_cuatro_familias():
     for familia in familias:
         assert sum(1 for g in vivos if g.startswith(familia + ":")) >= minimo.get(familia, 5), \
             f"{familia} sospechosamente vacia"
+
+
+def _repo(tmp_path, nombre, hooks_path=None, en=".git/hooks"):
+    import subprocess
+    d = tmp_path / nombre
+    d.mkdir()
+    subprocess.run(["git", "init", "-q", str(d)], capture_output=True, timeout=60)
+    if hooks_path is not None:
+        subprocess.run(["git", "-C", str(d), "config", "core.hooksPath", str(hooks_path)], capture_output=True, timeout=60)
+    return d
+
+
+def test_el_pre_commit_se_busca_DONDE_LO_EJECUTA_GIT(tmp_path, monkeypatch):
+    """2026-10-22: los repos con `core.hooksPath` a la carpeta compartida no contaban, y el censo salia verde con 9
+    guardias recien puestas sin mirar."""
+    m = _cargar()
+    compartida = tmp_path / "githooks"
+    compartida.mkdir()
+    (compartida / "pre-commit").write_text("#!/bin/sh\n", encoding="utf-8")
+    monkeypatch.setattr(m, "GANCHOS_COMPARTIDOS", compartida)
+    a = _repo(tmp_path, "a", hooks_path=compartida)
+    b = _repo(tmp_path, "b")
+    (b / ".git" / "hooks" / "pre-commit").write_text("#!/bin/sh\n", encoding="utf-8")
+    c = _repo(tmp_path, "c")
+    fantasma = _repo(tmp_path, "fantasma", hooks_path="hooks")
+    (fantasma / ".git" / "hooks" / "pre-commit").write_text("#!/bin/sh\n", encoding="utf-8")
+    assert m._pre_commit_de(a) == "pre-commit:compartido"
+    assert m._pre_commit_de(b) == "pre-commit:b"
+    assert m._pre_commit_de(c) is None
+    assert m._pre_commit_de(fantasma) is None, "cuenta un gancho que git IGNORA"
+    import subprocess
+    (b / "x.txt").write_text("x", encoding="utf-8")
+    subprocess.run(["git", "-C", str(b), "add", "x.txt"], capture_output=True, timeout=60)
+    subprocess.run(["git", "-C", str(b), "-c", "user.name=x", "-c", "user.email=x@x", "-c", "core.hooksPath=/nada",
+                    "commit", "-q", "-m", "x"], capture_output=True, timeout=60)
+    subprocess.run(["git", "-C", str(b), "worktree", "add", "-q", str(tmp_path / "robot-de-b")], capture_output=True, timeout=60)
+    assert m._pre_commit_de(tmp_path / "robot-de-b") == "pre-commit:b", "un worktree es el MISMO guardian que su repo"

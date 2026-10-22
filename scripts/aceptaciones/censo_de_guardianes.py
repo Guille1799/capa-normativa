@@ -189,6 +189,34 @@ def _repos() -> list[Path]:
     return sorted(d for d in RAIZ_PROYECTOS.iterdir() if d.is_dir() and (d / ".git").exists())
 
 
+#: La carpeta de ganchos COMPARTIDA del workspace: los repos con `core.hooksPath` aqui ejecutan UN gancho, que es UN
+#: guardian (`pre-commit:compartido`), no uno por repo (2026-10-22, tanda 5.9 de la casa).
+GANCHOS_COMPARTIDOS = RAIZ_PROYECTOS / ".claude" / "githooks"
+
+
+def _pre_commit_de(repo: Path) -> str | None:
+    """El guardian de pre-commit que git EJECUTA en `repo`, o None si no hay. Se le pregunta a git DONDE estan sus
+    ganchos: hasta el 2026-10-22 se miraba `hooks/` y `.git/hooks/` a ciegas, y los repos con `core.hooksPath` a la
+    carpeta compartida no contaban (el censo daba 51 con 9 repos recien enganchados fuera)."""
+    try:
+        r = subprocess.run(["git", "-C", str(repo), "rev-parse", "--path-format=absolute", "--git-path", "hooks"],
+                           capture_output=True, text=True, timeout=60)
+    except (OSError, subprocess.TimeoutExpired) as e:
+        raise FuenteRota(f"git no contesto en {repo.name}: {type(e).__name__}") from e
+    if r.returncode != 0 or not r.stdout.strip():
+        raise FuenteRota(f"git no dijo donde estan los ganchos de {repo.name}")
+    carpeta = Path(r.stdout.strip())
+    if not (carpeta / "pre-commit").is_file():
+        return None
+    if os.path.normcase(str(carpeta.resolve())) == os.path.normcase(str(GANCHOS_COMPARTIDOS.resolve())):
+        return "pre-commit:compartido"
+    if carpeta.name == "hooks" and carpeta.parent.name == ".git":
+        # Un worktree (los robots) ejecuta el `.git/hooks` de su repo principal: es el MISMO fichero, y el MISMO
+        # guardian, con el nombre del repo que lo tiene.
+        return f"pre-commit:{carpeta.parent.parent.name}"
+    return f"pre-commit:{repo.name}"
+
+
 def _tableros_de_la_ronda() -> list[str]:
     """Los tableros que la ronda EJECUTA, preguntandoselo a ella.
 
@@ -232,8 +260,9 @@ def guardianes() -> tuple[list[str], list[str]]:
     try:
         for repo in _repos():
             ids += _hooks_de(repo / ".claude" / "settings.json", repo.name)
-            if (repo / "hooks" / "pre-commit").exists() or (repo / ".git" / "hooks" / "pre-commit").exists():
-                ids.append(f"pre-commit:{repo.name}")
+            pc = _pre_commit_de(repo)
+            if pc:
+                ids.append(pc)
 
     except FuenteRota as e:
         rotas.append(f"repos: {e}")
