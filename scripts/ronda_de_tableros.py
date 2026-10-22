@@ -62,6 +62,7 @@ import subprocess
 import sys
 import threading
 import time
+import uuid
 from datetime import datetime
 from pathlib import Path
 
@@ -457,9 +458,19 @@ def _entorno_limpio() -> dict:
     # Un `GIT_DIR` heredado ya secuestró una vez a los detectores (commit d216e5e): escanearon
     # otro repo, no encontraron nada y declararon todo limpio. La ronda arranca a los hijos sin
     # las variables de git que pueda traer puestas quien la lance.
-    for fuga in ("GIT_DIR", "GIT_WORK_TREE", "GIT_INDEX_FILE"):
+    # Y sin `RONDA_ID` heredado: ese lo pone la ronda SOLO en la pasada completa (ver `ID_DE_RONDA`).
+    for fuga in ("GIT_DIR", "GIT_WORK_TREE", "GIT_INDEX_FILE", "RONDA_ID"):
         entorno.pop(fuga, None)
     return entorno
+
+
+#: El identificador de ESTA ronda, que se le pasa como `RONDA_ID` a la pasada completa de cada tablero y
+#: a nada más. Con él, un tablero puede medir UNA vez por ronda lo que no depende de su árbol sino del
+#: mundo, y el siguiente reutilizarlo diciéndolo (mcp_smart_context lo hace con sus tests `mundo` y los
+#: de la casa: medido el 2026-10-22, 12 de los 19 min de su tablero, repetidos idénticos en `mcp-ralph`).
+#: Ni el `--verifica` ni las repreguntas lo llevan: la repregunta existe para volver a MEDIR un rojo
+#: nuevo, y si leyera lo guardado confirmaría un rojo que parpadea. `None` fuera de `main()`.
+ID_DE_RONDA: str | None = None
 
 
 #: Cada tablero corre en su PROPIA consola, oculta, y no en la de la ronda. Medido el 2026-10-21 y
@@ -596,6 +607,8 @@ def correr_tablero(t: dict) -> dict:
         return dict(base, estado="caido", verdes=0, rojos=[], cumplidas=[], exit=None,
                     duracion_s=0.0, detalle=problema, verifica=sin_verifica)
     entorno = _entorno_limpio()
+    if ID_DE_RONDA:
+        entorno["RONDA_ID"] = ID_DE_RONDA
     t0 = time.monotonic()
     try:
         r = subprocess.run([exe, "scripts/aceptacion.py"], cwd=str(t["cwd"]), env=entorno,
@@ -1411,6 +1424,8 @@ def main(argv: list[str]) -> int:
     t0 = time.monotonic()
     inicio = datetime.now()
     resultados = []
+    global ID_DE_RONDA
+    ID_DE_RONDA = inicio.strftime("%Y-%m-%dT%H:%M:%S") + "-" + uuid.uuid4().hex[:12]
 
     # Lo que dejó a medias la ronda anterior, si murió: se guarda y se dice, antes de pisarlo.
     interrumpida = rescatar_interrumpida(carpeta)

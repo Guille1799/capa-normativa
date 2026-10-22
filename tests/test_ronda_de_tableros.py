@@ -1318,3 +1318,56 @@ def test_las_tres_llamadas_a_un_tablero_usan_su_propia_consola(tmp_path, monkeyp
     m._repreguntar_uno(t, sys.executable, "algo")
     assert [c for c, _ in vistas] == ["scripts/aceptacion.py", "--verifica", "algo"]
     assert all(f == m._CONSOLA_PROPIA for _, f in vistas), vistas
+
+
+def test_el_id_de_ronda_solo_va_a_la_pasada_completa(tmp_path, monkeypatch):
+    """Con `RONDA_ID` un tablero puede medir el mundo UNA vez por ronda y reutilizarlo en el siguiente árbol. Por
+    eso tiene que llegar a la pasada completa y a NADA más: la repregunta existe para volver a medir un rojo nuevo
+    (si leyera lo guardado, confirmaría un rojo que parpadea), y el `--verifica` ataca, no lee el mundo. Y uno
+    HEREDADO de quien lance la ronda no puede colarse en ninguna de las tres."""
+    m = _cargar()
+    vistas = []
+
+    class _Hecho:
+        returncode, stdout, stderr = 0, b"", b""
+
+    def run(cmd, **kw):
+        vistas.append((cmd[-1], (kw.get("env") or {}).get("RONDA_ID")))
+        return _Hecho()
+
+    monkeypatch.setattr(m.subprocess, "run", run)
+    monkeypatch.setenv("RONDA_ID", "heredado")
+    t = {"nombre": "x", "sub": "x", "cwd": tmp_path, "interprete": None}
+    m._interprete_de = lambda t: (sys.executable, None)
+    m.ID_DE_RONDA = None
+    m.correr_tablero(t)
+    m.ID_DE_RONDA = "R-esta"
+    m.correr_tablero(t)
+    m._repreguntar_uno(t, sys.executable, "algo")
+    assert vistas == [("scripts/aceptacion.py", None), ("--verifica", None),
+                      ("scripts/aceptacion.py", "R-esta"), ("--verifica", None), ("algo", None)], vistas
+
+
+def test_cada_ronda_tiene_su_id(tmp_path):
+    """Dos rondas no pueden compartir id, o la segunda reutilizaría lo que midió la primera. Y se prueba con las dos
+    arrancando en el MISMO segundo: si no, la hora sola ya las distinguiría y una parte única rota pasaría."""
+    _ronda_de_mentira(tmp_path / "a", rojos=[], siguen_rojos=[])
+    m = _cargar(RONDA_PROYECTOS=tmp_path / "a" / "arbol", RONDA_INFORMES=tmp_path / "a" / "informes")
+    m._TABLEROS = tuple((n, sub, None) for n, sub, _ in RONDA._TABLEROS)
+    m._toast = lambda titulo, cuerpo: True
+    fija = datetime(2026, 10, 22, 8, 30, 0)
+
+    class _Reloj(datetime):
+        @classmethod
+        def now(cls, tz=None):
+            return fija
+
+    m.datetime = _Reloj
+    vistos = []
+    de_verdad = m.correr_tablero
+    m.correr_tablero = lambda t: vistos.append(m.ID_DE_RONDA) or de_verdad(t)
+    m.main([])
+    primero = vistos[0]
+    m.main([])
+    assert primero and vistos[-1] and vistos[-1] != primero
+    assert len(set(vistos)) == 2, "dentro de una ronda el id no cambia; entre rondas, si"
